@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Hollow's Hunt</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game" width="960" height="540" aria-label="Hollow's Hunt game canvas"></canvas>
+
+    <div id="hud">
+      <div class="hud-row">
+        <div class="pill"><span class="label">BATTERY</span> <span id="batteryVal">100</span>%</div>
+        <div class="pill"><span class="label">STAMINA</span> <span id="staminaVal">100</span>%</div>
+        <div class="pill"><span class="label">NOISE</span> <span id="noiseVal">0</span></div>
+      </div>
+      <div class="hud-row">
+        <div class="pill wide"><span class="label">OBJECTIVE</span> <span id="objective">Find the exit.</span></div>
+      </div>
+      <div id="hint">WASD move • Mouse look • Shift run • F flashlight • Click canvas to lock cursor</div>
+    </div>
+
+    <div id="veil"></div>
+
+    <div id="menu" class="panel">
+      <div class="title">Hollow's Hunt</div>
+      <div class="subtitle">A browser horror game. Use headphones.</div>
+
+      <div class="block">
+        <div class="k">Survive</div>
+        <div class="v">A creature stalks the corridors. Light helps—but drains.</div>
+      </div>
+      <div class="block">
+        <div class="k">Listen</div>
+        <div class="v">Footsteps and breathing reveal distance. Running makes noise.</div>
+      </div>
+      <div class="block">
+        <div class="k">Rules</div>
+        <div class="v">Don’t get cornered. Find batteries. Reach the exit.</div>
+      </div>
+
+      <button id="startBtn">ENTER</button>
+
+      <div class="small">
+        Tip: If the mouse won't lock, click the canvas once after starting.
+      </div>
+    </div>
+
+    <div id="gameover" class="panel hidden">
+      <div class="title">CAUGHT</div>
+      <div class="subtitle" id="deathLine">It was closer than you thought.</div>
+      <button id="restartBtn">TRY AGAIN</button>
+      <div class="small">Press R to restart.</div>
+    </div>
+
+    <div id="win" class="panel hidden">
+      <div class="title">ESCAPED</div>
+      <div class="subtitle">You found the door. For now.</div>
+      <button id="playAgainBtn">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
