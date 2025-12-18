@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <title>Hollow's Hunt</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Nosifer&family=Special+Elite&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -19,7 +22,7 @@
       <div class="hud-row">
         <div class="pill wide"><span class="label">OBJECTIVE</span> <span id="objective">Find the exit.</span></div>
       </div>
-      <div id="hint">WASD move • Mouse look • Shift run • F flashlight • Click canvas to lock cursor</div>
+      <div id="hint">WASD move • Mouse look • Shift run • C crouch • F flashlight • Click canvas to lock cursor</div>
     </div>
 
     <div id="veil"></div>
@@ -45,6 +48,9 @@
 
       <div class="small">
         Tip: If the mouse won't lock, click the canvas once after starting.
+      </div>
+      <div class="small" id="loadingMsg" style="display:none; color: #ff4444; margin-top: 10px;">
+        Generating maze...
       </div>
     </div>
 

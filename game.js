@@ -139,7 +139,7 @@
       c.globalAlpha = 1;
     }
 
-    // Floor: dirty concrete tiles
+    // Floor: extremely grimy, filthy asylum floor
     const floor = makeCanvas(size);
     {
       const c = floor.getContext('2d');
@@ -149,22 +149,29 @@
           const n1 = hash2(x * 2, y * 2);
           const n2 = hash2(x * 7 + 13, y * 7 - 9);
           const n3 = hash2(x * 16, y * 16);
-          const grime = 0.55 * n1 + 0.30 * n2 + 0.15 * n3;
+          const n4 = hash2(x * 23 + 5, y * 19 - 3);
+          const grime = 0.45 * n1 + 0.30 * n2 + 0.15 * n3 + 0.10 * n4;
 
-          const tileX = (x % 16 === 0) ? 1 : 0;
-          const tileY = (y % 16 === 0) ? 1 : 0;
-          const seam = (tileX || tileY) ? 0.75 : 0;
+          const tileX = (x % 12 === 0) ? 1 : 0;
+          const tileY = (y % 12 === 0) ? 1 : 0;
+          const seam = (tileX || tileY) ? 0.85 : 0;
 
-          let base = 92 + grime * 75 - seam * 35;
-          // random stains
-          const stain = Math.pow(hash2(x * 5 + 20, y * 5 + 90), 6);
-          base -= stain * 65;
+          // Much darker base
+          let base = 45 + grime * 55 - seam * 40;
+          
+          // Heavy staining
+          const stain = Math.pow(hash2(x * 5 + 20, y * 5 + 90), 4);
+          base -= stain * 85;
+          
+          // Mold patches
+          const mold = Math.pow(hash2(x * 11 + 30, y * 13 + 50), 7);
+          const moldAmt = mold * 120;
 
-          base = clamp(base, 15, 190);
+          base = clamp(base, 8, 95);
 
-          const r = clamp(base * 0.92, 0, 255);
-          const g = clamp(base * 0.96, 0, 255);
-          const b = clamp(base * 1.02, 0, 255);
+          const r = clamp(base * 0.88 - moldAmt * 0.3, 0, 255);
+          const g = clamp(base * 0.92 - moldAmt * 0.1, 0, 255);
+          const b = clamp(base * 0.85 - moldAmt * 0.2, 0, 255);
 
           const i = (y * size + x) * 4;
           img.data[i + 0] = r;
@@ -174,17 +181,73 @@
         }
       }
       c.putImageData(img, 0, 0);
-      // subtle scuff streaks
-      c.globalAlpha = 0.12;
-      c.strokeStyle = '#0b0f1a';
-      for (let i = 0; i < 22; i++) {
+      // Heavy grime streaks and dirt
+      c.globalAlpha = 0.35;
+      c.strokeStyle = '#050608';
+      c.lineWidth = 2;
+      for (let i = 0; i < 35; i++) {
         c.beginPath();
         const y = randi(0, size);
         c.moveTo(randi(0, size), y);
-        c.lineTo(randi(0, size), y + randi(-2, 3));
+        c.lineTo(randi(0, size), y + randi(-4, 5));
         c.stroke();
       }
+      // Dark patches
+      c.globalAlpha = 0.25;
+      c.fillStyle = '#020304';
+      for (let i = 0; i < 15; i++) {
+        c.beginPath();
+        c.ellipse(randi(0, size), randi(0, size), randi(3, 8), randi(3, 8), 0, 0, Math.PI * 2);
+        c.fill();
+      }
       c.globalAlpha = 1;
+    }
+
+    // Exit door: brown wooden door
+    const exitDoor = makeCanvas(size);
+    {
+      const c = exitDoor.getContext('2d');
+      const img = c.createImageData(size, size);
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const n1 = hash2(x * 4, y * 8);
+          const n2 = hash2(x * 12 + 5, y * 2 + 3);
+          const woodGrain = 0.65 * n1 + 0.35 * n2;
+          
+          // Vertical planks
+          const plankX = Math.floor(x / 16);
+          const plankEdge = (x % 16 === 0 || x % 16 === 15) ? 0.8 : 0;
+          
+          let base = 85 + woodGrain * 45 - plankEdge * 30;
+          base = clamp(base, 40, 140);
+          
+          const r = clamp(base * 0.72, 0, 255);
+          const g = clamp(base * 0.48, 0, 255);
+          const b = clamp(base * 0.32, 0, 255);
+          
+          const i = (y * size + x) * 4;
+          img.data[i + 0] = r;
+          img.data[i + 1] = g;
+          img.data[i + 2] = b;
+          img.data[i + 3] = 255;
+        }
+      }
+      c.putImageData(img, 0, 0);
+      
+      // Door frame and details
+      c.strokeStyle = '#1a0f08';
+      c.lineWidth = 3;
+      c.strokeRect(2, 2, size - 4, size - 4);
+      
+      // Door handle
+      c.fillStyle = '#3a3028';
+      c.beginPath();
+      c.arc(size * 0.75, size * 0.52, 4, 0, Math.PI * 2);
+      c.fill();
+      
+      // Horizontal beam
+      c.fillStyle = '#2a1f18';
+      c.fillRect(4, size * 0.48, size - 8, 6);
     }
 
     // Ceiling: dingy panels with vents
@@ -254,53 +317,102 @@
 
       s.globalAlpha = 1;
 
-      // torso: tall, thin, hunched
-      s.fillStyle = '#030309';
+      // torso: extremely emaciated, skeletal frame
+      s.fillStyle = '#010104';
       s.beginPath();
-      s.moveTo(-18, -58);
-      s.quadraticCurveTo(-34, -22, -26, 26 + breathe * 10);
-      s.quadraticCurveTo(-18, 62, -6, 78);
-      s.quadraticCurveTo(0, 90, 6, 78);
-      s.quadraticCurveTo(18, 62, 26, 26 + breathe * 10);
-      s.quadraticCurveTo(34, -22, 18, -58);
-      s.quadraticCurveTo(0, -72, -18, -58);
+      s.moveTo(-14, -62);
+      s.quadraticCurveTo(-28, -28, -22, 20 + breathe * 10);
+      s.quadraticCurveTo(-16, 58, -5, 76);
+      s.quadraticCurveTo(0, 88, 5, 76);
+      s.quadraticCurveTo(16, 58, 22, 20 + breathe * 10);
+      s.quadraticCurveTo(28, -28, 14, -62);
+      s.quadraticCurveTo(0, -76, -14, -62);
       s.closePath();
       s.fill();
 
-      // ribs (faint)
-      s.globalAlpha = 0.20;
-      s.strokeStyle = '#0b0b12';
-      s.lineWidth = 3;
-      for (let i = 0; i < 6; i++) {
-        const yy = -22 + i * 14 + breathe * 6;
+      // exposed ribs (very prominent)
+      s.globalAlpha = 0.75;
+      s.strokeStyle = '#0a0a10';
+      s.lineWidth = 4;
+      for (let i = 0; i < 8; i++) {
+        const yy = -28 + i * 12 + breathe * 7;
+        const curve = 8 + i * 0.8;
         s.beginPath();
-        s.moveTo(-18 + i * 0.5, yy);
-        s.quadraticCurveTo(0, yy + 5, 18 - i * 0.5, yy);
+        s.moveTo(-14, yy);
+        s.quadraticCurveTo(-20 - curve, yy + 4, -22, yy + 8);
+        s.stroke();
+        s.beginPath();
+        s.moveTo(14, yy);
+        s.quadraticCurveTo(20 + curve, yy + 4, 22, yy + 8);
         s.stroke();
       }
       s.globalAlpha = 1;
+      
+      // spine protrusions (jagged)
+      s.globalAlpha = 0.92;
+      s.fillStyle = '#000';
+      for (let i = 0; i < 9; i++) {
+        const yy = -55 + i * 16 + breathe * 9;
+        const spikeH = 15 + i * 1.2;
+        s.beginPath();
+        s.moveTo(-2, yy);
+        s.lineTo(-10 - i * 0.6, yy - spikeH);
+        s.lineTo(-6, yy - spikeH * 0.3);
+        s.lineTo(-2, yy - 3);
+        s.fill();
+      }
+      s.globalAlpha = 1;
 
-      // arms: long, jointed, dangling
-      s.fillStyle = '#020206';
-      const armWave = 0.18 * Math.sin(t * 1.8);
-      // left
+      // arms: extremely long, skeletal, multi-jointed
+      s.fillStyle = '#000';
+      const armWave = 0.22 * Math.sin(t * 1.6);
+      // left arm - unnaturally long
       s.beginPath();
-      s.moveTo(-20, -48);
-      s.quadraticCurveTo(-58, -18, -56 + armWave * 8, 30);
-      s.quadraticCurveTo(-54, 58, -40, 82);
-      s.quadraticCurveTo(-22, 74, -28, 52);
-      s.quadraticCurveTo(-34, 22, -24, -10);
-      s.quadraticCurveTo(-18, -32, -20, -48);
+      s.moveTo(-16, -52);
+      s.quadraticCurveTo(-62, -22, -68 + armWave * 10, 25);
+      s.lineTo(-70 + armWave * 12, 38);
+      s.quadraticCurveTo(-68, 65, -52, 92);
+      s.lineTo(-48, 98);
+      s.lineTo(-42, 94);
+      s.lineTo(-44, 88);
+      s.quadraticCurveTo(-52, 60, -50, 35);
+      s.quadraticCurveTo(-38, 18, -20, -8);
+      s.quadraticCurveTo(-14, -28, -16, -52);
       s.fill();
-      // right
+      // elbow joint
       s.beginPath();
-      s.moveTo(20, -48);
-      s.quadraticCurveTo(58, -18, 56 - armWave * 8, 30);
-      s.quadraticCurveTo(54, 58, 40, 82);
-      s.quadraticCurveTo(22, 74, 28, 52);
-      s.quadraticCurveTo(34, 22, 24, -10);
-      s.quadraticCurveTo(18, -32, 20, -48);
+      s.arc(-60 + armWave * 10, 32, 5, 0, Math.PI * 2);
       s.fill();
+      // right arm
+      s.beginPath();
+      s.moveTo(16, -52);
+      s.quadraticCurveTo(62, -22, 68 - armWave * 10, 25);
+      s.lineTo(70 - armWave * 12, 38);
+      s.quadraticCurveTo(68, 65, 52, 92);
+      s.lineTo(48, 98);
+      s.lineTo(42, 94);
+      s.lineTo(44, 88);
+      s.quadraticCurveTo(52, 60, 50, 35);
+      s.quadraticCurveTo(38, 18, 20, -8);
+      s.quadraticCurveTo(14, -28, 16, -52);
+      s.fill();
+      s.beginPath();
+      s.arc(60 - armWave * 10, 32, 5, 0, Math.PI * 2);
+      s.fill();
+      
+      // clawed fingers
+      s.strokeStyle = '#000';
+      s.lineWidth = 2.5;
+      for (let i = 0; i < 4; i++) {
+        s.beginPath();
+        s.moveTo(-48 + i * 2, 98);
+        s.lineTo(-52 + i * 2.5, 108 + i);
+        s.stroke();
+        s.beginPath();
+        s.moveTo(48 - i * 2, 98);
+        s.lineTo(52 - i * 2.5, 108 + i);
+        s.stroke();
+      }
 
       // head: crooked skull-ish mass
       s.save();
@@ -364,6 +476,7 @@
       wall,
       floor,
       ceil,
+      exitDoor,
       sprite,
       drawMonster,
       floorData: getRGBAData(floor),
@@ -722,7 +835,7 @@
   const audio = new AudioEngine();
 
   // ---------- Map generation ----------
-  // Tile codes: 0 empty, 1 wall, 2 battery pickup, 3 exit door
+  // Tile codes: 0 empty, 1 wall, 2 battery, 3 exit, 4 pillar, 5 crate, 6 debris, 7 ceiling light, 8 medkit, 9 noise dampener, 10 speed boost
   function bfsDistances(grid, sx, sy) {
     const h = grid.length;
     const w = grid[0].length;
@@ -748,7 +861,7 @@
     return dist;
   }
 
-  function generateMaze(w = 31, h = 31) {
+  function generateMaze(w = 65, h = 65) {
     if (w % 2 === 0) w += 1;
     if (h % 2 === 0) h += 1;
 
@@ -776,8 +889,33 @@
         const nx = cur.x + d.dx;
         const ny = cur.y + d.dy;
         if (nx > 0 && ny > 0 && nx < w - 1 && ny < h - 1 && grid[ny][nx] === 1) {
+          // Carve main path
           carve(cur.x + d.dx / 2, cur.y + d.dy / 2);
           carve(nx, ny);
+          
+          // Widen corridors by carving adjacent cells
+          if (d.dx !== 0) {
+            // Horizontal corridor - widen vertically
+            if (cur.y + 1 < h - 1) {
+              carve(cur.x + d.dx / 2, cur.y + 1);
+              carve(nx, ny + 1);
+            }
+            if (cur.y - 1 > 0) {
+              carve(cur.x + d.dx / 2, cur.y - 1);
+              carve(nx, ny - 1);
+            }
+          } else {
+            // Vertical corridor - widen horizontally
+            if (cur.x + 1 < w - 1) {
+              carve(cur.x + 1, cur.y + d.dy / 2);
+              carve(nx + 1, ny);
+            }
+            if (cur.x - 1 > 0) {
+              carve(cur.x - 1, cur.y + d.dy / 2);
+              carve(nx - 1, ny);
+            }
+          }
+          
           stack.push({ x: nx, y: ny });
           moved = true;
           break;
@@ -786,13 +924,13 @@
       if (!moved) stack.pop();
     }
 
-    // ragged "rooms" (openings), but *never* touch border to avoid rendering edge oddities
-    const roomCount = 7;
+    // Create larger open rooms throughout maze
+    const roomCount = 18;
     for (let i = 0; i < roomCount; i++) {
       const rx = randi(3, w - 6);
       const ry = randi(3, h - 6);
-      const rw = randi(3, 7);
-      const rh = randi(3, 7);
+      const rw = randi(6, 12);
+      const rh = randi(6, 12);
       for (let y = ry; y < ry + rh; y++) {
         for (let x = rx; x < rx + rw; x++) {
           if (x >= 2 && y >= 2 && x <= w - 3 && y <= h - 3) {
@@ -806,19 +944,40 @@
     for (let x = 0; x < w; x++) { grid[0][x] = 1; grid[h-1][x] = 1; }
     for (let y = 0; y < h; y++) { grid[y][0] = 1; grid[y][w-1] = 1; }
 
-    // choose exit far from start
+    // BFS for distances (needed for item placement)
     const distMap = bfsDistances(grid, start.x, start.y);
-    let far = { x: start.x, y: start.y, d: -1 };
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        const d = distMap[y][x];
-        if (grid[y][x] === 0 && d !== Infinity && d > far.d) far = { x, y, d };
+
+    // Place exit RANDOMLY in any valid distant location
+    let exitPlaced = false;
+    let exitAttempts = 0;
+    let far = { x: start.x, y: start.y };
+    while (!exitPlaced && exitAttempts < 200) {
+      const x = randi(5, w - 5);
+      const y = randi(5, h - 5);
+      if (grid[y][x] === 0 && distMap[y][x] > 20 && distMap[y][x] !== Infinity) {
+        far = { x, y };
+        grid[y][x] = 3;
+        exitPlaced = true;
+      }
+      exitAttempts++;
+    }
+    if (!exitPlaced) {
+      // Fallback: find any distant spot
+      for (let y = h - 5; y > 5; y--) {
+        for (let x = w - 5; x > 5; x--) {
+          if (grid[y][x] === 0 && distMap[y][x] > 15) {
+            far = { x, y };
+            grid[y][x] = 3;
+            exitPlaced = true;
+            break;
+          }
+        }
+        if (exitPlaced) break;
       }
     }
-    grid[far.y][far.x] = 3;
 
     // batteries
-    const batteryCount = 7;
+    const batteryCount = 5;
     let placed = 0;
     while (placed < batteryCount) {
       const x = randi(2, w - 2);
@@ -826,13 +985,104 @@
       if (grid[y][x] !== 0) continue;
 
       if (distMap[y][x] < 12) continue;
-      if (distMap[y][x] > far.d - 4) continue;
 
       const nWalls = (grid[y-1][x]===1) + (grid[y+1][x]===1) + (grid[y][x-1]===1) + (grid[y][x+1]===1);
       if (Math.random() < (0.34 + 0.14 * nWalls)) {
         grid[y][x] = 2;
         placed++;
       }
+    }
+
+    // Scatter pillars and crates sparsely in maze
+    const pillarCount = 10;
+    placed = 0;
+    while (placed < pillarCount) {
+      const x = randi(2, w - 2);
+      const y = randi(2, h - 2);
+      if (grid[y][x] !== 0) continue;
+      if (distMap[y][x] < 8) continue;
+      const nWalls = (grid[y-1][x]===1) + (grid[y+1][x]===1) + (grid[y][x-1]===1) + (grid[y][x+1]===1);
+      if (nWalls <= 1 && Math.random() < 0.3) {
+        grid[y][x] = 4;
+        placed++;
+      }
+    }
+
+    const crateCount = 8;
+    placed = 0;
+    while (placed < crateCount) {
+      const x = randi(2, w - 2);
+      const y = randi(2, h - 2);
+      if (grid[y][x] !== 0) continue;
+      if (distMap[y][x] < 6) continue;
+      const nWalls = (grid[y-1][x]===1) + (grid[y+1][x]===1) + (grid[y][x-1]===1) + (grid[y][x+1]===1);
+      if (nWalls >= 2 && Math.random() < 0.4) {
+        grid[y][x] = 5;
+        placed++;
+      }
+    }
+
+    // Sparse debris
+    const debrisCount = 12;
+    placed = 0;
+    while (placed < debrisCount) {
+      const x = randi(2, w - 2);
+      const y = randi(2, h - 2);
+      if (grid[y][x] !== 0) continue;
+      if (distMap[y][x] < 4) continue;
+      if (Math.random() < 0.2) {
+        grid[y][x] = 6;
+        placed++;
+      }
+    }
+
+    // Ceiling lights scattered
+    const lightCount = 12;
+    placed = 0;
+    while (placed < lightCount) {
+      const x = randi(3, w - 3);
+      const y = randi(3, h - 3);
+      if (grid[y][x] !== 0) continue;
+      if (distMap[y][x] < 8) continue;
+      const nWalls = (grid[y-1][x]===1) + (grid[y+1][x]===1) + (grid[y][x-1]===1) + (grid[y][x+1]===1);
+      if (nWalls === 0 && Math.random() < 0.3) {
+        grid[y][x] = 7;
+        placed++;
+      }
+    }
+    
+    // Reduced collectables
+    const medkitCount = 3;
+    placed = 0;
+    while (placed < medkitCount) {
+      const x = randi(2, w - 2);
+      const y = randi(2, h - 2);
+      if (grid[y][x] !== 0) continue;
+      if (distMap[y][x] < 15) continue;
+      grid[y][x] = 8;
+      placed++;
+    }
+    
+    const dampenerCount = 2;
+    placed = 0;
+    while (placed < dampenerCount) {
+      const x = randi(2, w - 2);
+      const y = randi(2, h - 2);
+      if (grid[y][x] !== 0) continue;
+      if (distMap[y][x] < 18) continue;
+      grid[y][x] = 9;
+      placed++;
+    }
+    
+    const speedCount = 2;
+    placed = 0;
+    while (placed < speedCount) {
+      const x = randi(2, w - 2);
+      const y = randi(2, h - 2);
+      if (grid[y][x] !== 0) continue;
+      if (distMap[y][x] < 20) continue;
+      grid[y][x] = 10;
+      placed++;
     }
 
     return { grid, start, exit: { x: far.x, y: far.y } };
@@ -885,6 +1135,9 @@
     state.player.noise = 0;
     state.player.bobPhase = 0;
     state.player.bob = 0;
+    state.player.crouching = false;
+    state.player.noiseDampener = 0;
+    state.player.speedBoost = 0;
 
     // monster spawn far
     const dmap = bfsDistances(grid, start.x, start.y);
@@ -903,7 +1156,9 @@
     state.monster.lastGrowl = 0;
     state.monster.stepTimer = 0;
 
-    uiObjective.textContent = "Find the exit.";
+    state.objectiveStage = 0;
+    state.batteriesFound = 0;
+    uiObjective.textContent = "Survive and find batteries. Locate the exit.";
   }
 
   function isWall(x, y) {
@@ -911,7 +1166,8 @@
     const gy = Math.floor(y);
     if (!world) return true;
     if (gx < 0 || gy < 0 || gx >= world.w || gy >= world.h) return true;
-    return world.grid[gy][gx] === 1;
+    const t = world.grid[gy][gx];
+    return t === 1 || t === 4 || t === 5; // walls, pillars, and crates are physical
   }
 
   function tileAt(x, y) {
@@ -927,6 +1183,23 @@
     world.grid[gy][gx] = val;
   }
 
+  function getCeilingLights(px, py, radius = 15) {
+    const lights = [];
+    const gx0 = clamp(Math.floor(px) - radius, 0, world.w - 1);
+    const gx1 = clamp(Math.floor(px) + radius, 0, world.w - 1);
+    const gy0 = clamp(Math.floor(py) - radius, 0, world.h - 1);
+    const gy1 = clamp(Math.floor(py) + radius, 0, world.h - 1);
+    
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        if (world.grid[gy][gx] === 7) {
+          lights.push({ x: gx + 0.5, y: gy + 0.5 });
+        }
+      }
+    }
+    return lights;
+  }
+
   // ---------- State ----------
   const state = {
     mode: 'menu', // menu | playing | dead | win
@@ -936,6 +1209,8 @@
     shake: 0,
     proximity: 0,       // 0..1 monster proximity FX amount
     beatWait: 0,
+    objectiveStage: 0,  // 0: start, 1: found battery, 2: halfway, 3: find exit
+    batteriesFound: 0,
 
     player: {
       x: 2, y: 2, a: 0,
@@ -948,7 +1223,10 @@
       noise: 0,
       bobPhase: 0,
       bob: 0,
-      moving: 0
+      moving: 0,
+      crouching: false,
+      noiseDampener: 0,
+      speedBoost: 0
     },
 
     monster: {
@@ -1099,13 +1377,14 @@
     return [data[i], data[i+1], data[i+2]];
   }
 
-  function renderFloorCeil(horizonY) {
-    // floor casting into low-res buffer
+  function renderFloorCeil() {
+    // floor casting into low-res buffer - STATIC rendering
     const img = world.floorImg;
     const data = img.data;
 
-    const px = state.player.x;
-    const py = state.player.y;
+    // Cache player position at start of frame to prevent movement artifacts
+    const px = Math.floor(state.player.x) + 0.5;
+    const py = Math.floor(state.player.y) + 0.5;
     const pa = state.player.a;
 
     const dirX = Math.cos(pa);
@@ -1126,7 +1405,7 @@
       data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
     }
 
-    const hy = clamp(horizonY, 40, FCH - 40);
+    const hy = FCH / 2;
 
     for (let y = 0; y < FCH; y++) {
       const isFloor = y > hy;
@@ -1160,7 +1439,7 @@
         if (isFloor) rgb = sampleTex(tex.floorData, tex.size, tx, ty);
         else         rgb = sampleTex(tex.ceilData,  tex.size, tx, ty);
 
-        // basic lighting: flashlight cone + distance, plus ambient
+        // lighting: flashlight cone + ceiling lights + ambient
         const camX = (2 * x) / FCW - 1;
         const rayAng = pa + camX * HALF_FOV;
         const rayDiff = Math.abs(((rayAng - pa + Math.PI) % (Math.PI * 2)) - Math.PI);
@@ -1173,6 +1452,15 @@
         } else {
           const distFall = 1.0 - smoothstep(2.0, 9.0, rowDist);
           light += distFall * 0.16;
+        }
+        
+        // Add ceiling light contribution
+        if (world.ceilingLights) {
+          for (const clight of world.ceilingLights) {
+            const ldist = dist(worldX, worldY, clight.x, clight.y);
+            const lightFall = 1.0 - smoothstep(1.0, 7.5, ldist);
+            light += lightFall * (0.55 + 0.15 * world.flicker);
+          }
         }
 
         // floor is darker, ceiling slightly dimmer
@@ -1216,12 +1504,13 @@
     sctx.drawImage(world.floorCanvas, 0, 0, W, H);
   }
 
-  function renderWallsAndSprites(horizonY) {
+  function renderWallsAndSprites() {
     sctx.imageSmoothingEnabled = false;
 
     const px = state.player.x;
     const py = state.player.y;
     const pa = state.player.a;
+    const horizonY = H / 2;
 
     const flashlightOn = state.player.flashlightOn && state.player.battery > 0.1;
     const cone = flashlightOn ? (Math.PI / 10) : 0;
@@ -1231,6 +1520,9 @@
     const flick = world.flicker;
     const ambient = 0.08 + 0.03 * flick;
     const darkBase = flashlightOn ? 0.02 : 0.0;
+    
+    // Cache nearby ceiling lights for this frame
+    world.ceilingLights = getCeilingLights(px, py);
 
     // walls
     for (let x = 0; x < NUM_RAYS; x++) {
@@ -1239,17 +1531,20 @@
 
       const hit = castRay(px, py, rayAng);
 
-      // fish-eye correction
+      // Fish-eye correction for proper 3D perspective
       const corrected = hit.dist * Math.cos(rayAng - pa);
-      const d = clamp(corrected, 0.0001, MAX_DIST);
+      const d = Math.max(0.1, Math.min(corrected, MAX_DIST));
       zBuffer[x] = d;
 
-      const lineH = Math.min(H, Math.floor((H / d) * 0.95));
+      // Calculate wall height with proper perspective
+      const lineH = Math.floor((H / Math.max(0.1, d)) * 3.0);
       const drawStart = Math.floor(horizonY - lineH / 2);
 
-      // texture sample
-      const tx = Math.floor(hit.hitX * tex.wall.width) % tex.wall.width;
-      sctx.drawImage(tex.wall, tx, 0, 1, tex.wall.height, x, drawStart, 1, lineH);
+      // texture sample - use exit door texture if this is the exit
+      const isExitWall = world.grid[hit.mapY][hit.mapX] === 3;
+      const wallTex = isExitWall ? tex.exitDoor : tex.wall;
+      const tx = Math.floor(hit.hitX * wallTex.width) % wallTex.width;
+      sctx.drawImage(wallTex, tx, 0, 1, wallTex.height, x, drawStart, 1, lineH);
 
       // lighting
       const rayDiff = Math.abs(((rayAng - pa + Math.PI) % (Math.PI * 2)) - Math.PI);
@@ -1262,6 +1557,17 @@
       } else {
         const distFall = 1.0 - smoothstep(2.0, 8.0, d);
         light += distFall * 0.18;
+      }
+      
+      // Add ceiling light contribution to walls
+      if (world.ceilingLights) {
+        const wallX = hit.mapX + 0.5;
+        const wallY = hit.mapY + 0.5;
+        for (const clight of world.ceilingLights) {
+          const ldist = dist(wallX, wallY, clight.x, clight.y);
+          const lightFall = 1.0 - smoothstep(0.5, 6.5, ldist);
+          light += lightFall * (0.50 + 0.12 * flick);
+        }
       }
 
       const sideShade = hit.side === 1 ? 0.86 : 1.0;
@@ -1319,7 +1625,7 @@
     for (let gy = gy0; gy <= gy1; gy++) {
       for (let gx = gx0; gx <= gx1; gx++) {
         const t = world.grid[gy][gx];
-        if (t === 2 || t === 3) {
+        if (t === 2 || t === 8 || t === 9 || t === 10) {
           const wx = gx + 0.5;
           const wy = gy + 0.5;
           const p = projectSprite(wx, wy);
@@ -1377,21 +1683,60 @@
         sctx.ellipse(0, -h/2, w*2.6, w*2.0, 0, 0, Math.PI * 2);
         sctx.fill();
         sctx.restore();
-      } else if (sp.type === 3) {
-        // exit door
+      } else if (sp.type === 8) {
+        // medkit
         sctx.save();
+        sctx.globalAlpha = 0.95;
         sctx.translate(sp.x, top + half);
-        const w = Math.floor(half * 0.55);
-        const h = Math.floor(size * 0.92);
-        sctx.globalAlpha = 0.85;
-        sctx.fillStyle = `rgba(20,24,30,${0.45 + 0.35 * light})`;
+        const w = Math.floor(half * 0.4);
+        const h = Math.floor(size * 0.5);
+        sctx.fillStyle = `rgba(220,235,240,${0.4 + 0.45 * light})`;
         sctx.fillRect(-w, -h/2, w*2, h);
-        sctx.strokeStyle = `rgba(116,255,209,${0.12 + 0.25 * light})`;
-        sctx.lineWidth = 2;
-        sctx.strokeRect(-w, -h/2, w*2, h);
-        sctx.fillStyle = `rgba(116,255,209,${0.10 + 0.25 * light})`;
+        sctx.fillStyle = `rgba(200,50,50,${0.35 + 0.55 * light})`;
+        sctx.fillRect(-w*0.7, -h*0.1, w*1.4, h*0.2);
+        sctx.fillRect(-w*0.1, -h*0.4, w*0.2, h*0.8);
+        sctx.globalAlpha = 0.22 * light;
+        sctx.fillStyle = 'rgba(220,100,100,1)';
         sctx.beginPath();
-        sctx.ellipse(w*0.45, 0, 3, 5, 0, 0, Math.PI * 2);
+        sctx.ellipse(0, 0, w*2.4, w*2.0, 0, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.restore();
+      } else if (sp.type === 9) {
+        // noise dampener
+        sctx.save();
+        sctx.globalAlpha = 0.92;
+        sctx.translate(sp.x, top + half);
+        const w = Math.floor(half * 0.42);
+        const h = Math.floor(size * 0.48);
+        sctx.fillStyle = `rgba(100,120,200,${0.4 + 0.45 * light})`;
+        sctx.fillRect(-w, -h/2, w*2, h);
+        sctx.strokeStyle = `rgba(150,170,240,${0.45 + 0.35 * light})`;
+        sctx.lineWidth = 2;
+        for (let i = 0; i < 3; i++) {
+          sctx.beginPath();
+          sctx.arc(0, -h/2 + h*0.3 + i*h*0.2, w*0.6, 0, Math.PI * 2);
+          sctx.stroke();
+        }
+        sctx.restore();
+      } else if (sp.type === 10) {
+        // speed boost
+        sctx.save();
+        sctx.globalAlpha = 0.90;
+        sctx.translate(sp.x, top + half);
+        const w = Math.floor(half * 0.38);
+        const h = Math.floor(size * 0.52);
+        sctx.fillStyle = `rgba(120,220,130,${0.4 + 0.45 * light})`;
+        sctx.fillRect(-w, -h/2, w*2, h);
+        sctx.fillStyle = `rgba(80,255,100,${0.5 + 0.4 * light})`;
+        sctx.beginPath();
+        sctx.moveTo(-w*0.5, 0);
+        sctx.lineTo(w*0.5, -h*0.3);
+        sctx.lineTo(w*0.5, h*0.3);
+        sctx.fill();
+        sctx.globalAlpha = 0.18 * light;
+        sctx.fillStyle = 'rgba(120,255,130,1)';
+        sctx.beginPath();
+        sctx.ellipse(0, 0, w*2.2, w*1.9, 0, 0, Math.PI * 2);
         sctx.fill();
         sctx.restore();
       } else if (sp.type === 'monster') {
@@ -1481,16 +1826,12 @@
       state.shake = Math.max(0, state.shake - state.dt * 1.6);
     }
 
-    // camera bob (movement realism)
-    const bobY = state.player.bob * 18; // px
-    const horizonY = (H / 2) + bobY;
-
     // 1) render 3D scene to offscreen
     sctx.setTransform(1, 0, 0, 1, 0, 0);
     sctx.clearRect(0, 0, W, H);
 
-    renderFloorCeil((FCH / 2) + (bobY / FC_SCALE)); // low-res horizon
-    renderWallsAndSprites(horizonY);
+    renderFloorCeil();
+    renderWallsAndSprites();
 
     // 2) proximity FX + present to main canvas
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1569,6 +1910,11 @@
         audio.whisper(0.35);
       }
     }
+    
+    // crouch toggle
+    if (consumeKey('KeyC') || consumeKey('ControlLeft')) {
+      state.player.crouching = !state.player.crouching;
+    }
 
     // movement intent
     const forward = (keys.has('KeyW') ? 1 : 0) + (keys.has('KeyS') ? -1 : 0);
@@ -1576,15 +1922,28 @@
 
     const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
     const moveMag = clamp(Math.hypot(forward, strafe), 0, 1);
-    const wantRun = running && state.player.stamina > 1 && moveMag > 0;
+    const wantRun = running && state.player.stamina > 1 && moveMag > 0 && !state.player.crouching;
 
-    const speed = wantRun ? state.player.speedRun : state.player.speedWalk;
+    let speedMult = 1.0;
+    if (state.player.crouching) speedMult = 0.5;
+    if (state.player.speedBoost > 0) {
+      speedMult *= 1.45;
+      state.player.speedBoost -= dt;
+    }
+    
+    const baseSpeed = wantRun ? state.player.speedRun : state.player.speedWalk;
+    const speed = baseSpeed * speedMult;
 
     // stamina & noise
     if (wantRun && moveMag > 0) state.player.stamina = Math.max(0, state.player.stamina - dt * 22);
     else state.player.stamina = Math.min(100, state.player.stamina + dt * 15);
 
-    const noiseTarget = wantRun ? 10 : (moveMag > 0 ? 4 : 0);
+    let noiseTarget = wantRun ? 10 : (moveMag > 0 ? 4 : 0);
+    if (state.player.crouching) noiseTarget *= 0.3;
+    if (state.player.noiseDampener > 0) {
+      noiseTarget *= 0.4;
+      state.player.noiseDampener -= dt;
+    }
     state.player.noise = lerp(state.player.noise, noiseTarget, 1 - Math.pow(0.001, dt));
 
     // camera bob phase (movement realism)
@@ -1632,10 +1991,62 @@
       const gy = Math.floor(state.player.y);
       setTile(gx, gy, 0);
       state.player.battery = clamp(state.player.battery + 38, 0, 100);
-      uiObjective.textContent = "Battery found. Keep moving.";
+      state.batteriesFound++;
+      
+      if (state.objectiveStage === 0) {
+        state.objectiveStage = 1;
+        uiObjective.textContent = `Battery found (${state.batteriesFound}). Find items and locate EXIT.`;
+      } else if (state.batteriesFound >= 3 && state.objectiveStage === 1) {
+        state.objectiveStage = 2;
+        uiObjective.textContent = `${state.batteriesFound} batteries. Collect items. Find EXIT.`;
+      } else if (state.batteriesFound >= 5 && state.objectiveStage === 2) {
+        state.objectiveStage = 3;
+        uiObjective.textContent = `${state.batteriesFound} batteries! Search for the EXIT door.`;
+      } else {
+        uiObjective.textContent = `Battery found (${state.batteriesFound}). Keep searching.`;
+      }
       audio.whisper(0.25);
+    } else if (t === 8) {
+      // medkit
+      const gx = Math.floor(state.player.x);
+      const gy = Math.floor(state.player.y);
+      setTile(gx, gy, 0);
+      state.player.stamina = 100;
+      state.player.noise = Math.max(0, state.player.noise - 5);
+      uiObjective.textContent = "Medkit used. Stamina restored, noise reduced.";
+      audio.whisper(0.2);
+    } else if (t === 9) {
+      // noise dampener
+      const gx = Math.floor(state.player.x);
+      const gy = Math.floor(state.player.y);
+      setTile(gx, gy, 0);
+      state.player.noiseDampener = 25;
+      uiObjective.textContent = "Noise Dampener active for 25 seconds!";
+      audio.whisper(0.2);
+    } else if (t === 10) {
+      // speed boost
+      const gx = Math.floor(state.player.x);
+      const gy = Math.floor(state.player.y);
+      setTile(gx, gy, 0);
+      state.player.speedBoost = 18;
+      uiObjective.textContent = "Speed Boost active for 18 seconds!";
+      audio.whisper(0.2);
     }
-    if (t === 3) { win(); return; }
+    
+    // Check exit door proximity (needs to be close to wall)
+    const checkRadius = 0.7;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const cx = Math.floor(state.player.x + dx * checkRadius);
+        const cy = Math.floor(state.player.y + dy * checkRadius);
+        if (cx >= 0 && cy >= 0 && cx < world.w && cy < world.h) {
+          if (world.grid[cy][cx] === 3 && dist(state.player.x, state.player.y, cx + 0.5, cy + 0.5) < 1.2) {
+            win();
+            return;
+          }
+        }
+      }
+    }
 
     // BFS refresh
     world.pathTimer -= dt;
@@ -1737,10 +2148,10 @@
       audio.footstep({ volume: vol, weight: 1.45, speed: 0.9 });
     }
 
-    if (state.monster.state === 'hunt' && d < 7.2 && (now() - state.monster.lastGrowl) > 900) {
-      if (Math.random() < 0.42) {
+    if (state.monster.state === 'hunt' && d < 9.0 && (now() - state.monster.lastGrowl) > 600) {
+      if (Math.random() < 0.65) {
         state.monster.lastGrowl = now();
-        audio.growl(clamp(1.0 - d / 7.2, 0.35, 1.0));
+        audio.growl(clamp(1.0 - d / 9.0, 0.40, 1.0));
       }
     }
 
@@ -1762,18 +2173,42 @@
 
   // ---------- Mode transitions ----------
   function startGame() {
-    menu.classList.add('hidden');
-    gameover.classList.add('hidden');
-    winPanel.classList.add('hidden');
+    try {
+      const loadingMsg = document.getElementById('loadingMsg');
+      if (loadingMsg) {
+        loadingMsg.style.display = 'block';
+      }
+      
+      // Use setTimeout to allow UI to update before heavy maze generation
+      setTimeout(() => {
+        try {
+          menu.classList.add('hidden');
+          gameover.classList.add('hidden');
+          winPanel.classList.add('hidden');
 
-    state.mode = 'playing';
-    resetWorld();
+          state.mode = 'playing';
+          resetWorld();
 
-    audio.init().catch(() => {});
-    canvas.requestPointerLock?.();
+          audio.init().catch(() => {});
+          
+          // Request pointer lock after a brief delay
+          setTimeout(() => {
+            canvas.requestPointerLock?.();
+          }, 100);
 
-    state.shake = 0;
-    state.proximity = 0;
+          state.shake = 0;
+          state.proximity = 0;
+        } catch (e) {
+          console.error('Error during game start:', e);
+          alert('Error starting game: ' + e.message + '. Check console for details.');
+          menu.classList.remove('hidden');
+          if (loadingMsg) loadingMsg.style.display = 'none';
+        }
+      }, 50);
+    } catch (e) {
+      console.error('Error starting game:', e);
+      alert('Error starting game. Check console for details.');
+    }
   }
 
   function die() {
