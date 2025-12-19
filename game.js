@@ -10,6 +10,7 @@ const victoryScreen = document.getElementById('victory-screen');
 // Three.js setup
 let scene, camera, renderer;
 let maze, shadows = [];
+let weepingAngel = null; // Special monster that follows player but stops when looked at
 let matchLight, ambientLight, flashlight;
 let clock = new THREE.Clock();
 
@@ -50,7 +51,8 @@ const sounds = {
     flashlightToggle: null,
     shadowHunt: null,
     shadowIdle: null,
-    lowSanity: null
+    lowSanity: null,
+    soundtrack: null
 };
 
 let audioContext;
@@ -69,6 +71,9 @@ let exitCell = null;
 let walls = [];
 let floor, ceiling;
 let matchPickups = [];
+let wallMaterial; // Store wall material for reuse
+let lightSources = []; // Track light sources in maze
+let batteryPickups = []; // Track battery pickups
 
 // Particles
 const particleSystems = [];
@@ -195,38 +200,64 @@ function playMatchLight() {
 function playFlashlightClick() {
     const osc = audioContext.createOscillator();
     const gain = audioContext.createGain();
-    
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(400, audioContext.currentTime);
-    
-    gain.gain.setValueAtTime(0.15, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
-    
-    osc.connect(gain);
-    gain.connect(audioContext.destination);
-    
-    osc.start();
-    osc.stop(audioContext.currentTime + 0.05);
-}
-
-function playShadowSound(hunting = false) {
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
     const filter = audioContext.createBiquadFilter();
     
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(hunting ? 150 : 80, audioContext.currentTime);
-    filter.type = 'lowpass';
-    filter.frequency.value = hunting ? 400 : 200;
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(800, audioContext.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.02);
     
-    gain.gain.setValueAtTime(hunting ? 0.08 : 0.03, audioContext.currentTime);
+    filter.type = 'lowpass';
+    filter.frequency.value = 1000;
+    
+    gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.04);
     
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(audioContext.destination);
     
     osc.start();
-    osc.stop(audioContext.currentTime + (hunting ? 0.3 : 0.5));
+    osc.stop(audioContext.currentTime + 0.04);
+}
+
+function playShadowSound(hunting = false) {
+    // TV STATIC sound for monsters
+    const bufferSize = audioContext.sampleRate * (hunting ? 0.4 : 0.3);
+    const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    // Generate white noise (TV static)
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1);
+    }
+    
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    
+    // Band-pass filter for TV static feel
+    const filter = audioContext.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = hunting ? 3000 : 2000;
+    filter.Q.value = 2;
+    
+    // Add low frequency rumble for scarier effect
+    const lowFilter = audioContext.createBiquadFilter();
+    lowFilter.type = 'lowpass';
+    lowFilter.frequency.value = 500;
+    
+    const gain = audioContext.createGain();
+    const intensity = hunting ? 0.15 : 0.08;
+    gain.gain.setValueAtTime(intensity, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + (hunting ? 0.4 : 0.3));
+    
+    // Split signal for richer sound
+    source.connect(filter);
+    source.connect(lowFilter);
+    filter.connect(gain);
+    lowFilter.connect(gain);
+    gain.connect(audioContext.destination);
+    
+    source.start();
 }
 
 function playStaticSound(intensity = 0.5) {
@@ -254,6 +285,24 @@ function playStaticSound(intensity = 0.5) {
     gain.connect(audioContext.destination);
     
     source.start();
+}
+
+// Helper function to check if a position is valid (not in wall)
+function isValidSpawnPosition(x, z) {
+    const testPosition = new THREE.Vector3(x, 1.5, z);
+    const playerRadius = 0.5;
+    
+    for (const wall of walls) {
+        if (wall) {
+            const box = new THREE.Box3().setFromObject(wall);
+            const sphere = new THREE.Sphere(testPosition, playerRadius);
+            
+            if (box.intersectsSphere(sphere)) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 // Initialize Three.js
@@ -359,35 +408,54 @@ function buildMaze() {
     wallCanvas.height = 256;
     const wallCtx = wallCanvas.getContext('2d');
     
-    // Very dark grimy stone texture
-    wallCtx.fillStyle = '#0d0d0d';
+    // Base dark grey flesh-like texture
+    wallCtx.fillStyle = '#1a1a1a';
     wallCtx.fillRect(0, 0, 256, 256);
     
-    // Add dirt and grime layers
+    // Create organic flesh-like texture with veins and irregular patterns
     for (let i = 0; i < 300; i++) {
-        wallCtx.fillStyle = `rgba(${Math.random() * 30}, ${Math.random() * 20}, ${Math.random() * 10}, ${0.3 + Math.random() * 0.5})`;
+        const x = Math.random() * 256;
+        const y = Math.random() * 256;
+        const size = 5 + Math.random() * 15;
+        
+        // Random grey tones for flesh
+        const grey = 20 + Math.random() * 30;
+        wallCtx.fillStyle = `rgba(${grey}, ${grey}, ${grey}, ${0.3 + Math.random() * 0.4})`;
+        
+        // Irregular organic shapes
         wallCtx.beginPath();
-        wallCtx.arc(Math.random() * 256, Math.random() * 256, Math.random() * 40, 0, Math.PI * 2);
+        wallCtx.arc(x, y, size, 0, Math.PI * 2);
         wallCtx.fill();
     }
     
-    // Add moldy streaks
+    // Add vein-like structures
     for (let i = 0; i < 50; i++) {
-        wallCtx.strokeStyle = `rgba(${Math.random() * 20}, ${10 + Math.random() * 20}, ${Math.random() * 10}, ${0.2 + Math.random() * 0.3})`;
-        wallCtx.lineWidth = 2 + Math.random() * 8;
+        const startX = Math.random() * 256;
+        const startY = Math.random() * 256;
+        const endX = startX + (Math.random() - 0.5) * 100;
+        const endY = startY + (Math.random() - 0.5) * 100;
+        
+        // Darker grey veins
+        const veinGrey = 10 + Math.random() * 15;
+        wallCtx.strokeStyle = `rgba(${veinGrey}, ${veinGrey}, ${veinGrey}, 0.6)`;
+        wallCtx.lineWidth = 1 + Math.random() * 2;
         wallCtx.beginPath();
-        wallCtx.moveTo(Math.random() * 256, Math.random() * 256);
-        wallCtx.lineTo(Math.random() * 256, Math.random() * 256);
+        wallCtx.moveTo(startX, startY);
+        wallCtx.lineTo(endX, endY);
         wallCtx.stroke();
     }
     
-    // Add brick patterns with grime
-    for (let y = 0; y < 256; y += 32) {
-        for (let x = 0; x < 256; x += 64) {
-            wallCtx.strokeStyle = '#050505';
-            wallCtx.lineWidth = 1;
-            wallCtx.strokeRect(x + (y % 64), y, 64, 32);
-        }
+    // Add darker blotches for depth
+    for (let i = 0; i < 100; i++) {
+        const x = Math.random() * 256;
+        const y = Math.random() * 256;
+        const size = 3 + Math.random() * 8;
+        
+        const darkGrey = Math.random() * 15;
+        wallCtx.fillStyle = `rgba(${darkGrey}, ${darkGrey}, ${darkGrey}, 0.5)`;
+        wallCtx.beginPath();
+        wallCtx.arc(x, y, size, 0, Math.PI * 2);
+        wallCtx.fill();
     }
     
     const wallTexture = new THREE.CanvasTexture(wallCanvas);
@@ -395,12 +463,12 @@ function buildMaze() {
     wallTexture.wrapT = THREE.RepeatWrapping;
     wallTexture.repeat.set(2, 2);
     
-    const wallMaterial = new THREE.MeshStandardMaterial({ 
+    wallMaterial = new THREE.MeshStandardMaterial({ 
         map: wallTexture,
         roughness: 0.7,
         metalness: 0.1,
-        emissive: 0x1a1a2e,
-        emissiveIntensity: 0.3
+        emissive: 0x0a0a0a,
+        emissiveIntensity: 0.2
     });
     
     const wallHeight = 4;
@@ -464,34 +532,38 @@ function buildMaze() {
     floorCanvas.height = 512;
     const floorCtx = floorCanvas.getContext('2d');
     
-    // Very dark grimy concrete base
-    floorCtx.fillStyle = '#050505';
+    // Very dark black/brown/red tile floor
+    floorCtx.fillStyle = '#000000';
     floorCtx.fillRect(0, 0, 512, 512);
     
-    // Heavy dirt and grime layers
-    for (let i = 0; i < 500; i++) {
-        floorCtx.fillStyle = `rgba(${Math.random() * 30}, ${Math.random() * 25}, ${Math.random() * 15}, ${Math.random() * 0.5})`;
-        floorCtx.beginPath();
-        floorCtx.arc(Math.random() * 512, Math.random() * 512, Math.random() * 30, 0, Math.PI * 2);
-        floorCtx.fill();
-    }
-    
-    // Add water stains
-    for (let i = 0; i < 100; i++) {
-        floorCtx.fillStyle = `rgba(10, 20, 10, ${Math.random() * 0.4})`;
-        floorCtx.beginPath();
-        floorCtx.arc(Math.random() * 512, Math.random() * 512, Math.random() * 50, 0, Math.PI * 2);
-        floorCtx.fill();
-    }
-    
-    // Add many cracks
-    for (let i = 0; i < 80; i++) {
-        floorCtx.strokeStyle = '#000000';
-        floorCtx.lineWidth = 1 + Math.random() * 3;
-        floorCtx.beginPath();
-        floorCtx.moveTo(Math.random() * 512, Math.random() * 512);
-        floorCtx.lineTo(Math.random() * 512, Math.random() * 512);
-        floorCtx.stroke();
+    // Draw tile pattern with black, brown, and red
+    const tileSize = 64;
+    for (let y = 0; y < 512; y += tileSize) {
+        for (let x = 0; x < 512; x += tileSize) {
+            // Random tile color: black, brown, or dark red
+            const colorType = Math.random();
+            let fillColor;
+            if (colorType < 0.5) {
+                // Black tile
+                fillColor = `rgb(0, 0, 0)`;
+            } else if (colorType < 0.8) {
+                // Brown tile
+                const brown = 10 + Math.random() * 10;
+                fillColor = `rgb(${brown}, ${brown * 0.3}, 0)`;
+            } else {
+                // Dark red tile
+                const red = 15 + Math.random() * 15;
+                fillColor = `rgb(${red}, 0, 0)`;
+            }
+            
+            floorCtx.fillStyle = fillColor;
+            floorCtx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
+            
+            // Grout lines
+            floorCtx.strokeStyle = '#000000';
+            floorCtx.lineWidth = 3;
+            floorCtx.strokeRect(x, y, tileSize, tileSize);
+        }
     }
     
     const floorTexture = new THREE.CanvasTexture(floorCanvas);
@@ -521,23 +593,24 @@ function buildMaze() {
     ceilingCtx.fillStyle = '#000000';
     ceilingCtx.fillRect(0, 0, 256, 256);
     
-    // Add heavy water stains and mold
-    for (let i = 0; i < 150; i++) {
-        ceilingCtx.fillStyle = `rgba(${Math.random() * 20}, ${20 + Math.random() * 30}, ${Math.random() * 15}, ${Math.random() * 0.6})`;
+    // Add brown and red stains
+    for (let i = 0; i < 120; i++) {
+        const stainType = Math.random();
+        let stainColor;
+        if (stainType < 0.5) {
+            // Brown stain
+            const brown = 15 + Math.random() * 20;
+            stainColor = `rgba(${brown}, ${brown * 0.4}, 0, ${Math.random() * 0.5})`;
+        } else {
+            // Red stain
+            const red = 20 + Math.random() * 30;
+            stainColor = `rgba(${red}, 0, 0, ${Math.random() * 0.5})`;
+        }
+        
+        ceilingCtx.fillStyle = stainColor;
         ceilingCtx.beginPath();
-        ceilingCtx.arc(Math.random() * 256, Math.random() * 256, Math.random() * 50, 0, Math.PI * 2);
+        ceilingCtx.arc(Math.random() * 256, Math.random() * 256, Math.random() * 60, 0, Math.PI * 2);
         ceilingCtx.fill();
-    }
-    
-    // Add drip marks
-    for (let i = 0; i < 40; i++) {
-        ceilingCtx.strokeStyle = `rgba(10, 25, 10, ${Math.random() * 0.5})`;
-        ceilingCtx.lineWidth = 2 + Math.random() * 6;
-        const x = Math.random() * 256;
-        ceilingCtx.beginPath();
-        ceilingCtx.moveTo(x, Math.random() * 256);
-        ceilingCtx.lineTo(x + (Math.random() - 0.5) * 20, Math.random() * 256);
-        ceilingCtx.stroke();
     }
     
     const ceilingTexture = new THREE.CanvasTexture(ceilingCanvas);
@@ -647,22 +720,143 @@ function buildMaze() {
     
     // Add decorative objects throughout maze
     addMazeDecor();
+    
+    // Add light sources throughout maze
+    addLightSources();
+    
+    // Add battery pickups
+    addBatteryPickups();
+}
+
+// Add light sources throughout maze
+function addLightSources() {
+    lightSources = [];
+    
+    // Add 8-12 light sources randomly
+    const numLights = 8 + Math.floor(Math.random() * 5);
+    
+    for (let i = 0; i < numLights; i++) {
+        // Find random cell - ensure it's within valid bounds
+        let lx, lz, attempts = 0;
+        do {
+            lx = 2 + Math.floor(Math.random() * (mazeSize - 4)); // Keep away from edges
+            lz = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            attempts++;
+        } while (((lx === 0 && lz === 0) || (lx === exitCell.x && lz === exitCell.z)) && attempts < 100);
+        
+        const px = lx * cellSize;
+        const pz = lz * cellSize;
+        
+        // Create SPOTLIGHT (conical from ceiling to floor)
+        const light = new THREE.SpotLight(0xff8844, 1.5, 20, Math.PI / 4, 0.3, 0.8);
+        light.position.set(px, 3.8, pz); // Near ceiling
+        light.castShadow = true;
+        light.shadow.mapSize.width = 512;
+        light.shadow.mapSize.height = 512;
+        scene.add(light);
+        
+        // Spotlight target (pointing down)
+        const target = new THREE.Object3D();
+        target.position.set(px, 0, pz);
+        scene.add(target);
+        light.target = target;
+        
+        // Add visible bulb at ceiling
+        const bulbGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+        const bulbMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffaa44,
+            emissive: 0xffaa44,
+            emissiveIntensity: 3
+        });
+        const bulb = new THREE.Mesh(bulbGeometry, bulbMaterial);
+        bulb.position.set(px, 3.8, pz);
+        scene.add(bulb);
+        
+        // Add glow effect around bulb
+        const glowGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+        const glowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff8844,
+            transparent: true,
+            opacity: 0.5
+        });
+        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+        glow.position.set(px, 3.8, pz);
+        scene.add(glow);
+        
+        lightSources.push({
+            light: light,
+            target: target,
+            bulb: bulb,
+            glow: glow,
+            position: new THREE.Vector3(px, 2, pz) // Mid-height position for distance checks
+        });
+    }
+}
+
+// Add battery pickups
+function addBatteryPickups() {
+    batteryPickups = [];
+    
+    // Add 4-6 battery pickups
+    const numBatteries = 4 + Math.floor(Math.random() * 3);
+    
+    for (let i = 0; i < numBatteries; i++) {
+        // Find random cell - ensure it's within valid bounds
+        let bx, bz, attempts = 0;
+        do {
+            bx = 2 + Math.floor(Math.random() * (mazeSize - 4)); // Keep away from edges
+            bz = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            attempts++;
+        } while (((bx === 0 && bz === 0) || (bx === exitCell.x && bz === exitCell.z)) && attempts < 100);
+        
+        const px = bx * cellSize;
+        const pz = bz * cellSize;
+        
+        // Create battery geometry (cylinder)
+        const batteryGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.4, 8);
+        const batteryMaterial = new THREE.MeshStandardMaterial({
+            color: 0x00ff00,
+            emissive: 0x00ff00,
+            emissiveIntensity: 0.5,
+            metalness: 0.6,
+            roughness: 0.3
+        });
+        const battery = new THREE.Mesh(batteryGeometry, batteryMaterial);
+        battery.position.set(px, 0.4, pz);
+        battery.castShadow = true;
+        scene.add(battery);
+        
+        // Add glow
+        const glowGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+        const glowMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.3
+        });
+        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+        glow.position.set(px, 0.4, pz);
+        scene.add(glow);
+        
+        // Small point light
+        const light = new THREE.PointLight(0x00ff00, 0.3, 4);
+        light.position.set(px, 0.4, pz);
+        scene.add(light);
+        
+        batteryPickups.push({
+            battery: battery,
+            glow: glow,
+            light: light,
+            position: new THREE.Vector3(px, 0.4, pz),
+            collected: false
+        });
+    }
 }
 
 // Add decorative objects to make maze more interesting
 function addMazeDecor() {
     const decorObjects = [];
     
-    // Create pillar material
-    const pillarTexture = new THREE.MeshStandardMaterial({ 
-        color: 0x1a1a2e,
-        roughness: 0.8,
-        metalness: 0.2,
-        emissive: 0x0a0a0a,
-        emissiveIntensity: 0.2
-    });
-    
-    // Add only pillars that go from floor to ceiling
+    // Add only pillars that go from floor to ceiling - use wall material
     for (let x = 1; x < mazeSize - 1; x++) {
         for (let z = 1; z < mazeSize - 1; z++) {
             // Skip start and exit cells
@@ -673,9 +867,9 @@ function addMazeDecor() {
             const pz = z * cellSize;
             
             if (random < 0.15) {
-                // Pillar from floor to ceiling (4 units tall)
+                // Pillar from floor to ceiling (4 units tall) - uses wall texture
                 const geometry = new THREE.CylinderGeometry(0.25, 0.3, 4, 8);
-                const pillar = new THREE.Mesh(geometry, pillarTexture);
+                const pillar = new THREE.Mesh(geometry, wallMaterial);
                 pillar.position.set(
                     px + (Math.random() - 0.5) * 2.5,
                     2,
@@ -694,13 +888,25 @@ function addMazeDecor() {
 function createShadows() {
     shadows = [];
     
-    for (let i = 0; i < 6; i++) {
-        // Find random position in maze
-        let rx, rz;
+    for (let i = 0; i < 15; i++) {
+        // Find random valid position in maze (not in walls)
+        let spawnX, spawnZ;
+        let attempts = 0;
+        let validPosition = false;
+        
         do {
-            rx = Math.floor(Math.random() * mazeSize);
-            rz = Math.floor(Math.random() * mazeSize);
-        } while ((rx === 0 && rz === 0) || (rx === exitCell.x && rz === exitCell.z));
+            // Choose cells away from edges and start/exit
+            const rx = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            const rz = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            
+            // Position in CENTER of cell
+            spawnX = rx * cellSize;
+            spawnZ = rz * cellSize;
+            
+            // Check if this position is valid (not in a wall)
+            validPosition = isValidSpawnPosition(spawnX, spawnZ);
+            attempts++;
+        } while (!validPosition && attempts < 200);
         
         // Core shadow - elongated and distorted
         const geometry = new THREE.ConeGeometry(0.6, 2.5, 6);
@@ -711,7 +917,7 @@ function createShadows() {
             side: THREE.DoubleSide
         });
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(rx * cellSize, 1.5, rz * cellSize);
+        mesh.position.set(spawnX, 1.5, spawnZ);
         mesh.rotation.x = Math.PI;
         scene.add(mesh);
         
@@ -787,20 +993,20 @@ function createShadows() {
         let speed, detection, hearing, size;
         
         if (monsterType === 0) {
-            // Fast but less perceptive
-            speed = 0.05;
+            // Fast but less perceptive - MUCH FASTER
+            speed = 0.08;
             detection = 12;
             hearing = 20;
             mesh.scale.set(0.8, 0.8, 0.8);
         } else if (monsterType === 1) {
-            // Slow but very perceptive
-            speed = 0.025;
+            // Slow but very perceptive - FASTER
+            speed = 0.05;
             detection = 20;
             hearing = 30;
             mesh.scale.set(1.3, 1.3, 1.3);
         } else {
-            // Balanced
-            speed = 0.035;
+            // Balanced - FASTER
+            speed = 0.06;
             detection = 15;
             hearing = 25;
         }
@@ -843,6 +1049,87 @@ function createShadows() {
         scene.add(system);
         particleSystems.push(system);
     }
+    
+    // Create WEEPING ANGEL - always follows player but stops when looked at
+    // ALWAYS spawn directly IN FRONT of the player so they can see it immediately
+    // Get camera direction and spawn ahead
+    const cameraDir = new THREE.Vector3();
+    camera.getWorldDirection(cameraDir);
+    
+    // Spawn 20 units in front of camera in the direction it's facing
+    const angelSpawnX = camera.position.x + (cameraDir.x * 20);
+    const angelSpawnZ = camera.position.z + (cameraDir.z * 20);
+    
+    // Taller, more menacing figure
+    const angelGeometry = new THREE.ConeGeometry(0.8, 3.2, 6);
+    const angelMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x1a0000,
+        transparent: true,
+        opacity: 0.98,
+        side: THREE.DoubleSide
+    });
+    const angelMesh = new THREE.Mesh(angelGeometry, angelMaterial);
+    angelMesh.position.set(angelSpawnX, 1.8, angelSpawnZ);
+    angelMesh.rotation.x = Math.PI;
+    scene.add(angelMesh);
+    
+    // Dark red aura
+    const angelAuraGeometry = new THREE.SphereGeometry(1.5, 8, 8);
+    const angelAuraMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x330000,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.BackSide
+    });
+    const angelAura = new THREE.Mesh(angelAuraGeometry, angelAuraMaterial);
+    angelMesh.add(angelAura);
+    
+    // Larger, brighter red eyes
+    const angelEyeGeometry = new THREE.SphereGeometry(0.35, 8, 8);
+    const angelEyeMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xff0000,
+        emissive: 0xff0000,
+        emissiveIntensity: 3
+    });
+    const angelLeftEye = new THREE.Mesh(angelEyeGeometry, angelEyeMaterial);
+    const angelRightEye = new THREE.Mesh(angelEyeGeometry, angelEyeMaterial);
+    angelLeftEye.position.set(-0.4, 1.0, 0.5);
+    angelRightEye.position.set(0.4, 1.0, 0.5);
+    angelMesh.add(angelLeftEye);
+    angelMesh.add(angelRightEye);
+    
+    // Dark trailing particles
+    const angelParticleCount = 150;
+    const angelParticleGeometry = new THREE.BufferGeometry();
+    const angelParticlePositions = new Float32Array(angelParticleCount * 3);
+    
+    for (let j = 0; j < angelParticleCount; j++) {
+        angelParticlePositions[j * 3] = (Math.random() - 0.5) * 4;
+        angelParticlePositions[j * 3 + 1] = (Math.random() - 0.5) * 4;
+        angelParticlePositions[j * 3 + 2] = (Math.random() - 0.5) * 4;
+    }
+    
+    angelParticleGeometry.setAttribute('position', new THREE.BufferAttribute(angelParticlePositions, 3));
+    const angelParticleMaterial = new THREE.PointsMaterial({
+        color: 0x660000,
+        size: 0.3,
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending
+    });
+    const angelParticleSystem = new THREE.Points(angelParticleGeometry, angelParticleMaterial);
+    angelParticleSystem.position.copy(angelMesh.position);
+    scene.add(angelParticleSystem);
+    
+    weepingAngel = {
+        mesh: angelMesh,
+        particles: angelParticleSystem,
+        velocity: new THREE.Vector3(),
+        speed: 0.035, // Even slower and more manageable
+        frozen: false,
+        eyes: [angelLeftEye, angelRightEye],
+        lastUnseenTime: Date.now()
+    };
 }
 
 // Start game
@@ -862,6 +1149,14 @@ function startGame() {
     // Initialize sound
     createSounds();
     sounds.ambient.start();
+    
+    // Initialize and play soundtrack
+    if (!sounds.soundtrack) {
+        sounds.soundtrack = new Audio('OST.mp3');
+        sounds.soundtrack.loop = true;
+        sounds.soundtrack.volume = 0.15; // 15% volume for atmospheric background
+    }
+    sounds.soundtrack.play().catch(e => console.log('Soundtrack autoplay prevented:', e));
     
     initThree();
     generateMaze();
@@ -1031,13 +1326,41 @@ function updatePlayer() {
     } else if (player.flashlight && player.battery > 0) {
         player.sanity = Math.min(100, player.sanity + 0.05); // Flashlight slows drain
     } else {
-        // Sanity drains faster in darkness, even faster near shadows
-        if (veryShadowClose) {
-            player.sanity -= 0.5; // Very close to shadow
-        } else if (nearShadow) {
-            player.sanity -= 0.3; // Near shadow
-        } else {
-            player.sanity -= 0.12; // In darkness
+        // Check if near a light source
+        let nearLight = false;
+        for (const lightSource of lightSources) {
+            const dist = camera.position.distanceTo(lightSource.position);
+            if (dist < 10) {
+                nearLight = true;
+                player.sanity = Math.min(100, player.sanity + 0.15); // Light sources restore sanity
+                break;
+            }
+        }
+        
+        if (!nearLight) {
+            // Sanity drains faster in darkness, even faster near shadows
+            if (veryShadowClose) {
+                player.sanity -= 0.5; // Very close to shadow
+            } else if (nearShadow) {
+                player.sanity -= 0.3; // Near shadow
+            } else {
+                player.sanity -= 0.12; // In darkness
+            }
+        }
+    }
+    
+    // Play heartbeat sound based on fear/darkness
+    if (!player.matchLit && (!player.flashlight || player.battery <= 0)) {
+        // In darkness - play heartbeat
+        if (Math.random() > 0.95) {
+            const rate = 1 + player.fear; // Faster at higher fear
+            sounds.heartbeat.play(rate);
+        }
+    } else if (player.sanity < 40) {
+        // Low sanity - occasional heartbeat
+        if (Math.random() > 0.98) {
+            const rate = 1 + (1 - player.sanity / 100);
+            sounds.heartbeat.play(rate);
         }
     }
     
@@ -1063,8 +1386,14 @@ function updatePlayer() {
 
 // Update shadows
 function updateShadows() {
+    // Track closest monster for radio static effect
+    let closestMonsterDist = Infinity;
+    
     for (const shadow of shadows) {
         const dist = camera.position.distanceTo(shadow.mesh.position);
+        if (dist < closestMonsterDist) {
+            closestMonsterDist = dist;
+        }
         
         // Detection logic - MORE AGGRESSIVE when sanity is low
         const sanityMultiplier = 1 + (1 - player.sanity / 100) * 2; // 1x to 3x detection range
@@ -1078,17 +1407,46 @@ function updateShadows() {
         shadow.hunting = canSeePlayer || canHearPlayer || senseLowSanity;
         
         if (shadow.hunting) {
-            // Chase player with some variation
+            // Improved pathfinding - check if direct path is blocked
             const direction = new THREE.Vector3();
             direction.subVectors(camera.position, shadow.mesh.position).normalize();
             
-            // Add some wandering even while hunting to make them less predictable
-            const wanderOffset = new THREE.Vector3(
-                Math.sin(Date.now() / 1000 + shadow.mesh.position.x) * 0.2,
-                0,
-                Math.cos(Date.now() / 1000 + shadow.mesh.position.z) * 0.2
-            );
-            direction.add(wanderOffset).normalize();
+            // Test position ahead to see if path is blocked
+            const testDist = 2;
+            const testPos = shadow.mesh.position.clone().add(direction.clone().multiplyScalar(testDist));
+            testPos.y = 1.5;
+            
+            let finalDirection = direction;
+            
+            // If path ahead is blocked, try to navigate around
+            if (checkCollision(testPos)) {
+                // Try left and right alternatives
+                const leftDir = new THREE.Vector3(-direction.z, 0, direction.x);
+                const rightDir = new THREE.Vector3(direction.z, 0, -direction.x);
+                
+                const leftTest = shadow.mesh.position.clone().add(leftDir.multiplyScalar(testDist));
+                const rightTest = shadow.mesh.position.clone().add(rightDir.multiplyScalar(testDist));
+                leftTest.y = 1.5;
+                rightTest.y = 1.5;
+                
+                // Choose the unblocked direction, or the one closer to player
+                const leftBlocked = checkCollision(leftTest);
+                const rightBlocked = checkCollision(rightTest);
+                
+                if (!leftBlocked && !rightBlocked) {
+                    // Both open - choose closer to player
+                    const leftDist = leftTest.distanceTo(camera.position);
+                    const rightDist = rightTest.distanceTo(camera.position);
+                    finalDirection = leftDist < rightDist ? leftDir : rightDir;
+                } else if (!leftBlocked) {
+                    finalDirection = leftDir;
+                } else if (!rightBlocked) {
+                    finalDirection = rightDir;
+                } else {
+                    // Both blocked - try moving back and re-routing
+                    finalDirection = direction.clone().multiplyScalar(-0.5);
+                }
+            }
             
             // Speed increases with low sanity and proximity
             let chaseSpeed = shadow.speed;
@@ -1103,7 +1461,7 @@ function updateShadows() {
                 chaseSpeed *= 1.5;
             }
             
-            shadow.velocity.copy(direction.multiplyScalar(chaseSpeed));
+            shadow.velocity.copy(finalDirection.normalize().multiplyScalar(chaseSpeed));
             
             // Show eyes when hunting - glow brighter at low sanity
             shadow.eyes[0].visible = true;
@@ -1139,7 +1497,7 @@ function updateShadows() {
             }
         }
         
-        // Move shadow
+        // Move shadow with better collision handling
         const newPos = shadow.mesh.position.clone().add(shadow.velocity);
         newPos.y = 1.5; // Keep at consistent height
         
@@ -1147,7 +1505,36 @@ function updateShadows() {
             shadow.mesh.position.copy(newPos);
             shadow.particles.position.copy(newPos);
         } else {
-            shadow.wanderAngle += Math.PI / 2;
+            // Try sliding along the wall instead of stopping
+            const slideVelocity = shadow.velocity.clone();
+            slideVelocity.x *= 0.5;
+            const slidePos1 = shadow.mesh.position.clone().add(slideVelocity);
+            slidePos1.y = 1.5;
+            
+            if (!checkCollision(slidePos1)) {
+                shadow.mesh.position.copy(slidePos1);
+                shadow.particles.position.copy(slidePos1);
+            } else {
+                // Try the other axis
+                slideVelocity.x = shadow.velocity.x;
+                slideVelocity.z *= 0.5;
+                const slidePos2 = shadow.mesh.position.clone().add(slideVelocity);
+                slidePos2.y = 1.5;
+                
+                if (!checkCollision(slidePos2)) {
+                    shadow.mesh.position.copy(slidePos2);
+                    shadow.particles.position.copy(slidePos2);
+                } else {
+                    // Completely stuck - back up
+                    const backupPos = shadow.mesh.position.clone().add(shadow.velocity.clone().multiplyScalar(-0.5));
+                    backupPos.y = 1.5;
+                    if (!checkCollision(backupPos)) {
+                        shadow.mesh.position.copy(backupPos);
+                        shadow.particles.position.copy(backupPos);
+                    }
+                    shadow.wanderAngle += Math.PI / 2;
+                }
+            }
         }
         
         // Rotate shadow to face player
@@ -1177,6 +1564,118 @@ function updateShadows() {
             gameOver("The darkness consumed you...");
         }
     }
+    
+    // Radio static effect when monsters are close
+    if (closestMonsterDist < 15) {
+        const staticIntensity = 1 - (closestMonsterDist / 15);
+        if (Math.random() > 0.95) {
+            playStaticSound(staticIntensity * 0.5);
+        }
+    }
+}
+
+// Update Weeping Angel - follows player but freezes when looked at
+function updateWeepingAngel() {
+    if (!weepingAngel) return;
+    
+    const dist = camera.position.distanceTo(weepingAngel.mesh.position);
+    
+    // Check if player is looking at the angel
+    const directionToAngel = new THREE.Vector3();
+    directionToAngel.subVectors(weepingAngel.mesh.position, camera.position).normalize();
+    
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    
+    // Calculate angle between camera direction and direction to angel
+    const angle = cameraDirection.angleTo(directionToAngel);
+    
+    // Angel is visible if within 60 degree cone (PI/3 radians) and within 30 units
+    const isVisible = angle < Math.PI / 3 && dist < 30;
+    
+    weepingAngel.frozen = isVisible;
+    
+    if (!isVisible) {
+        // Angel moves when not being looked at
+        const now = Date.now();
+        const timeSinceUnseen = (now - weepingAngel.lastUnseenTime) / 1000;
+        
+        // ALWAYS move toward player when not seen
+        const direction = new THREE.Vector3();
+        direction.subVectors(camera.position, weepingAngel.mesh.position).normalize();
+        
+        // Speed increases the longer it's unseen (up to 1.25x - less aggressive)
+        const speedMultiplier = Math.min(1.25, 1 + timeSinceUnseen * 0.08);
+        weepingAngel.velocity.copy(direction.multiplyScalar(weepingAngel.speed * speedMultiplier));
+        
+        // Improved pathfinding - check ahead for obstacles
+        const testPos = weepingAngel.mesh.position.clone().add(weepingAngel.velocity.clone().multiplyScalar(3));
+        testPos.y = 1.8;
+        
+        // Move angel with better collision handling and pathfinding
+        const newPos = weepingAngel.mesh.position.clone().add(weepingAngel.velocity);
+        newPos.y = 1.8;
+        
+        if (!checkCollision(newPos)) {
+            weepingAngel.mesh.position.copy(newPos);
+            weepingAngel.particles.position.copy(newPos);
+        } else {
+            // If blocked, try navigating around like regular monsters
+            const leftDir = new THREE.Vector3(-direction.z, 0, direction.x);
+            const rightDir = new THREE.Vector3(direction.z, 0, -direction.x);
+            
+            const leftTest = weepingAngel.mesh.position.clone().add(leftDir.multiplyScalar(0.5));
+            const rightTest = weepingAngel.mesh.position.clone().add(rightDir.multiplyScalar(0.5));
+            leftTest.y = 1.8;
+            rightTest.y = 1.8;
+            
+            if (!checkCollision(leftTest)) {
+                weepingAngel.mesh.position.copy(leftTest);
+                weepingAngel.particles.position.copy(leftTest);
+            } else if (!checkCollision(rightTest)) {
+                weepingAngel.mesh.position.copy(rightTest);
+                weepingAngel.particles.position.copy(rightTest);
+            }
+        }
+        
+        // Face player
+        weepingAngel.mesh.lookAt(camera.position);
+        
+        // Play eerie static sound occasionally
+        if (Math.random() > 0.99 && dist < 25) {
+            playShadowSound(true);
+        }
+    } else {
+        // Reset timer when seen
+        weepingAngel.lastUnseenTime = Date.now();
+        weepingAngel.velocity.set(0, 0, 0);
+    }
+    
+    // Eyes always glow
+    weepingAngel.eyes[0].visible = true;
+    weepingAngel.eyes[1].visible = true;
+    
+    // Animate particles
+    const positions = weepingAngel.particles.geometry.attributes.position.array;
+    for (let i = 0; i < positions.length; i += 3) {
+        positions[i] += (Math.random() - 0.5) * 0.15;
+        positions[i + 1] += (Math.random() - 0.5) * 0.15;
+        positions[i + 2] += (Math.random() - 0.5) * 0.15;
+        
+        // Keep particles near angel
+        const dist = Math.sqrt(positions[i] ** 2 + positions[i + 1] ** 2 + positions[i + 2] ** 2);
+        if (dist > 3) {
+            positions[i] *= 0.5;
+            positions[i + 1] *= 0.5;
+            positions[i + 2] *= 0.5;
+        }
+    }
+    weepingAngel.particles.geometry.attributes.position.needsUpdate = true;
+    
+    // Collision with player
+    if (dist < 1.5) {
+        gameOver("The Angel caught you in the darkness...");
+    }
 }
 
 // Update atmospheric particles
@@ -1197,6 +1696,25 @@ function updateParticles() {
             pickup.box.rotation.y += 0.01;
         }
     }
+    
+    // Animate light source glows
+    for (const lightSource of lightSources) {
+        const pulse = 1 + Math.sin(Date.now() / 500) * 0.2;
+        lightSource.glow.scale.setScalar(pulse);
+        lightSource.light.intensity = 1.3 + Math.sin(Date.now() / 300) * 0.3;
+        // Slight sway for more atmosphere
+        lightSource.bulb.position.x = lightSource.position.x + Math.sin(Date.now() / 1000) * 0.05;
+        lightSource.glow.position.x = lightSource.position.x + Math.sin(Date.now() / 1000) * 0.05;
+    }
+    
+    // Animate battery pickups
+    for (const pickup of batteryPickups) {
+        if (!pickup.collected) {
+            pickup.glow.scale.setScalar(1 + Math.sin(Date.now() / 400) * 0.25);
+            pickup.battery.rotation.y += 0.02;
+            pickup.battery.position.y = 0.4 + Math.sin(Date.now() / 500) * 0.1;
+        }
+    }
 }
 
 // Check for match pickups
@@ -1206,6 +1724,19 @@ function checkMatchPickups() {
             pickup.collected = true;
             player.matches++;
             scene.remove(pickup.box);
+            scene.remove(pickup.glow);
+            scene.remove(pickup.light);
+        }
+    }
+}
+
+// Check for battery pickups
+function checkBatteryPickups() {
+    for (const pickup of batteryPickups) {
+        if (!pickup.collected && camera.position.distanceTo(pickup.position) < 2) {
+            pickup.collected = true;
+            player.battery = Math.min(100, player.battery + 50); // Add 50% battery
+            scene.remove(pickup.battery);
             scene.remove(pickup.glow);
             scene.remove(pickup.light);
         }
@@ -1230,16 +1761,40 @@ function render() {
         }
     }
     
-    // VHS filter - always active
-    let filterString = 'saturate(0.9) contrast(1.1) ';
+    // ENHANCED VHS filter - much more pronounced and visible
+    const time = Date.now() / 1000;
     
-    // Add scanlines effect
-    const scanlineOffset = (Date.now() % 1000) / 10;
+    // Strong base VHS effects
+    let filterString = 'saturate(0.5) contrast(1.6) sepia(0.35) ';
+    
+    // Heavy chromatic aberration
+    const chromaticShift = Math.sin(time * 3) * 1.5 + 1.5;
+    filterString += `hue-rotate(${chromaticShift * 6}deg) `;
+    
+    // Strong brightness flicker (VHS tape degradation)
+    const flicker = 0.85 + Math.sin(time * 60) * 0.1 + Math.random() * 0.1;
+    filterString += `brightness(${flicker}) `;
+    
+    // Frequent strong glitches
+    if (Math.random() > 0.95) {
+        filterString += `hue-rotate(${Math.random() * 60 - 30}deg) `;
+        filterString += `contrast(${1 + Math.random() * 0.5}) `;
+    }
+    
+    // Add noticeable grain/noise
+    const grain = 0.05 + Math.random() * 0.05;
+    filterString += `opacity(${1 - grain}) `;
+    
+    // Scanline simulation
+    if (Math.floor(time * 10) % 2 === 0) {
+        filterString += 'brightness(0.95) ';
+    }
     
     // Static effect when monster is close
     if (closestMonsterDist < 12) {
         const staticIntensity = 1 - (closestMonsterDist / 12);
-        filterString += `brightness(${1 + Math.random() * staticIntensity * 0.15}) `;
+        filterString += `brightness(${1 + Math.random() * staticIntensity * 0.2}) `;
+        filterString += `contrast(${1 + staticIntensity * 0.3}) `;
         
         // Play static sound occasionally
         if (Math.random() > 0.97) {
@@ -1256,8 +1811,8 @@ function render() {
         
         // Chromatic aberration and distortion
         if (Math.random() > 0.95) {
-            const distortion = Math.floor(player.fear * 20);
-            filterString += `hue-rotate(${Math.random() * distortion}deg) blur(${player.fear * 0.5}px)`;
+            const distortion = Math.floor(player.fear * 25);
+            filterString += `hue-rotate(${Math.random() * distortion}deg) blur(${player.fear * 0.8}px)`;
         }
     }
     
@@ -1353,6 +1908,36 @@ function updateMinimap() {
     );
     ctx.fill();
     
+    // Draw light sources
+    ctx.fillStyle = '#ff9944';
+    for (const lightSource of lightSources) {
+        ctx.beginPath();
+        ctx.arc(
+            lightSource.position.x * scale,
+            lightSource.position.z * scale,
+            2,
+            0,
+            Math.PI * 2
+        );
+        ctx.fill();
+    }
+    
+    // Draw battery pickups
+    ctx.fillStyle = '#00ff00';
+    for (const pickup of batteryPickups) {
+        if (!pickup.collected) {
+            ctx.beginPath();
+            ctx.arc(
+                pickup.position.x * scale,
+                pickup.position.z * scale,
+                2,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+        }
+    }
+    
     // Draw player
     ctx.fillStyle = '#ffff00';
     ctx.beginPath();
@@ -1401,8 +1986,10 @@ function gameLoop() {
     
     updatePlayer();
     updateShadows();
+    updateWeepingAngel();
     updateParticles();
     checkMatchPickups();
+    checkBatteryPickups();
     render();
     updateUI();
     
@@ -1438,8 +2025,11 @@ document.getElementById('restart-button').addEventListener('click', () => {
     game.running = false;
     game.pointerLocked = false;
     shadows = [];
+    weepingAngel = null;
     walls = [];
     particleSystems.length = 0;
+    lightSources = [];
+    batteryPickups = [];
     
     // Start fresh
     startGame();
@@ -1462,8 +2052,11 @@ document.getElementById('play-again-button').addEventListener('click', () => {
     game.running = false;
     game.pointerLocked = false;
     shadows = [];
+    weepingAngel = null;
     walls = [];
     particleSystems.length = 0;
+    lightSources = [];
+    batteryPickups = [];
     
     // Start fresh
     startGame();
