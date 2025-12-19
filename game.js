@@ -45,7 +45,7 @@ const player = {
 const sounds = {
     ambient: null,
     heartbeat: null,
-    footstep: null,
+    footstepAudio: null, // MP3 file for footsteps
     breathing: null,
     matchLight: null,
     flashlightToggle: null,
@@ -57,6 +57,11 @@ const sounds = {
 
 let audioContext;
 let footstepTimer = 0;
+
+// Camera bob for walking
+let bobTimer = 0;
+const bobSpeed = 0.08;
+const bobAmount = 0.08;
 
 // Controls
 const keys = {};
@@ -159,24 +164,24 @@ function createBreathing() {
 }
 
 function playFootstep() {
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    const filter = audioContext.createBiquadFilter();
+    // Initialize looping footstep audio
+    if (!sounds.footstepAudio) {
+        sounds.footstepAudio = new Audio('footsteps.mp3');
+        sounds.footstepAudio.loop = true;
+        sounds.footstepAudio.volume = 0.9;
+    }
     
-    osc.type = 'brown';
-    osc.frequency.setValueAtTime(80, audioContext.currentTime);
-    filter.type = 'lowpass';
-    filter.frequency.value = 200;
-    
-    gain.gain.setValueAtTime(0.1, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.08);
-    
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(audioContext.destination);
-    
-    osc.start();
-    osc.stop(audioContext.currentTime + 0.08);
+    // Start playing if not already
+    if (sounds.footstepAudio.paused) {
+        sounds.footstepAudio.play().catch(e => console.log('Footstep error:', e));
+    }
+}
+
+function stopFootstep() {
+    if (sounds.footstepAudio && !sounds.footstepAudio.paused) {
+        sounds.footstepAudio.pause();
+        sounds.footstepAudio.currentTime = 0;
+    }
 }
 
 function playMatchLight() {
@@ -290,18 +295,27 @@ function playStaticSound(intensity = 0.5) {
 // Helper function to check if a position is valid (not in wall)
 function isValidSpawnPosition(x, z) {
     const testPosition = new THREE.Vector3(x, 1.5, z);
-    const playerRadius = 0.5;
+    const checkRadius = 2.0; // Much larger radius to ensure clear space
     
+    // Check against all walls with expanded collision
     for (const wall of walls) {
         if (wall) {
             const box = new THREE.Box3().setFromObject(wall);
-            const sphere = new THREE.Sphere(testPosition, playerRadius);
+            // Expand the box to add padding
+            box.expandByScalar(1.5);
+            const sphere = new THREE.Sphere(testPosition, checkRadius);
             
             if (box.intersectsSphere(sphere)) {
                 return false;
             }
         }
     }
+    
+    // Stricter edge boundary checks
+    const minDistanceFromEdge = 4.0;
+    if (x < minDistanceFromEdge || x > (mazeSize * cellSize) - minDistanceFromEdge) return false;
+    if (z < minDistanceFromEdge || z > (mazeSize * cellSize) - minDistanceFromEdge) return false;
+    
     return true;
 }
 
@@ -391,6 +405,31 @@ function generateMaze() {
             current = stack.pop();
         } else {
             break;
+        }
+    }
+    
+    // Create open areas (rooms) by removing interior walls
+    const numRooms = 8 + Math.floor(Math.random() * 8); // 8-15 open areas
+    for (let i = 0; i < numRooms; i++) {
+        // Random room position and size
+        const roomX = 1 + Math.floor(Math.random() * (mazeSize - 8));
+        const roomZ = 1 + Math.floor(Math.random() * (mazeSize - 8));
+        const roomWidth = 3 + Math.floor(Math.random() * 5); // 3-7 cells wide
+        const roomHeight = 3 + Math.floor(Math.random() * 5); // 3-7 cells tall
+        
+        // Remove interior walls in this room
+        for (let rx = roomX; rx < Math.min(roomX + roomWidth, mazeSize - 1); rx++) {
+            for (let rz = roomZ; rz < Math.min(roomZ + roomHeight, mazeSize - 1); rz++) {
+                // Remove east and south walls to create open space
+                if (rx < roomX + roomWidth - 1) {
+                    mazeData[rx][rz].walls.east = false;
+                    if (rx + 1 < mazeSize) mazeData[rx + 1][rz].walls.west = false;
+                }
+                if (rz < roomZ + roomHeight - 1) {
+                    mazeData[rx][rz].walls.south = false;
+                    if (rz + 1 < mazeSize) mazeData[rx][rz + 1].walls.north = false;
+                }
+            }
         }
     }
     
@@ -526,44 +565,62 @@ function buildMaze() {
         }
     }
     
-    // Floor with texture
+    // Floor with fleshy organic texture
     const floorCanvas = document.createElement('canvas');
     floorCanvas.width = 512;
     floorCanvas.height = 512;
     const floorCtx = floorCanvas.getContext('2d');
     
-    // Very dark black/brown/red tile floor
-    floorCtx.fillStyle = '#000000';
+    // Base dark grey flesh
+    floorCtx.fillStyle = '#1a1515';
     floorCtx.fillRect(0, 0, 512, 512);
     
-    // Draw tile pattern with black, brown, and red
-    const tileSize = 64;
-    for (let y = 0; y < 512; y += tileSize) {
-        for (let x = 0; x < 512; x += tileSize) {
-            // Random tile color: black, brown, or dark red
-            const colorType = Math.random();
-            let fillColor;
-            if (colorType < 0.5) {
-                // Black tile
-                fillColor = `rgb(0, 0, 0)`;
-            } else if (colorType < 0.8) {
-                // Brown tile
-                const brown = 10 + Math.random() * 10;
-                fillColor = `rgb(${brown}, ${brown * 0.3}, 0)`;
-            } else {
-                // Dark red tile
-                const red = 15 + Math.random() * 15;
-                fillColor = `rgb(${red}, 0, 0)`;
-            }
-            
-            floorCtx.fillStyle = fillColor;
-            floorCtx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
-            
-            // Grout lines
-            floorCtx.strokeStyle = '#000000';
-            floorCtx.lineWidth = 3;
-            floorCtx.strokeRect(x, y, tileSize, tileSize);
-        }
+    // Create organic flesh-like texture with veins and irregular patterns
+    for (let i = 0; i < 400; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 5 + Math.random() * 20;
+        
+        // Random grey/red tones for flesh
+        const grey = 15 + Math.random() * 25;
+        const red = grey + Math.random() * 10;
+        floorCtx.fillStyle = `rgba(${red}, ${grey * 0.7}, ${grey * 0.7}, ${0.3 + Math.random() * 0.4})`;
+        
+        // Irregular organic shapes
+        floorCtx.beginPath();
+        floorCtx.arc(x, y, size, 0, Math.PI * 2);
+        floorCtx.fill();
+    }
+    
+    // Add vein-like structures
+    for (let i = 0; i < 80; i++) {
+        const startX = Math.random() * 512;
+        const startY = Math.random() * 512;
+        const endX = startX + (Math.random() - 0.5) * 150;
+        const endY = startY + (Math.random() - 0.5) * 150;
+        
+        // Darker red/grey veins
+        const veinGrey = 8 + Math.random() * 12;
+        const veinRed = veinGrey + Math.random() * 8;
+        floorCtx.strokeStyle = `rgba(${veinRed}, ${veinGrey * 0.5}, ${veinGrey * 0.5}, 0.7)`;
+        floorCtx.lineWidth = 1 + Math.random() * 3;
+        floorCtx.beginPath();
+        floorCtx.moveTo(startX, startY);
+        floorCtx.lineTo(endX, endY);
+        floorCtx.stroke();
+    }
+    
+    // Add darker blotches for depth
+    for (let i = 0; i < 150; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 3 + Math.random() * 10;
+        
+        const darkGrey = Math.random() * 12;
+        floorCtx.fillStyle = `rgba(${darkGrey + 5}, ${darkGrey}, ${darkGrey}, 0.5)`;
+        floorCtx.beginPath();
+        floorCtx.arc(x, y, size, 0, Math.PI * 2);
+        floorCtx.fill();
     }
     
     const floorTexture = new THREE.CanvasTexture(floorCanvas);
@@ -888,7 +945,9 @@ function addMazeDecor() {
 function createShadows() {
     shadows = [];
     
-    for (let i = 0; i < 15; i++) {
+    const numMonsters = 5 + Math.floor(Math.random() * 3); // 5-7 monsters
+    
+    for (let i = 0; i < numMonsters; i++) {
         // Find random valid position in maze (not in walls)
         let spawnX, spawnZ;
         let attempts = 0;
@@ -896,26 +955,31 @@ function createShadows() {
         
         do {
             // Choose cells away from edges and start/exit
-            const rx = 2 + Math.floor(Math.random() * (mazeSize - 4));
-            const rz = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            const rx = 3 + Math.floor(Math.random() * (mazeSize - 6));
+            const rz = 3 + Math.floor(Math.random() * (mazeSize - 6));
             
-            // Position in CENTER of cell
+            // Position in CENTER of cell (avoid walls at cell boundaries)
             spawnX = rx * cellSize;
             spawnZ = rz * cellSize;
             
             // Check if this position is valid (not in a wall)
             validPosition = isValidSpawnPosition(spawnX, spawnZ);
             attempts++;
-        } while (!validPosition && attempts < 200);
+        } while (!validPosition && attempts < 500);
         
         // Core shadow - elongated and distorted
         const geometry = new THREE.ConeGeometry(0.6, 2.5, 6);
+        
+        // All are Weeping Angels with texture
+        const textureLoader = new THREE.TextureLoader();
+        const angelTexture = textureLoader.load('monster.png');
         const material = new THREE.MeshBasicMaterial({ 
-            color: 0x0a0a0a,
+            map: angelTexture,
             transparent: true,
             opacity: 0.95,
             side: THREE.DoubleSide
         });
+        
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(spawnX, 1.5, spawnZ);
         mesh.rotation.x = Math.PI;
@@ -993,20 +1057,20 @@ function createShadows() {
         let speed, detection, hearing, size;
         
         if (monsterType === 0) {
-            // Fast but less perceptive - MUCH FASTER
-            speed = 0.08;
+            // Fast but less perceptive
+            speed = 0.06;
             detection = 12;
             hearing = 20;
             mesh.scale.set(0.8, 0.8, 0.8);
         } else if (monsterType === 1) {
-            // Slow but very perceptive - FASTER
-            speed = 0.05;
+            // Slow but very perceptive
+            speed = 0.04;
             detection = 20;
             hearing = 30;
             mesh.scale.set(1.3, 1.3, 1.3);
         } else {
-            // Balanced - FASTER
-            speed = 0.06;
+            // Balanced
+            speed = 0.05;
             detection = 15;
             hearing = 25;
         }
@@ -1154,7 +1218,7 @@ function startGame() {
     if (!sounds.soundtrack) {
         sounds.soundtrack = new Audio('OST.mp3');
         sounds.soundtrack.loop = true;
-        sounds.soundtrack.volume = 0.15; // 15% volume for atmospheric background
+        sounds.soundtrack.volume = 0.10; // 10% volume for atmospheric background
     }
     sounds.soundtrack.play().catch(e => console.log('Soundtrack autoplay prevented:', e));
     
@@ -1302,14 +1366,25 @@ function updatePlayer() {
         matchLight.intensity = 0;
     }
     
-    // Footstep sounds
+    // Footstep sounds and camera bob
     if ((moveForward || moveBackward || moveLeft || moveRight) && game.pointerLocked) {
-        footstepTimer++;
-        const stepInterval = player.sprinting ? 20 : 35;
-        if (footstepTimer > stepInterval) {
-            playFootstep();
-            footstepTimer = 0;
+        // Play looping footsteps
+        playFootstep();
+        
+        // Adjust playback speed based on sprinting
+        if (sounds.footstepAudio) {
+            sounds.footstepAudio.playbackRate = player.sprinting ? 1.5 : 1.0;
         }
+        
+        // Camera bob for walking realism
+        bobTimer += bobSpeed * (player.sprinting ? 1.5 : 1);
+        const bobOffset = Math.sin(bobTimer) * bobAmount;
+        camera.position.y = player.height + bobOffset;
+    } else {
+        // Stop footsteps when not moving
+        stopFootstep();
+        // Reset camera height when not moving
+        camera.position.y += (player.height - camera.position.y) * 0.1;
     }
     
     // Sanity mechanics - MORE INTENSE
@@ -1395,152 +1470,82 @@ function updateShadows() {
             closestMonsterDist = dist;
         }
         
-        // Detection logic - MORE AGGRESSIVE when sanity is low
-        const sanityMultiplier = 1 + (1 - player.sanity / 100) * 2; // 1x to 3x detection range
-        const effectiveDetection = shadow.detectionRadius * sanityMultiplier;
-        const effectiveHearing = shadow.hearingRadius * sanityMultiplier;
-        
-        const canSeePlayer = !player.matchLit && dist < effectiveDetection;
-        const canHearPlayer = player.sprinting && dist < effectiveHearing;
-        const senseLowSanity = player.sanity < 40 && dist < 25; // Can sense low sanity
-        
-        shadow.hunting = canSeePlayer || canHearPlayer || senseLowSanity;
-        
-        if (shadow.hunting) {
-            // Improved pathfinding - check if direct path is blocked
-            const direction = new THREE.Vector3();
-            direction.subVectors(camera.position, shadow.mesh.position).normalize();
+        // WEEPING ANGEL BEHAVIOR: Check if player is looking at this shadow
+        const directionToShadow = new THREE.Vector3();
+            directionToShadow.subVectors(shadow.mesh.position, camera.position).normalize();
             
-            // Test position ahead to see if path is blocked
-            const testDist = 2;
-            const testPos = shadow.mesh.position.clone().add(direction.clone().multiplyScalar(testDist));
-            testPos.y = 1.5;
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
             
-            let finalDirection = direction;
+            // Calculate angle between camera direction and direction to shadow
+            const angle = cameraDirection.angleTo(directionToShadow);
             
-            // If path ahead is blocked, try to navigate around
-            if (checkCollision(testPos)) {
-                // Try left and right alternatives
-                const leftDir = new THREE.Vector3(-direction.z, 0, direction.x);
-                const rightDir = new THREE.Vector3(direction.z, 0, -direction.x);
-                
-                const leftTest = shadow.mesh.position.clone().add(leftDir.multiplyScalar(testDist));
-                const rightTest = shadow.mesh.position.clone().add(rightDir.multiplyScalar(testDist));
-                leftTest.y = 1.5;
-                rightTest.y = 1.5;
-                
-                // Choose the unblocked direction, or the one closer to player
-                const leftBlocked = checkCollision(leftTest);
-                const rightBlocked = checkCollision(rightTest);
-                
-                if (!leftBlocked && !rightBlocked) {
-                    // Both open - choose closer to player
-                    const leftDist = leftTest.distanceTo(camera.position);
-                    const rightDist = rightTest.distanceTo(camera.position);
-                    finalDirection = leftDist < rightDist ? leftDir : rightDir;
-                } else if (!leftBlocked) {
-                    finalDirection = leftDir;
-                } else if (!rightBlocked) {
-                    finalDirection = rightDir;
-                } else {
-                    // Both blocked - try moving back and re-routing
-                    finalDirection = direction.clone().multiplyScalar(-0.5);
+            // Shadow is visible if within 60 degree cone (PI/3 radians) and within 30 units
+            const isVisible = angle < Math.PI / 3 && dist < 30;
+            
+            shadow.frozen = isVisible;
+            
+            if (!isVisible) {
+                // Shadow moves when not being looked at (Weeping Angel behavior)
+                if (!shadow.lastUnseenTime) {
+                    shadow.lastUnseenTime = Date.now();
                 }
-            }
-            
-            // Speed increases with low sanity and proximity
-            let chaseSpeed = shadow.speed;
-            if (shadow.type === 0 && dist < 8) {
-                chaseSpeed *= 1.5;
-            }
-            // Low sanity = faster monsters
-            if (player.sanity < 40) {
-                chaseSpeed *= 1.3;
-            }
-            if (player.sanity < 20) {
-                chaseSpeed *= 1.5;
-            }
-            
-            shadow.velocity.copy(finalDirection.normalize().multiplyScalar(chaseSpeed));
-            
-            // Show eyes when hunting - glow brighter at low sanity
-            shadow.eyes[0].visible = true;
-            shadow.eyes[1].visible = true;
-            const eyeIntensity = player.sanity < 40 ? 2 : 1;
-            shadow.eyes[0].material.emissiveIntensity = eyeIntensity;
-            shadow.eyes[1].material.emissiveIntensity = eyeIntensity;
-            
-            // Play hunting sound more frequently at low sanity
-            const soundChance = player.sanity < 40 ? 0.98 : 0.99;
-            if (Math.random() > soundChance && dist < 20) {
-                playShadowSound(true);
-            }
-        } else {
-            // Wander
-            shadow.wanderTimer++;
-            if (shadow.wanderTimer > 120) {
-                shadow.wanderAngle = Math.random() * Math.PI * 2;
-                shadow.wanderTimer = 0;
-            }
-            shadow.velocity.set(
-                Math.cos(shadow.wanderAngle) * shadow.speed * 0.5,
-                0,
-                Math.sin(shadow.wanderAngle) * shadow.speed * 0.5
-            );
-            
-            shadow.eyes[0].visible = false;
-            shadow.eyes[1].visible = false;
-            
-            // Ambient shadow sounds
-            if (Math.random() > 0.995 && dist < 20) {
-                playShadowSound(false);
-            }
-        }
-        
-        // Move shadow with better collision handling
-        const newPos = shadow.mesh.position.clone().add(shadow.velocity);
-        newPos.y = 1.5; // Keep at consistent height
-        
-        if (!checkCollision(newPos)) {
-            shadow.mesh.position.copy(newPos);
-            shadow.particles.position.copy(newPos);
-        } else {
-            // Try sliding along the wall instead of stopping
-            const slideVelocity = shadow.velocity.clone();
-            slideVelocity.x *= 0.5;
-            const slidePos1 = shadow.mesh.position.clone().add(slideVelocity);
-            slidePos1.y = 1.5;
-            
-            if (!checkCollision(slidePos1)) {
-                shadow.mesh.position.copy(slidePos1);
-                shadow.particles.position.copy(slidePos1);
-            } else {
-                // Try the other axis
-                slideVelocity.x = shadow.velocity.x;
-                slideVelocity.z *= 0.5;
-                const slidePos2 = shadow.mesh.position.clone().add(slideVelocity);
-                slidePos2.y = 1.5;
+                const now = Date.now();
+                const timeSinceUnseen = (now - shadow.lastUnseenTime) / 1000;
                 
-                if (!checkCollision(slidePos2)) {
-                    shadow.mesh.position.copy(slidePos2);
-                    shadow.particles.position.copy(slidePos2);
+                // ALWAYS move toward player when not seen
+                const direction = new THREE.Vector3();
+                direction.subVectors(camera.position, shadow.mesh.position).normalize();
+                
+                // Speed increases the longer it's unseen (up to 1.5x)
+                const speedMultiplier = Math.min(1.5, 1 + timeSinceUnseen * 0.1);
+                shadow.velocity.copy(direction.multiplyScalar(shadow.speed * speedMultiplier));
+                
+                // Move shadow with collision handling
+                const newPos = shadow.mesh.position.clone().add(shadow.velocity);
+                newPos.y = 1.5;
+                
+                if (!checkCollision(newPos)) {
+                    shadow.mesh.position.copy(newPos);
+                    shadow.particles.position.copy(newPos);
                 } else {
-                    // Completely stuck - back up
-                    const backupPos = shadow.mesh.position.clone().add(shadow.velocity.clone().multiplyScalar(-0.5));
-                    backupPos.y = 1.5;
-                    if (!checkCollision(backupPos)) {
-                        shadow.mesh.position.copy(backupPos);
-                        shadow.particles.position.copy(backupPos);
+                    // If blocked, try navigating around
+                    const leftDir = new THREE.Vector3(-direction.z, 0, direction.x);
+                    const rightDir = new THREE.Vector3(direction.z, 0, -direction.x);
+                    
+                    const leftTest = shadow.mesh.position.clone().add(leftDir.multiplyScalar(0.5));
+                    const rightTest = shadow.mesh.position.clone().add(rightDir.multiplyScalar(0.5));
+                    leftTest.y = 1.5;
+                    rightTest.y = 1.5;
+                    
+                    if (!checkCollision(leftTest)) {
+                        shadow.mesh.position.copy(leftTest);
+                        shadow.particles.position.copy(leftTest);
+                    } else if (!checkCollision(rightTest)) {
+                        shadow.mesh.position.copy(rightTest);
+                        shadow.particles.position.copy(rightTest);
                     }
-                    shadow.wanderAngle += Math.PI / 2;
                 }
+                
+                // Face player
+                shadow.mesh.lookAt(camera.position);
+                
+                // Eyes glow when moving
+                shadow.eyes[0].visible = true;
+                shadow.eyes[1].visible = true;
+                shadow.eyes[0].material.emissiveIntensity = 3;
+                shadow.eyes[1].material.emissiveIntensity = 3;
+            } else {
+                // FROZEN when being looked at
+                shadow.lastUnseenTime = Date.now();
+                shadow.velocity.set(0, 0, 0);
+                
+                // Eyes still visible but dimmer when frozen
+                shadow.eyes[0].visible = true;
+                shadow.eyes[1].visible = true;
+                shadow.eyes[0].material.emissiveIntensity = 1;
+                shadow.eyes[1].material.emissiveIntensity = 1;
             }
-        }
-        
-        // Rotate shadow to face player
-        if (shadow.hunting) {
-            shadow.mesh.lookAt(camera.position);
-        }
         
         // Animate particles
         const positions = shadow.particles.geometry.attributes.position.array;
@@ -1562,14 +1567,6 @@ function updateShadows() {
         // Collision with player
         if (dist < 1.5) {
             gameOver("The darkness consumed you...");
-        }
-    }
-    
-    // Radio static effect when monsters are close
-    if (closestMonsterDist < 15) {
-        const staticIntensity = 1 - (closestMonsterDist / 15);
-        if (Math.random() > 0.95) {
-            playStaticSound(staticIntensity * 0.5);
         }
     }
 }
@@ -1640,11 +1637,6 @@ function updateWeepingAngel() {
         
         // Face player
         weepingAngel.mesh.lookAt(camera.position);
-        
-        // Play eerie static sound occasionally
-        if (Math.random() > 0.99 && dist < 25) {
-            playShadowSound(true);
-        }
     } else {
         // Reset timer when seen
         weepingAngel.lastUnseenTime = Date.now();
@@ -1795,11 +1787,6 @@ function render() {
         const staticIntensity = 1 - (closestMonsterDist / 12);
         filterString += `brightness(${1 + Math.random() * staticIntensity * 0.2}) `;
         filterString += `contrast(${1 + staticIntensity * 0.3}) `;
-        
-        // Play static sound occasionally
-        if (Math.random() > 0.97) {
-            playStaticSound(staticIntensity);
-        }
     }
     
     // Post-processing fear effects - MORE INTENSE
