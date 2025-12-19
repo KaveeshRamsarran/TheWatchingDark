@@ -1,73 +1,79 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>Hollow's Hunt</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Creepster&family=Nosifer&family=Special+Elite&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Watching Dark</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-  <div id="wrap">
-    <canvas id="game" width="960" height="540" aria-label="Hollow's Hunt game canvas"></canvas>
-
-    <div id="hud">
-      <div class="hud-row">
-        <div class="pill"><span class="label">BATTERY</span> <span id="batteryVal">100</span>%</div>
-        <div class="pill"><span class="label">STAMINA</span> <span id="staminaVal">100</span>%</div>
-        <div class="pill"><span class="label">NOISE</span> <span id="noiseVal">0</span></div>
-      </div>
-      <div class="hud-row">
-        <div class="pill wide"><span class="label">OBJECTIVE</span> <span id="objective">Find the exit.</span></div>
-      </div>
-      <div id="hint">WASD move • Mouse look • Shift run • C crouch • F flashlight • Click canvas to lock cursor</div>
+    <div id="game-container">
+        <div id="start-screen">
+            <h1 class="glitch">THE WATCHING DARK</h1>
+            <p class="subtitle">They sense your fear...</p>
+            <div class="warning">⚠ Headphones recommended ⚠</div>
+            <button id="start-button">ENTER THE VOID</button>
+            <div class="instructions">
+                <p>WASD - Move | Mouse - Look | SHIFT - Sprint | F - Flashlight | SPACE - Match</p>
+                <p>Click to lock cursor. Conserve battery. Matches restore sanity faster.</p>
+            </div>
+        </div>
+        
+        <div id="game-canvas"></div>
+        <div id="crosshair">+</div>
+        
+        <div id="game-ui">
+            <div class="ui-top">
+                <div class="sanity-container">
+                    <span class="label">SANITY</span>
+                    <div class="sanity-bar">
+                        <div id="sanity-fill"></div>
+                    </div>
+                    <span id="sanity-text">100%</span>
+                </div>
+                
+                <div class="matches-container">
+                    <span class="label">MATCHES</span>
+                    <div id="matches-count">5</div>
+                </div>
+            </div>
+            
+            <div class="minimap-container">
+                <canvas id="minimap" width="150" height="150"></canvas>
+                <div class="minimap-label">MAP</div>
+            </div>
+            
+            <div class="ui-center">
+                <div class="flashlight-container">
+                    <span class="label">FLASHLIGHT</span>
+                    <div class="battery-bar">
+                        <div id="battery-fill"></div>
+                    </div>
+                    <span id="battery-text">100%</span>
+                    <div class="hint">Press F to toggle</div>
+                </div>
+            </div>
+            
+            <div class="ui-bottom">
+                <div id="heartbeat">♥</div>
+                <div id="status-text"></div>
+            </div>
+        </div>
+        
+        <div id="death-screen">
+            <h2 class="glitch">CONSUMED BY DARKNESS</h2>
+            <p id="death-message"></p>
+            <button id="restart-button">TRY AGAIN</button>
+        </div>
+        
+        <div id="victory-screen">
+            <h2 class="glitch">YOU SURVIVED</h2>
+            <p>You escaped the watching dark...</p>
+            <p id="survival-time"></p>
+            <button id="play-again-button">PLAY AGAIN</button>
+        </div>
     </div>
-
-    <div id="veil"></div>
-
-    <div id="menu" class="panel">
-      <div class="title">Hollow's Hunt</div>
-      <div class="subtitle">A browser horror game. Use headphones.</div>
-
-      <div class="block">
-        <div class="k">Survive</div>
-        <div class="v">A creature stalks the corridors. Light helps—but drains.</div>
-      </div>
-      <div class="block">
-        <div class="k">Listen</div>
-        <div class="v">Footsteps and breathing reveal distance. Running makes noise.</div>
-      </div>
-      <div class="block">
-        <div class="k">Rules</div>
-        <div class="v">Don’t get cornered. Find batteries. Reach the exit.</div>
-      </div>
-
-      <button id="startBtn">ENTER</button>
-
-      <div class="small">
-        Tip: If the mouse won't lock, click the canvas once after starting.
-      </div>
-      <div class="small" id="loadingMsg" style="display:none; color: #ff4444; margin-top: 10px;">
-        Generating maze...
-      </div>
-    </div>
-
-    <div id="gameover" class="panel hidden">
-      <div class="title">CAUGHT</div>
-      <div class="subtitle" id="deathLine">It was closer than you thought.</div>
-      <button id="restartBtn">TRY AGAIN</button>
-      <div class="small">Press R to restart.</div>
-    </div>
-
-    <div id="win" class="panel hidden">
-      <div class="title">ESCAPED</div>
-      <div class="subtitle">You found the door. For now.</div>
-      <button id="playAgainBtn">PLAY AGAIN</button>
-    </div>
-  </div>
-
-  <script src="game.js"></script>
+    <script src="game.js"></script>
 </body>
 </html>
