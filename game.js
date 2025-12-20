@@ -41,7 +41,7 @@ const player = {
     battery: 100,
     batteryDrain: 0.015,
     stamina: 100,
-    staminaDrain: 0.3,
+    staminaDrain: 0.12,
     staminaRegen: 0.15
 };
 
@@ -215,6 +215,24 @@ function playMatchLight() {
     if (sounds.matchLightAudio) {
         sounds.matchLightAudio.currentTime = 0;
         sounds.matchLightAudio.play().catch(e => console.log('Match sound error:', e));
+    }
+}
+
+function toggleFlashlight() {
+    if (player.battery > 0 || player.flashlight) {
+        player.flashlight = !player.flashlight;
+        console.log('Flashlight toggled:', player.flashlight);
+        if (player.flashlight && player.battery > 0) {
+            // Immediately set flashlight on
+            flashlight.intensity = 8 + (4 * (player.battery / 100));
+            flashlight.visible = true;
+            console.log('Flashlight ON - intensity:', flashlight.intensity);
+        } else {
+            flashlight.intensity = 0;
+            flashlight.visible = false;
+            console.log('Flashlight OFF');
+        }
+        playFlashlightClick();
     }
 }
 
@@ -473,6 +491,88 @@ function generateMaze() {
     
     // Place exit at far corner
     exitCell = { x: mazeSize - 1, z: mazeSize - 1 };
+    
+    // ENSURE PATH EXISTS - Use flood fill to verify connectivity
+    // If no path exists, carve a guaranteed route from start to exit
+    if (!isPathExists(0, 0, exitCell.x, exitCell.z)) {
+        carvePathToExit();
+    }
+}
+
+// Check if a path exists between two points using flood fill
+function isPathExists(startX, startZ, endX, endZ) {
+    const visited = new Set();
+    const queue = [{x: startX, z: startZ}];
+    visited.add(`${startX},${startZ}`);
+    
+    while (queue.length > 0) {
+        const current = queue.shift();
+        
+        if (current.x === endX && current.z === endZ) {
+            return true; // Found path to exit
+        }
+        
+        // Check all four directions
+        const directions = [
+            { dx: 0, dz: -1, wall: 'north' },
+            { dx: 0, dz: 1, wall: 'south' },
+            { dx: 1, dz: 0, wall: 'east' },
+            { dx: -1, dz: 0, wall: 'west' }
+        ];
+        
+        for (const dir of directions) {
+            const nx = current.x + dir.dx;
+            const nz = current.z + dir.dz;
+            const key = `${nx},${nz}`;
+            
+            // Check if we can move in this direction (no wall and not visited)
+            if (nx >= 0 && nx < mazeSize && nz >= 0 && nz < mazeSize &&
+                !visited.has(key) && !mazeData[current.x][current.z].walls[dir.wall]) {
+                visited.add(key);
+                queue.push({x: nx, z: nz});
+            }
+        }
+    }
+    
+    return false; // No path found
+}
+
+// Carve a guaranteed path from start to exit
+function carvePathToExit() {
+    let x = 0;
+    let z = 0;
+    
+    // Carve path moving right and down towards exit
+    while (x < exitCell.x || z < exitCell.z) {
+        // Randomly choose to move right or down (if possible)
+        const canMoveRight = x < exitCell.x;
+        const canMoveDown = z < exitCell.z;
+        
+        if (canMoveRight && canMoveDown) {
+            // Randomly choose direction
+            if (Math.random() < 0.5) {
+                // Move right
+                mazeData[x][z].walls.east = false;
+                mazeData[x + 1][z].walls.west = false;
+                x++;
+            } else {
+                // Move down
+                mazeData[x][z].walls.south = false;
+                mazeData[x][z + 1].walls.north = false;
+                z++;
+            }
+        } else if (canMoveRight) {
+            // Can only move right
+            mazeData[x][z].walls.east = false;
+            mazeData[x + 1][z].walls.west = false;
+            x++;
+        } else {
+            // Can only move down
+            mazeData[x][z].walls.south = false;
+            mazeData[x][z + 1].walls.north = false;
+            z++;
+        }
+    }
 }
 
 // Build 3D maze geometry
@@ -548,7 +648,7 @@ function buildMaze() {
         emissiveIntensity: 0.2
     });
     
-    const wallHeight = 4;
+    const wallHeight = 12;
     const wallThickness = 0.3;
     
     for (let x = 0; x < mazeSize; x++) {
@@ -603,62 +703,90 @@ function buildMaze() {
         }
     }
     
-    // Floor with fleshy organic texture
+    // Floor - bloody, nasty seamless texture
     const floorCanvas = document.createElement('canvas');
     floorCanvas.width = 512;
     floorCanvas.height = 512;
     const floorCtx = floorCanvas.getContext('2d');
     
-    // Base dark grey flesh
-    floorCtx.fillStyle = '#1a1515';
+    // Base dark reddish-brown (dried blood color)
+    floorCtx.fillStyle = '#2a0a0a';
     floorCtx.fillRect(0, 0, 512, 512);
     
-    // Create organic flesh-like texture with veins and irregular patterns
-    for (let i = 0; i < 400; i++) {
+    // Large blood stains and splatters
+    for (let i = 0; i < 60; i++) {
         const x = Math.random() * 512;
         const y = Math.random() * 512;
-        const size = 5 + Math.random() * 20;
+        const size = 30 + Math.random() * 80;
         
-        // Random grey/red tones for flesh
-        const grey = 15 + Math.random() * 25;
-        const red = grey + Math.random() * 10;
-        floorCtx.fillStyle = `rgba(${red}, ${grey * 0.7}, ${grey * 0.7}, ${0.3 + Math.random() * 0.4})`;
+        // Darker dried blood pools
+        const redVal = 20 + Math.random() * 30;
+        const greenVal = Math.random() * 5;
+        floorCtx.fillStyle = `rgba(${redVal}, ${greenVal}, 0, ${0.5 + Math.random() * 0.4})`;
         
-        // Irregular organic shapes
         floorCtx.beginPath();
         floorCtx.arc(x, y, size, 0, Math.PI * 2);
         floorCtx.fill();
+        
+        // Splatter marks around edges
+        for (let j = 0; j < 12; j++) {
+            const angle = (j / 12) * Math.PI * 2;
+            const dist = size + Math.random() * 30;
+            const splatterX = x + Math.cos(angle) * dist;
+            const splatterY = y + Math.sin(angle) * dist;
+            const splatterSize = 3 + Math.random() * 8;
+            
+            floorCtx.fillStyle = `rgba(${redVal + 10}, 0, 0, ${Math.random() * 0.6})`;
+            floorCtx.beginPath();
+            floorCtx.arc(splatterX, splatterY, splatterSize, 0, Math.PI * 2);
+            floorCtx.fill();
+        }
     }
     
-    // Add vein-like structures
-    for (let i = 0; i < 80; i++) {
+    // Fresh blood drips and trails
+    for (let i = 0; i < 100; i++) {
         const startX = Math.random() * 512;
         const startY = Math.random() * 512;
-        const endX = startX + (Math.random() - 0.5) * 150;
-        const endY = startY + (Math.random() - 0.5) * 150;
+        const length = 20 + Math.random() * 60;
         
-        // Darker red/grey veins
-        const veinGrey = 8 + Math.random() * 12;
-        const veinRed = veinGrey + Math.random() * 8;
-        floorCtx.strokeStyle = `rgba(${veinRed}, ${veinGrey * 0.5}, ${veinGrey * 0.5}, 0.7)`;
-        floorCtx.lineWidth = 1 + Math.random() * 3;
+        floorCtx.strokeStyle = `rgba(${80 + Math.random() * 40}, ${Math.random() * 10}, 0, ${0.4 + Math.random() * 0.5})`;
+        floorCtx.lineWidth = 1 + Math.random() * 4;
         floorCtx.beginPath();
         floorCtx.moveTo(startX, startY);
-        floorCtx.lineTo(endX, endY);
+        floorCtx.lineTo(startX + (Math.random() - 0.5) * 40, startY + length);
         floorCtx.stroke();
     }
     
-    // Add darker blotches for depth
-    for (let i = 0; i < 150; i++) {
+    // Grime and dirt patches
+    for (let i = 0; i < 200; i++) {
         const x = Math.random() * 512;
         const y = Math.random() * 512;
-        const size = 3 + Math.random() * 10;
+        const size = 5 + Math.random() * 25;
         
-        const darkGrey = Math.random() * 12;
-        floorCtx.fillStyle = `rgba(${darkGrey + 5}, ${darkGrey}, ${darkGrey}, 0.5)`;
+        const grimeVal = Math.random() * 20;
+        floorCtx.fillStyle = `rgba(${grimeVal}, ${grimeVal * 0.7}, ${grimeVal * 0.5}, ${0.3 + Math.random() * 0.3})`;
         floorCtx.beginPath();
         floorCtx.arc(x, y, size, 0, Math.PI * 2);
         floorCtx.fill();
+    }
+    
+    // Cracks and scratches
+    for (let i = 0; i < 50; i++) {
+        const startX = Math.random() * 512;
+        const startY = Math.random() * 512;
+        const endX = startX + (Math.random() - 0.5) * 100;
+        const endY = startY + (Math.random() - 0.5) * 100;
+        
+        floorCtx.strokeStyle = `rgba(0, 0, 0, ${0.5 + Math.random() * 0.4})`;
+        floorCtx.lineWidth = 1 + Math.random() * 2;
+        floorCtx.beginPath();
+        floorCtx.moveTo(startX, startY);
+        floorCtx.quadraticCurveTo(
+            startX + (endX - startX) / 2 + (Math.random() - 0.5) * 30,
+            startY + (endY - startY) / 2 + (Math.random() - 0.5) * 30,
+            endX, endY
+        );
+        floorCtx.stroke();
     }
     
     // Load floor texture
@@ -680,33 +808,102 @@ function buildMaze() {
     floor.receiveShadow = true;
     scene.add(floor);
     
-    // Ceiling with texture
+    // Ceiling - bloody, dripping, nasty texture
     const ceilingCanvas = document.createElement('canvas');
-    ceilingCanvas.width = 256;
-    ceilingCanvas.height = 256;
+    ceilingCanvas.width = 512;
+    ceilingCanvas.height = 512;
     const ceilingCtx = ceilingCanvas.getContext('2d');
     
-    ceilingCtx.fillStyle = '#000000';
-    ceilingCtx.fillRect(0, 0, 256, 256);
+    // Base pitch black
+    ceilingCtx.fillStyle = '#0a0000';
+    ceilingCtx.fillRect(0, 0, 512, 512);
     
-    // Add brown and red stains
-    for (let i = 0; i < 120; i++) {
-        const stainType = Math.random();
-        let stainColor;
-        if (stainType < 0.5) {
-            // Brown stain
-            const brown = 15 + Math.random() * 20;
-            stainColor = `rgba(${brown}, ${brown * 0.4}, 0, ${Math.random() * 0.5})`;
-        } else {
-            // Red stain
-            const red = 20 + Math.random() * 30;
-            stainColor = `rgba(${red}, 0, 0, ${Math.random() * 0.5})`;
-        }
+    // Large blood stains dripping from above
+    for (let i = 0; i < 80; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 40 + Math.random() * 100;
         
-        ceilingCtx.fillStyle = stainColor;
+        // Dark blood stains
+        const redVal = 30 + Math.random() * 40;
+        ceilingCtx.fillStyle = `rgba(${redVal}, ${Math.random() * 5}, 0, ${0.6 + Math.random() * 0.3})`;
+        
         ceilingCtx.beginPath();
-        ceilingCtx.arc(Math.random() * 256, Math.random() * 256, Math.random() * 60, 0, Math.PI * 2);
+        ceilingCtx.arc(x, y, size, 0, Math.PI * 2);
         ceilingCtx.fill();
+        
+        // Drip trails downward
+        for (let j = 0; j < 8; j++) {
+            const dripX = x + (Math.random() - 0.5) * size;
+            const dripLength = 20 + Math.random() * 80;
+            
+            ceilingCtx.strokeStyle = `rgba(${redVal + 20}, 0, 0, ${0.5 + Math.random() * 0.4})`;
+            ceilingCtx.lineWidth = 2 + Math.random() * 5;
+            ceilingCtx.beginPath();
+            ceilingCtx.moveTo(dripX, y + size/2);
+            ceilingCtx.lineTo(dripX + (Math.random() - 0.5) * 10, y + size/2 + dripLength);
+            ceilingCtx.stroke();
+            
+            // Drip droplet at end
+            ceilingCtx.fillStyle = `rgba(${80 + Math.random() * 50}, 0, 0, 0.8)`;
+            ceilingCtx.beginPath();
+            ceilingCtx.arc(dripX, y + size/2 + dripLength, 3 + Math.random() * 4, 0, Math.PI * 2);
+            ceilingCtx.fill();
+        }
+    }
+    
+    // Streaks and smears
+    for (let i = 0; i < 120; i++) {
+        const startX = Math.random() * 512;
+        const startY = Math.random() * 512;
+        const length = 30 + Math.random() * 100;
+        const angle = Math.random() * Math.PI * 2;
+        
+        ceilingCtx.strokeStyle = `rgba(${40 + Math.random() * 30}, ${Math.random() * 8}, 0, ${0.3 + Math.random() * 0.4})`;
+        ceilingCtx.lineWidth = 3 + Math.random() * 8;
+        ceilingCtx.beginPath();
+        ceilingCtx.moveTo(startX, startY);
+        ceilingCtx.lineTo(startX + Math.cos(angle) * length, startY + Math.sin(angle) * length);
+        ceilingCtx.stroke();
+    }
+    
+    // Decay patches and mold
+    for (let i = 0; i < 150; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 10 + Math.random() * 40;
+        
+        // Greenish-brown decay
+        const decayVal = Math.random() * 15;
+        ceilingCtx.fillStyle = `rgba(${decayVal}, ${decayVal + 5}, 0, ${0.3 + Math.random() * 0.3})`;
+        ceilingCtx.beginPath();
+        ceilingCtx.arc(x, y, size, 0, Math.PI * 2);
+        ceilingCtx.fill();
+    }
+    
+    // Fresh blood splatters
+    for (let i = 0; i < 100; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        
+        // Central splatter
+        ceilingCtx.fillStyle = `rgba(${100 + Math.random() * 50}, 0, 0, ${0.5 + Math.random() * 0.4})`;
+        ceilingCtx.beginPath();
+        ceilingCtx.arc(x, y, 3 + Math.random() * 6, 0, Math.PI * 2);
+        ceilingCtx.fill();
+        
+        // Spray pattern
+        for (let j = 0; j < 6; j++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 5 + Math.random() * 20;
+            const splatterX = x + Math.cos(angle) * dist;
+            const splatterY = y + Math.sin(angle) * dist;
+            
+            ceilingCtx.fillStyle = `rgba(${80 + Math.random() * 40}, 0, 0, ${Math.random() * 0.5})`;
+            ceilingCtx.beginPath();
+            ceilingCtx.arc(splatterX, splatterY, 1 + Math.random() * 3, 0, Math.PI * 2);
+            ceilingCtx.fill();
+        }
     }
     
     const ceilingTexture = new THREE.CanvasTexture(ceilingCanvas);
@@ -963,12 +1160,12 @@ function addMazeDecor() {
             const pz = z * cellSize;
             
             if (random < 0.15) {
-                // Pillar from floor to ceiling (4 units tall) - uses wall texture
-                const geometry = new THREE.CylinderGeometry(0.25, 0.3, 4, 8);
+                // Pillar from floor to ceiling (12 units tall) - uses wall texture
+                const geometry = new THREE.CylinderGeometry(0.25, 0.3, 12, 8);
                 const pillar = new THREE.Mesh(geometry, wallMaterial);
                 pillar.position.set(
                     px + (Math.random() - 0.5) * 2.5,
-                    2,
+                    6, // Half of 12 to center the pillar
                     pz + (Math.random() - 0.5) * 2.5
                 );
                 pillar.castShadow = true;
@@ -1186,7 +1383,7 @@ function createShadows() {
     }
     
     // Blood drip particles from ceiling
-    const bloodDripCount = 150;
+    const bloodDripCount = 400;
     const bloodGeometry = new THREE.BufferGeometry();
     const bloodPositions = new Float32Array(bloodDripCount * 3);
     const bloodVelocities = [];
@@ -1200,10 +1397,10 @@ function createShadows() {
     
     bloodGeometry.setAttribute('position', new THREE.BufferAttribute(bloodPositions, 3));
     const bloodMaterial = new THREE.PointsMaterial({
-        color: 0x660000,
-        size: 0.08,
+        color: 0x880000,
+        size: 0.15,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.9,
         blending: THREE.AdditiveBlending
     });
     const bloodDrips = new THREE.Points(bloodGeometry, bloodMaterial);
@@ -2294,6 +2491,12 @@ function gameOver(message) {
         jumpscareScreen.style.display = 'none';
         deathScreen.style.display = 'flex';
         document.getElementById('death-message').textContent = message;
+        
+        // Exit pointer lock to show cursor
+        if (document.pointerLockElement) {
+            document.exitPointerLock();
+        }
+        game.pointerLocked = false;
     }, 2000);
 }
 
@@ -2504,25 +2707,13 @@ window.addEventListener('keydown', (e) => {
             }
             break;
         case 'KeyF':
-            // Resume audio context on first interaction
+            // Resume audio context on first interaction and WAIT for it
             if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-            
-            if (player.battery > 0 || player.flashlight) {
-                player.flashlight = !player.flashlight;
-                console.log('Flashlight toggled:', player.flashlight);
-                if (player.flashlight && player.battery > 0) {
-                    // Immediately set flashlight on
-                    flashlight.intensity = 8 + (4 * (player.battery / 100));
-                    flashlight.visible = true;
-                    console.log('Flashlight ON - intensity:', flashlight.intensity);
-                } else {
-                    flashlight.intensity = 0;
-                    flashlight.visible = false;
-                    console.log('Flashlight OFF');
-                }
-                playFlashlightClick();
+                audioContext.resume().then(() => {
+                    toggleFlashlight();
+                });
+            } else {
+                toggleFlashlight();
             }
             break;
     }
