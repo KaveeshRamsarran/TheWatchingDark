@@ -181,14 +181,14 @@ function createBreathing() {
 function playFootstep() {
     // Initialize looping footstep audio
     if (!sounds.footstepAudio) {
-        sounds.footstepAudio = new Audio('footsteps.mp3');
+        sounds.footstepAudio = new Audio('audio/footsteps.mp3');
         sounds.footstepAudio.loop = true;
         sounds.footstepAudio.volume = 0.99;
     }
     
     // Initialize match lighting audio
     if (!sounds.matchLightAudio) {
-        sounds.matchLightAudio = new Audio('lighting a match.mp3');
+        sounds.matchLightAudio = new Audio('audio/lighting a match.mp3');
         sounds.matchLightAudio.volume = 0.5;
     }
     
@@ -1252,7 +1252,7 @@ function createShadows() {
             audioContext.resume();
         }
         
-        const monsterFootstep = new Audio('footsteps.mp3');
+        const monsterFootstep = new Audio('audio/footsteps.mp3');
         monsterFootstep.loop = true;
         monsterFootstep.volume = 0; // Start silent
         monsterFootsteps.push(monsterFootstep);
@@ -1544,7 +1544,7 @@ function startGame() {
         
         // Initialize and play soundtrack
         if (!sounds.soundtrack) {
-            sounds.soundtrack = new Audio('OST.mp3');
+            sounds.soundtrack = new Audio('audio/OST.mp3');
             sounds.soundtrack.loop = true;
             sounds.soundtrack.volume = 0.05; // 5% volume for subtle atmospheric background
         }
@@ -2482,7 +2482,7 @@ function gameOver(message) {
     jumpscareScreen.style.display = 'flex';
     
     // Play jumpscare sound
-    const jumpscareSound = new Audio('jumpscare.mp3');
+    const jumpscareSound = new Audio('audio/jumpscare.mp3');
     jumpscareSound.volume = 0.2; // Quieter - 20% volume
     jumpscareSound.play().catch(e => console.log('Jumpscare sound error:', e));
     
@@ -2549,7 +2549,7 @@ function gameLoop() {
     // Check every frame with low probability for random triggering
     if (Math.random() > 0.9985) { // Very low chance per frame (~1-2 times per minute)
         if (!sounds.ambience2) {
-            sounds.ambience2 = new Audio('ambience2.mp3');
+            sounds.ambience2 = new Audio('audio/ambience2.mp3');
             sounds.ambience2.volume = 0.15; // Lower volume
         }
         
@@ -2582,7 +2582,7 @@ window.addEventListener('load', () => {
     startScreen.style.display = 'flex';
     
     // Initialize main menu music
-    menuMusic = new Audio('main%20menu.mp3'); // URL encoded space
+    menuMusic = new Audio('audio/main%20menu.mp3'); // URL encoded space
     menuMusic.loop = true;
     menuMusic.volume = 0.3; // Play softly at 30% volume
     
