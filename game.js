@@ -55,7 +55,8 @@ const sounds = {
     shadowHunt: null,
     shadowIdle: null,
     lowSanity: null,
-    soundtrack: null
+    soundtrack: null,
+    ambience2: null // Random ambient sounds
 };
 
 let audioContext;
@@ -632,6 +633,7 @@ function buildMaze() {
         floorCtx.fill();
     }
     
+    // Load floor texture
     const floorTexture = new THREE.CanvasTexture(floorCanvas);
     floorTexture.wrapS = THREE.RepeatWrapping;
     floorTexture.wrapT = THREE.RepeatWrapping;
@@ -1103,7 +1105,9 @@ function createShadows() {
             wanderAngle: Math.random() * Math.PI * 2,
             eyes: [leftEye, rightEye],
             type: monsterType,
-            glowLight: monsterGlow
+            glowLight: monsterGlow,
+            fleeingFromMatch: false,
+            fleeTimer: 0
         });
     }
     
@@ -1216,12 +1220,19 @@ function createShadows() {
 // Start game
 function startGame() {
     console.log('Starting game...');
+    
+    // Stop and cleanup menu music
+    if (menuMusic) {
+        menuMusic.pause();
+        menuMusic.currentTime = 0;
+    }
+    
     startScreen.style.display = 'none';
     game.running = true;
     game.startTime = Date.now();
     
     player.sanity = 100;
-    player.matches = 5;
+    player.matches = 10;
     player.matchLit = false;
     player.fear = 0;
     player.battery = 100;
@@ -1481,10 +1492,27 @@ function updateShadows() {
     // Track closest monster for radio static effect
     let closestMonsterDist = Infinity;
     
+    // Check if match is lit and make nearby monsters flee
+    const matchFleeRadius = 15; // Monsters within 15 units will flee
+    
     for (const shadow of shadows) {
         const dist = camera.position.distanceTo(shadow.mesh.position);
         if (dist < closestMonsterDist) {
             closestMonsterDist = dist;
+        }
+        
+        // Check if player just lit a match nearby
+        if (player.matchLit && dist < matchFleeRadius) {
+            shadow.fleeingFromMatch = true;
+            shadow.fleeTimer = 300; // Flee for 5 seconds (300 frames at 60fps)
+        }
+        
+        // Decrease flee timer
+        if (shadow.fleeingFromMatch) {
+            shadow.fleeTimer--;
+            if (shadow.fleeTimer <= 0) {
+                shadow.fleeingFromMatch = false;
+            }
         }
         
         // WEEPING ANGEL BEHAVIOR: Check if player is looking at this shadow
@@ -1510,13 +1538,21 @@ function updateShadows() {
                 const now = Date.now();
                 const timeSinceUnseen = (now - shadow.lastUnseenTime) / 1000;
                 
-                // ALWAYS move toward player when not seen
+                // If fleeing from match, run AWAY from player
                 const direction = new THREE.Vector3();
-                direction.subVectors(camera.position, shadow.mesh.position).normalize();
-                
-                // Speed increases the longer it's unseen (up to 1.5x)
-                const speedMultiplier = Math.min(1.5, 1 + timeSinceUnseen * 0.1);
-                shadow.velocity.copy(direction.multiplyScalar(shadow.speed * speedMultiplier));
+                if (shadow.fleeingFromMatch) {
+                    // Flee away from player at increased speed
+                    direction.subVectors(shadow.mesh.position, camera.position).normalize();
+                    const fleeSpeed = shadow.speed * 3; // 3x faster when fleeing
+                    shadow.velocity.copy(direction.multiplyScalar(fleeSpeed));
+                } else {
+                    // Normal behavior: move toward player
+                    direction.subVectors(camera.position, shadow.mesh.position).normalize();
+                    
+                    // Speed increases the longer it's unseen (up to 1.5x)
+                    const speedMultiplier = Math.min(1.5, 1 + timeSinceUnseen * 0.1);
+                    shadow.velocity.copy(direction.multiplyScalar(shadow.speed * speedMultiplier));
+                }
                 
                 // Move shadow with collision handling
                 const newPos = shadow.mesh.position.clone().add(shadow.velocity);
@@ -1888,7 +1924,7 @@ function updateUI() {
     
     sanityFill.style.width = player.sanity + '%';
     sanityText.textContent = Math.floor(player.sanity) + '%';
-    matchesCount.textContent = '∞';
+    matchesCount.textContent = player.matches;
     batteryFill.style.width = player.battery + '%';
     batteryText.textContent = Math.floor(player.battery) + '%';
     
@@ -2018,6 +2054,11 @@ function gameOver(message) {
     game.running = false;
     deathScreen.style.display = 'flex';
     document.getElementById('death-message').textContent = message;
+    
+    // Play jumpscare sound
+    const jumpscareSound = new Audio('jumpscare.mp3');
+    jumpscareSound.volume = 0.4; // Not too loud - 40% volume
+    jumpscareSound.play().catch(e => console.log('Jumpscare sound error:', e));
 }
 
 // Victory
@@ -2042,6 +2083,23 @@ function gameLoop() {
     render();
     updateUI();
     
+    // Randomly play ambience2.mp3 at random timestamps
+    // Check every frame with low probability for random triggering
+    if (Math.random() > 0.9985) { // Very low chance per frame (~1-2 times per minute)
+        if (!sounds.ambience2) {
+            sounds.ambience2 = new Audio('ambience2.mp3');
+            sounds.ambience2.volume = 0.35; // Moderate volume
+        }
+        
+        // Only play if not currently playing
+        if (sounds.ambience2.paused) {
+            // Set random start time (assuming file is ~30 seconds, adjust if needed)
+            const randomStart = Math.random() * 25; // Random time between 0-25 seconds
+            sounds.ambience2.currentTime = randomStart;
+            sounds.ambience2.play().catch(e => console.log('Ambience2 play error:', e));
+        }
+    }
+    
     requestAnimationFrame(gameLoop);
 }
 
@@ -2052,9 +2110,33 @@ document.getElementById('start-button').addEventListener('click', () => {
 });
 
 // Don't auto-start - wait for button click
+let menuMusic;
+let menuMusicStarted = false;
+
 window.addEventListener('load', () => {
     console.log('Page loaded, showing start screen');
     startScreen.style.display = 'flex';
+    
+    // Initialize main menu music
+    menuMusic = new Audio('main%20menu.mp3'); // URL encoded space
+    menuMusic.loop = true;
+    menuMusic.volume = 0.3; // Play softly at 30% volume
+    
+    // Try to play immediately (might be blocked by browser)
+    menuMusic.play().catch(e => {
+        console.log('Menu music autoplay prevented, will play on user interaction');
+        menuMusicStarted = false;
+    });
+    
+    // Add click listener to start screen to ensure music plays on any interaction
+    startScreen.addEventListener('click', () => {
+        if (!menuMusicStarted && menuMusic) {
+            menuMusic.play().then(() => {
+                menuMusicStarted = true;
+                console.log('Menu music started');
+            }).catch(e => console.log('Menu music play error:', e));
+        }
+    }, { once: false });
 });
 
 document.getElementById('restart-button').addEventListener('click', () => {
@@ -2140,10 +2222,24 @@ window.addEventListener('keydown', (e) => {
         case 'KeyA': moveLeft = true; break;
         case 'KeyD': moveRight = true; break;
         case 'Space':
-            if (!player.matchLit) {
+            if (!player.matchLit && player.matches > 0) {
                 player.matchLit = true;
                 player.matchTime = player.matchDuration;
+                player.matches--;
                 playMatchLight();
+                
+                // Show big match counter message
+                const matchMessage = document.getElementById('match-counter-message');
+                matchMessage.textContent = player.matches + '/10';
+                matchMessage.classList.remove('show');
+                // Force reflow to restart animation
+                void matchMessage.offsetWidth;
+                matchMessage.classList.add('show');
+                
+                // Remove class after animation
+                setTimeout(() => {
+                    matchMessage.classList.remove('show');
+                }, 2000);
             }
             break;
         case 'KeyF':
