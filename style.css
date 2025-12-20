@@ -474,6 +474,39 @@ body {
     box-shadow: 0 0 10px rgba(255, 102, 0, 0.8);
 }
 
+.stamina-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px 20px;
+    border: 2px solid #00ff00;
+    border-radius: 5px;
+    margin-left: 20px;
+}
+
+.stamina-bar {
+    width: 200px;
+    height: 20px;
+    background-color: #001a00;
+    border: 2px solid #00ff00;
+    position: relative;
+    overflow: hidden;
+}
+
+#stamina-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00ff00 0%, #88ff00 50%, #ffff00 100%);
+    transition: width 0.3s;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.6);
+}
+
+#stamina-text {
+    color: #00ff00;
+    font-size: 0.9rem;
+}
+
 #battery-text {
     color: #ff6600;
     font-size: 0.9rem;
@@ -493,6 +526,111 @@ body {
 }
 
 /* Match counter message */
+#match-counter-message {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ff6600;
+    font-size: 8rem;
+    font-weight: bold;
+    text-shadow: 0 0 20px rgba(255, 102, 0, 0.8), 0 0 40px rgba(255, 102, 0, 0.6);
+    pointer-events: none;
+    opacity: 0;
+    z-index: 100;
+    transition: opacity 0.3s ease;
+}
+
+#match-counter-message.show {
+    animation: matchCounterFade 2s ease-in-out;
+}
+
+/* Note Prompt */
+#note-prompt {
+    display: none !important;
+}
+
+@keyframes notePulse {
+    0%, 100% { transform: translateX(-50%) scale(1); }
+    50% { transform: translateX(-50%) scale(1.05); }
+}
+
+/* Note Screen */
+#note-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 500;
+    pointer-events: none;
+}
+
+#note-content {
+    background: linear-gradient(to bottom, #2a2416, #1a1410);
+    border: 3px solid #8b7355;
+    border-radius: 4px;
+    padding: 3rem;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.9), inset 0 0 20px rgba(0, 0, 0, 0.5);
+    color: #d4c5a9;
+    font-family: 'Courier New', monospace;
+}
+
+#note-content h2 {
+    color: #8b0000;
+    text-align: center;
+    margin-bottom: 0.5rem;
+    font-size: 2rem;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    border-bottom: 2px solid #8b7355;
+    padding-bottom: 1rem;
+}
+
+.note-date {
+    text-align: center;
+    font-style: italic;
+    color: #999;
+    margin-bottom: 2rem;
+}
+
+.note-text p {
+    margin-bottom: 1.5rem;
+    line-height: 1.8;
+    text-align: justify;
+}
+
+.note-text strong {
+    color: #ff6600;
+    font-weight: bold;
+}
+
+.note-text em {
+    color: #ff0000;
+    font-style: italic;
+}
+
+.note-signature {
+    text-align: right;
+    font-style: italic;
+    margin-top: 2rem;
+    color: #666;
+}
+
+.note-close {
+    text-align: center;
+    margin-top: 2rem;
+    color: #ffff00;
+    font-size: 1.2rem;
+    animation: notePulse 2s infinite;
+}
+
 #match-counter-message {
     position: absolute;
     top: 50%;
@@ -563,6 +701,34 @@ body {
     font-size: 1rem;
     text-align: center;
     font-style: italic;
+}
+
+/* Jumpscare Screen */
+#jumpscare-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    z-index: 10000;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    animation: jumpscareShake 0.1s infinite;
+}
+
+#jumpscare-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+@keyframes jumpscareShake {
+    0%, 100% { transform: translate(0, 0) scale(1.05); }
+    25% { transform: translate(-10px, 5px) scale(1.06); }
+    50% { transform: translate(5px, -8px) scale(1.04); }
+    75% { transform: translate(-8px, -5px) scale(1.07); }
 }
 
 /* Death Screen */

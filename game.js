@@ -39,7 +39,10 @@ const player = {
     height: 1.6,
     flashlight: false,
     battery: 100,
-    batteryDrain: 0.015
+    batteryDrain: 0.015,
+    stamina: 100,
+    staminaDrain: 0.3,
+    staminaRegen: 0.15
 };
 
 // Sound system
@@ -74,7 +77,7 @@ let moveForward = false, moveBackward = false, moveLeft = false, moveRight = fal
 
 // Maze data
 const mazeData = [];
-const mazeSize = 20;
+const mazeSize = 30;
 const cellSize = 8;
 let exitCell = null;
 let walls = [];
@@ -86,6 +89,14 @@ let batteryPickups = []; // Track battery pickups
 
 // Particles
 const particleSystems = [];
+
+// Monster footstep sounds
+const monsterFootsteps = [];
+
+// Note system
+let noteObject = null;
+let notePickedUp = false;
+let noteScreenVisible = false;
 
 // Create sound effects using Web Audio API
 function createSounds() {
@@ -338,6 +349,23 @@ function initThree() {
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
     camera.position.set(8, player.height, 8);
     
+    // Create note near spawn (always close to player start)
+    const noteGeometry = new THREE.BoxGeometry(0.3, 0.4, 0.05);
+    const noteMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffffcc,
+        emissive: 0x888844,
+        emissiveIntensity: 0.3
+    });
+    noteObject = new THREE.Mesh(noteGeometry, noteMaterial);
+    noteObject.position.set(10, 0.5, 10); // Near spawn at (8, 8)
+    noteObject.rotation.y = Math.PI / 4;
+    scene.add(noteObject);
+    
+    // Add glow to note
+    const noteGlow = new THREE.PointLight(0xffffaa, 1, 5);
+    noteGlow.position.copy(noteObject.position);
+    scene.add(noteGlow);
+    
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setClearColor(0x0a0a0a);
@@ -345,8 +373,8 @@ function initThree() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
     
-    // Lighting - base ambient light
-    ambientLight = new THREE.AmbientLight(0x404050, 0.35);
+    // Lighting - base ambient light (increased for natural visibility)
+    ambientLight = new THREE.AmbientLight(0x404050, 0.6);
     scene.add(ambientLight);
     
     // Match light - yellow flickering
@@ -419,13 +447,13 @@ function generateMaze() {
     }
     
     // Create open areas (rooms) by removing interior walls
-    const numRooms = 8 + Math.floor(Math.random() * 8); // 8-15 open areas
+    const numRooms = 15 + Math.floor(Math.random() * 10); // 15-24 open areas for bigger map
     for (let i = 0; i < numRooms; i++) {
         // Random room position and size
-        const roomX = 1 + Math.floor(Math.random() * (mazeSize - 8));
-        const roomZ = 1 + Math.floor(Math.random() * (mazeSize - 8));
-        const roomWidth = 3 + Math.floor(Math.random() * 5); // 3-7 cells wide
-        const roomHeight = 3 + Math.floor(Math.random() * 5); // 3-7 cells tall
+        const roomX = 1 + Math.floor(Math.random() * (mazeSize - 12));
+        const roomZ = 1 + Math.floor(Math.random() * (mazeSize - 12));
+        const roomWidth = 4 + Math.floor(Math.random() * 8); // 4-11 cells wide (larger rooms)
+        const roomHeight = 4 + Math.floor(Math.random() * 8); // 4-11 cells tall (larger rooms)
         
         // Remove interior walls in this room
         for (let rx = roomX; rx < Math.min(roomX + roomWidth, mazeSize - 1); rx++) {
@@ -966,35 +994,71 @@ function createShadows() {
         
         do {
             // Choose cells away from edges and start/exit
-            const rx = 3 + Math.floor(Math.random() * (mazeSize - 6));
-            const rz = 3 + Math.floor(Math.random() * (mazeSize - 6));
+            const rx = 5 + Math.floor(Math.random() * (mazeSize - 10));
+            const rz = 5 + Math.floor(Math.random() * (mazeSize - 10));
             
             // Position in CENTER of cell (avoid walls at cell boundaries)
-            spawnX = rx * cellSize;
-            spawnZ = rz * cellSize;
+            // Add offset to ensure it's truly centered and not near walls
+            spawnX = rx * cellSize + cellSize * 0.5;
+            spawnZ = rz * cellSize + cellSize * 0.5;
             
             // Check if this position is valid (not in a wall)
-            validPosition = isValidSpawnPosition(spawnX, spawnZ);
+            // Also check surrounding positions to ensure not too close to walls
+            const testPositions = [
+                {x: spawnX, z: spawnZ},
+                {x: spawnX + 0.5, z: spawnZ},
+                {x: spawnX - 0.5, z: spawnZ},
+                {x: spawnX, z: spawnZ + 0.5},
+                {x: spawnX, z: spawnZ - 0.5}
+            ];
+            validPosition = testPositions.every(pos => isValidSpawnPosition(pos.x, pos.z));
             attempts++;
-        } while (!validPosition && attempts < 500);
+        } while (!validPosition && attempts < 1000);
         
-        // Core shadow - elongated and distorted
-        const geometry = new THREE.ConeGeometry(0.6, 2.5, 6);
+        // Create simple tall black monster with glowing red eyes
+        const bodyGroup = new THREE.Group();
         
-        // All are Weeping Angels with texture
-        const textureLoader = new THREE.TextureLoader();
-        const angelTexture = textureLoader.load('monster.png');
-        const material = new THREE.MeshBasicMaterial({ 
-            map: angelTexture,
+        // Tall lean black body
+        const bodyGeometry = new THREE.CylinderGeometry(0.15, 0.12, 2.5, 8);
+        const bodyMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x000000,
             transparent: true,
-            opacity: 0.95,
-            side: THREE.DoubleSide
+            opacity: 0.98
         });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.position.y = 1.25;
+        bodyGroup.add(body);
         
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(spawnX, 1.5, spawnZ);
-        mesh.rotation.x = Math.PI;
+        // Left eye - glowing red
+        const eyeGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+        const eyeMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xff0000,
+            emissive: 0xff0000,
+            emissiveIntensity: 1.0
+        });
+        const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        leftEye.position.set(-0.1, 2.5, 0.12);
+        bodyGroup.add(leftEye);
+        
+        // Right eye - glowing red
+        const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        rightEye.position.set(0.1, 2.5, 0.12);
+        bodyGroup.add(rightEye);
+        
+        const mesh = bodyGroup;
+        mesh.position.set(spawnX, 0, spawnZ);
         scene.add(mesh);
+        
+        // Create footstep audio for this monster
+        // Resume audio context to prevent freeze
+        if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
+        
+        const monsterFootstep = new Audio('footsteps.mp3');
+        monsterFootstep.loop = true;
+        monsterFootstep.volume = 0; // Start silent
+        monsterFootsteps.push(monsterFootstep);
         
         // Add dark aura
         const auraGeometry = new THREE.SphereGeometry(1.2, 8, 8);
@@ -1048,20 +1112,6 @@ function createShadows() {
         const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
         particleSystem.position.copy(mesh.position);
         scene.add(particleSystem);
-        
-        // Eyes - large, glowing, and terrifying
-        const eyeGeometry = new THREE.SphereGeometry(0.25, 8, 8);
-        const eyeMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xff0000,
-            emissive: 0xff0000,
-            emissiveIntensity: 2
-        });
-        const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-        const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-        leftEye.position.set(-0.35, 0.8, 0.4);
-        rightEye.position.set(0.35, 0.8, 0.4);
-        mesh.add(leftEye);
-        mesh.add(rightEye);
         
         // Add red glow light to monster
         const monsterGlow = new THREE.PointLight(0xff0033, 0, 8);
@@ -1134,6 +1184,54 @@ function createShadows() {
         scene.add(system);
         particleSystems.push(system);
     }
+    
+    // Blood drip particles from ceiling
+    const bloodDripCount = 150;
+    const bloodGeometry = new THREE.BufferGeometry();
+    const bloodPositions = new Float32Array(bloodDripCount * 3);
+    const bloodVelocities = [];
+    
+    for (let i = 0; i < bloodDripCount; i++) {
+        bloodPositions[i * 3] = Math.random() * mazeSize * cellSize - (mazeSize * cellSize) / 2;
+        bloodPositions[i * 3 + 1] = 4.5; // Start near ceiling
+        bloodPositions[i * 3 + 2] = Math.random() * mazeSize * cellSize - (mazeSize * cellSize) / 2;
+        bloodVelocities.push(Math.random() * 0.02 + 0.01); // Random fall speed
+    }
+    
+    bloodGeometry.setAttribute('position', new THREE.BufferAttribute(bloodPositions, 3));
+    const bloodMaterial = new THREE.PointsMaterial({
+        color: 0x660000,
+        size: 0.08,
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending
+    });
+    const bloodDrips = new THREE.Points(bloodGeometry, bloodMaterial);
+    bloodDrips.userData.velocities = bloodVelocities;
+    scene.add(bloodDrips);
+    particleSystems.push(bloodDrips);
+    
+    // Subtle floating dust particles around maze walls
+    const dustCount = 300;
+    const dustGeometry = new THREE.BufferGeometry();
+    const dustPositions = new Float32Array(dustCount * 3);
+    
+    for (let i = 0; i < dustCount; i++) {
+        dustPositions[i * 3] = Math.random() * mazeSize * cellSize - (mazeSize * cellSize) / 2;
+        dustPositions[i * 3 + 1] = Math.random() * 3.5;
+        dustPositions[i * 3 + 2] = Math.random() * mazeSize * cellSize - (mazeSize * cellSize) / 2;
+    }
+    
+    dustGeometry.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+    const dustMaterial = new THREE.PointsMaterial({
+        color: 0xaaaaaa,
+        size: 0.08,
+        transparent: true,
+        opacity: 0.5
+    });
+    const dust = new THREE.Points(dustGeometry, dustMaterial);
+    scene.add(dust);
+    particleSystems.push(dust);
     
     // Create WEEPING ANGEL - always follows player but stops when looked at
     // ALWAYS spawn directly IN FRONT of the player so they can see it immediately
@@ -1221,11 +1319,14 @@ function createShadows() {
 function startGame() {
     console.log('Starting game...');
     
-    // Stop and cleanup menu music
+    // COMPLETE CLEANUP of menu music to prevent overlap
     if (menuMusic) {
         menuMusic.pause();
         menuMusic.currentTime = 0;
+        menuMusic.volume = 0; // Mute it completely
+        menuMusic = null; // Clear reference
     }
+    menuMusicStarted = false;
     
     startScreen.style.display = 'none';
     game.running = true;
@@ -1238,17 +1339,20 @@ function startGame() {
     player.battery = 100;
     player.flashlight = true;
     
-    // Initialize sound
-    createSounds();
-    sounds.ambient.start();
-    
-    // Initialize and play soundtrack
-    if (!sounds.soundtrack) {
-        sounds.soundtrack = new Audio('OST.mp3');
-        sounds.soundtrack.loop = true;
-        sounds.soundtrack.volume = 0.10; // 10% volume for atmospheric background
-    }
-    sounds.soundtrack.play().catch(e => console.log('Soundtrack autoplay prevented:', e));
+    // Wait a moment before starting game sounds to ensure menu music is fully stopped
+    setTimeout(() => {
+        // Initialize sound
+        createSounds();
+        sounds.ambient.start();
+        
+        // Initialize and play soundtrack
+        if (!sounds.soundtrack) {
+            sounds.soundtrack = new Audio('OST.mp3');
+            sounds.soundtrack.loop = true;
+            sounds.soundtrack.volume = 0.05; // 5% volume for subtle atmospheric background
+        }
+        sounds.soundtrack.play().catch(e => console.log('Soundtrack autoplay prevented:', e));
+    }, 200); // 200ms delay to ensure clean separation
     
     initThree();
     generateMaze();
@@ -1305,8 +1409,21 @@ function checkCollision(position) {
 function updatePlayer() {
     if (!game.pointerLocked) return;
     
-    const isSprinting = keys['Shift'] && player.sanity > 20;
+    // Stamina system
+    const isMoving = moveForward || moveBackward || moveLeft || moveRight;
+    const wantsToSprint = keys['Shift'] && player.sanity > 20 && player.stamina > 0;
+    const canSprint = wantsToSprint && isMoving;
+    const isSprinting = canSprint;
     const currentSpeed = isSprinting ? player.sprintSpeed : player.speed;
+    
+    // Update stamina
+    if (isSprinting) {
+        player.stamina = Math.max(0, player.stamina - player.staminaDrain);
+    } else {
+        // Regenerate stamina when not sprinting (slower when moving)
+        const regenRate = isMoving ? player.staminaRegen * 0.5 : player.staminaRegen;
+        player.stamina = Math.min(100, player.stamina + regenRate);
+    }
     
     // Direct movement - no momentum
     const moveVector = new THREE.Vector3();
@@ -1367,9 +1484,31 @@ function updatePlayer() {
         flashlight.visible = true;
         
         if (player.battery <= 0) {
+            // Resume audio context to prevent freeze
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
             player.flashlight = false;
             flashlight.intensity = 0;
             flashlight.visible = false;
+            
+            // Play battery depleted sound
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(400, audioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.3);
+            
+            gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+            
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.3);
         }
     } else {
         flashlight.intensity = 0;
@@ -1472,8 +1611,8 @@ function updatePlayer() {
     player.sanity = Math.max(0, player.sanity);
     player.fear = 1 - (player.sanity / 100);
     
-    // Ambient light based on sanity (always provide some base light)
-    ambientLight.intensity = 0.35 + (player.sanity / 100) * 0.15;
+    // Ambient light based on sanity (always provide natural base light)
+    ambientLight.intensity = 0.6 + (player.sanity / 100) * 0.2;
     
     // Check exit door
     const exitPos = new THREE.Vector3(exitCell.x * cellSize, player.height, exitCell.z * cellSize);
@@ -1495,7 +1634,8 @@ function updateShadows() {
     // Check if match is lit and make nearby monsters flee
     const matchFleeRadius = 15; // Monsters within 15 units will flee
     
-    for (const shadow of shadows) {
+    for (let i = 0; i < shadows.length; i++) {
+        const shadow = shadows[i];
         const dist = camera.position.distanceTo(shadow.mesh.position);
         if (dist < closestMonsterDist) {
             closestMonsterDist = dist;
@@ -1583,6 +1723,35 @@ function updateShadows() {
                 // Face player
                 shadow.mesh.lookAt(camera.position);
                 
+                // Monster footstep sounds - louder than player's
+                const monsterFootstep = monsterFootsteps[i];
+                if (monsterFootstep) {
+                    // Resume audio context to prevent freeze
+                    if (audioContext && audioContext.state === 'suspended') {
+                        audioContext.resume();
+                    }
+                    
+                    // Volume based on distance (inverse relationship)
+                    // Max volume at close range, fade out at distance
+                    const maxHearDistance = 40;
+                    if (dist < maxHearDistance) {
+                        // Calculate volume: louder when closer, 1.5x louder than player's
+                        const volumeRatio = 1 - (dist / maxHearDistance);
+                        monsterFootstep.volume = Math.min(1.0, volumeRatio * 1.5);
+                        
+                        // Start playing if not already
+                        if (monsterFootstep.paused) {
+                            monsterFootstep.play().catch(e => console.log('Monster footstep error:', e));
+                        }
+                    } else {
+                        // Too far, stop sound
+                        if (!monsterFootstep.paused) {
+                            monsterFootstep.pause();
+                            monsterFootstep.currentTime = 0;
+                        }
+                    }
+                }
+                
                 // Eyes glow when moving
                 shadow.eyes[0].visible = true;
                 shadow.eyes[1].visible = true;
@@ -1592,6 +1761,17 @@ function updateShadows() {
                 // FROZEN when being looked at
                 shadow.lastUnseenTime = Date.now();
                 shadow.velocity.set(0, 0, 0);
+                
+                // Stop footsteps when frozen
+                const monsterFootstep = monsterFootsteps[i];
+                if (monsterFootstep && !monsterFootstep.paused) {
+                    // Resume audio context before modifying audio
+                    if (audioContext && audioContext.state === 'suspended') {
+                        audioContext.resume();
+                    }
+                    monsterFootstep.pause();
+                    monsterFootstep.currentTime = 0;
+                }
                 
                 // Eyes still visible but dimmer when frozen
                 shadow.eyes[0].visible = true;
@@ -1726,11 +1906,31 @@ function updateWeepingAngel() {
 // Update atmospheric particles
 function updateParticles() {
     for (const system of particleSystems) {
-        system.rotation.y += 0.0005;
         const positions = system.geometry.attributes.position.array;
-        for (let i = 0; i < positions.length; i += 3) {
-            positions[i + 1] += Math.sin(Date.now() / 1000 + i) * 0.001;
+        
+        // Blood drips fall from ceiling
+        if (system.userData.velocities) {
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i + 1] -= system.userData.velocities[i / 3];
+                
+                // Reset to ceiling when hitting ground
+                if (positions[i + 1] < 0.1) {
+                    positions[i + 1] = 4.5;
+                    positions[i] = Math.random() * mazeSize * cellSize - (mazeSize * cellSize) / 2;
+                    positions[i + 2] = Math.random() * mazeSize * cellSize - (mazeSize * cellSize) / 2;
+                }
+            }
+        } else {
+            // Regular atmospheric particles - gentle rotation and float
+            system.rotation.y += 0.0005;
+            for (let i = 0; i < positions.length; i += 3) {
+                positions[i + 1] += Math.sin(Date.now() / 1000 + i) * 0.001;
+                // Subtle horizontal drift
+                positions[i] += Math.sin(Date.now() / 2000 + i) * 0.0005;
+                positions[i + 2] += Math.cos(Date.now() / 2000 + i) * 0.0005;
+            }
         }
+        
         system.geometry.attributes.position.needsUpdate = true;
     }
     
@@ -1806,6 +2006,29 @@ function checkBatteryPickups() {
             
             osc.start();
             osc.stop(audioContext.currentTime + 0.3);
+        }
+    }
+}
+
+// Check for note pickup
+function checkNotePickup() {
+    const noteScreen = document.getElementById('note-screen');
+    
+    if (noteObject) {
+        const dist = camera.position.distanceTo(noteObject.position);
+        
+        // Automatically show note when close (within 3 units)
+        if (dist < 3) {
+            if (!noteScreenVisible) {
+                noteScreenVisible = true;
+                noteScreen.style.display = 'flex';
+            }
+        } else {
+            // Automatically hide note when far
+            if (noteScreenVisible) {
+                noteScreenVisible = false;
+                noteScreen.style.display = 'none';
+            }
         }
     }
 }
@@ -1919,6 +2142,8 @@ function updateUI() {
     const matchesCount = document.getElementById('matches-count');
     const batteryFill = document.getElementById('battery-fill');
     const batteryText = document.getElementById('battery-text');
+    const staminaFill = document.getElementById('stamina-fill');
+    const staminaText = document.getElementById('stamina-text');
     const statusText = document.getElementById('status-text');
     const heartbeat = document.getElementById('heartbeat');
     
@@ -1927,6 +2152,8 @@ function updateUI() {
     matchesCount.textContent = player.matches;
     batteryFill.style.width = player.battery + '%';
     batteryText.textContent = Math.floor(player.battery) + '%';
+    staminaFill.style.width = player.stamina + '%';
+    staminaText.textContent = Math.floor(player.stamina) + '%';
     
     // Heartbeat speed based on fear
     heartbeat.style.animationDuration = (1.5 - player.fear) + 's';
@@ -2052,18 +2279,46 @@ function updateMinimap() {
 // Game over
 function gameOver(message) {
     game.running = false;
-    deathScreen.style.display = 'flex';
-    document.getElementById('death-message').textContent = message;
+    
+    // Show jumpscare image first
+    const jumpscareScreen = document.getElementById('jumpscare-screen');
+    jumpscareScreen.style.display = 'flex';
     
     // Play jumpscare sound
     const jumpscareSound = new Audio('jumpscare.mp3');
-    jumpscareSound.volume = 0.4; // Not too loud - 40% volume
+    jumpscareSound.volume = 0.2; // Quieter - 20% volume
     jumpscareSound.play().catch(e => console.log('Jumpscare sound error:', e));
+    
+    // After 2 seconds, hide jumpscare and show death screen
+    setTimeout(() => {
+        jumpscareScreen.style.display = 'none';
+        deathScreen.style.display = 'flex';
+        document.getElementById('death-message').textContent = message;
+    }, 2000);
 }
 
 // Victory
 function victory() {
     game.running = false;
+    game.pointerLocked = false;
+    
+    // Stop all sounds
+    stopFootstep();
+    if (sounds.soundtrack) {
+        sounds.soundtrack.pause();
+    }
+    if (sounds.ambient) {
+        sounds.ambient.stop();
+    }
+    if (sounds.ambience2 && !sounds.ambience2.paused) {
+        sounds.ambience2.pause();
+    }
+    
+    // Exit pointer lock
+    if (document.pointerLockElement) {
+        document.exitPointerLock();
+    }
+    
     game.survivalTime = Math.floor((Date.now() - game.startTime) / 1000);
     victoryScreen.style.display = 'flex';
     document.getElementById('survival-time').textContent = 
@@ -2072,23 +2327,27 @@ function victory() {
 
 // Game loop
 function gameLoop() {
+    // Always continue the loop, even when paused
+    requestAnimationFrame(gameLoop);
+    
+    // Pause game logic when not running
     if (!game.running) return;
     
+    // Game logic runs even when note is visible (no pausing)
     updatePlayer();
     updateShadows();
     updateWeepingAngel();
     updateParticles();
     checkMatchPickups();
     checkBatteryPickups();
-    render();
-    updateUI();
+    checkNotePickup();
     
     // Randomly play ambience2.mp3 at random timestamps
     // Check every frame with low probability for random triggering
     if (Math.random() > 0.9985) { // Very low chance per frame (~1-2 times per minute)
         if (!sounds.ambience2) {
             sounds.ambience2 = new Audio('ambience2.mp3');
-            sounds.ambience2.volume = 0.35; // Moderate volume
+            sounds.ambience2.volume = 0.15; // Lower volume
         }
         
         // Only play if not currently playing
@@ -2100,7 +2359,9 @@ function gameLoop() {
         }
     }
     
-    requestAnimationFrame(gameLoop);
+    // Always render the scene
+    render();
+    updateUI();
 }
 
 // Event listeners

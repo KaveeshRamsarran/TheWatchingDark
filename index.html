@@ -40,6 +40,24 @@
         
         <div id="match-counter-message"></div>
         
+        <div id="note-prompt">Press [E] to read note</div>
+        
+        <div id="note-screen">
+            <div id="note-content">
+                <h2>RESEARCHER'S LOG - FINAL ENTRY</h2>
+                <p class="note-date">Date: [REDACTED]</p>
+                <div class="note-text">
+                    <p>If you're reading this, you're already being watched.</p>
+                    <p>They call them "The Watchers" - entities that exist in darkness. I've studied them for months, and I've learned their nature:</p>
+                    <p><strong>They freeze when observed.</strong> Look directly at them and they become statues. But the moment you blink, the moment you look away... they move. Silent. Swift. Deadly.</p>
+                    <p><strong>They fear the flame.</strong> Light a match near them and they flee in terror. The fire reminds them of something ancient, something that hurt them long ago.</p>
+                    <p><strong>You will hear them coming.</strong> Their footsteps echo through these halls - louder than yours, heavier than yours. When you hear them close, you have seconds to decide: look, or run.</p>
+                    <p>If you want to survive, remember: <em>Don't blink. Don't turn your back. And whatever you do, don't let them get close.</em></p>
+                    <p class="note-signature">- Dr. [ILLEGIBLE]</p>
+                </div>
+            </div>
+        </div>
+        
         <div id="game-ui">
             <div class="ui-top">
                 <div class="sanity-container">
@@ -70,12 +88,24 @@
                     <span id="battery-text">100%</span>
                     <div class="hint">Press F to toggle</div>
                 </div>
+                
+                <div class="stamina-container">
+                    <span class="label">STAMINA</span>
+                    <div class="stamina-bar">
+                        <div id="stamina-fill"></div>
+                    </div>
+                    <span id="stamina-text">100%</span>
+                </div>
             </div>
             
             <div class="ui-bottom">
                 <div id="heartbeat">♥</div>
                 <div id="status-text"></div>
             </div>
+        </div>
+        
+        <div id="jumpscare-screen">
+            <img src="monster.png" alt="" id="jumpscare-image">
         </div>
         
         <div id="death-screen">
