@@ -238,6 +238,8 @@ function toggleFlashlight() {
 
 function playFlashlightClick() {
     // Resume audio context if suspended (prevents freeze)
+    if (!audioContext) return;
+    
     if (audioContext.state === 'suspended') {
         audioContext.resume();
     }
@@ -1681,31 +1683,33 @@ function updatePlayer() {
         flashlight.visible = true;
         
         if (player.battery <= 0) {
-            // Resume audio context to prevent freeze
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-            
             player.flashlight = false;
             flashlight.intensity = 0;
             flashlight.visible = false;
             
             // Play battery depleted sound
-            const osc = audioContext.createOscillator();
-            const gain = audioContext.createGain();
-            
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(400, audioContext.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.3);
-            
-            gain.gain.setValueAtTime(0.2, audioContext.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-            
-            osc.connect(gain);
-            gain.connect(audioContext.destination);
-            
-            osc.start();
-            osc.stop(audioContext.currentTime + 0.3);
+            if (audioContext) {
+                // Resume audio context to prevent freeze
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(400, audioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.3);
+                
+                gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                osc.connect(gain);
+                gain.connect(audioContext.destination);
+                
+                osc.start();
+                osc.stop(audioContext.currentTime + 0.3);
+            }
         }
     } else {
         flashlight.intensity = 0;
@@ -2183,26 +2187,28 @@ function checkBatteryPickups() {
             scene.remove(pickup.light);
             
             // Play battery pickup sound
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
+            if (audioContext) {
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                
+                // Create a pleasant pickup sound
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, audioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
+                
+                gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                osc.connect(gain);
+                gain.connect(audioContext.destination);
+                
+                osc.start();
+                osc.stop(audioContext.currentTime + 0.3);
             }
-            
-            // Create a pleasant pickup sound
-            const osc = audioContext.createOscillator();
-            const gain = audioContext.createGain();
-            
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(400, audioContext.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
-            
-            gain.gain.setValueAtTime(0.3, audioContext.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-            
-            osc.connect(gain);
-            gain.connect(audioContext.destination);
-            
-            osc.start();
-            osc.stop(audioContext.currentTime + 0.3);
         }
     }
 }
