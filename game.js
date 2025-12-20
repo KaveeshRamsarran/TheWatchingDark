@@ -12,6 +12,7 @@ let scene, camera, renderer;
 let maze, shadows = [];
 let weepingAngel = null; // Special monster that follows player but stops when looked at
 let matchLight, ambientLight, flashlight;
+let monsterGlows = []; // Red glow lights for each monster
 let clock = new THREE.Clock();
 
 // Game state
@@ -48,6 +49,8 @@ const sounds = {
     footstepAudio: null, // MP3 file for footsteps
     breathing: null,
     matchLight: null,
+    matchLightAudio: null, // MP3 file for match lighting
+    batteryPickupAudio: null, // MP3 file for battery pickup
     flashlightToggle: null,
     shadowHunt: null,
     shadowIdle: null,
@@ -168,7 +171,13 @@ function playFootstep() {
     if (!sounds.footstepAudio) {
         sounds.footstepAudio = new Audio('footsteps.mp3');
         sounds.footstepAudio.loop = true;
-        sounds.footstepAudio.volume = 0.9;
+        sounds.footstepAudio.volume = 0.99;
+    }
+    
+    // Initialize match lighting audio
+    if (!sounds.matchLightAudio) {
+        sounds.matchLightAudio = new Audio('lighting a match.mp3');
+        sounds.matchLightAudio.volume = 0.5;
     }
     
     // Start playing if not already
@@ -185,24 +194,24 @@ function stopFootstep() {
 }
 
 function playMatchLight() {
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
+    // Resume audio context if suspended (prevents freeze)
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
     
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(2000, audioContext.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.2);
-    
-    gain.gain.setValueAtTime(0.2, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-    
-    osc.connect(gain);
-    gain.connect(audioContext.destination);
-    
-    osc.start();
-    osc.stop(audioContext.currentTime + 0.2);
+    // Play match lighting MP3
+    if (sounds.matchLightAudio) {
+        sounds.matchLightAudio.currentTime = 0;
+        sounds.matchLightAudio.play().catch(e => console.log('Match sound error:', e));
+    }
 }
 
 function playFlashlightClick() {
+    // Resume audio context if suspended (prevents freeze)
+    if (audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
+    
     const osc = audioContext.createOscillator();
     const gain = audioContext.createGain();
     const filter = audioContext.createBiquadFilter();
@@ -336,14 +345,14 @@ function initThree() {
     container.appendChild(renderer.domElement);
     
     // Lighting - base ambient light
-    ambientLight = new THREE.AmbientLight(0x404050, 0.15);
+    ambientLight = new THREE.AmbientLight(0x404050, 0.35);
     scene.add(ambientLight);
     
     // Match light - yellow flickering
-    matchLight = new THREE.PointLight(0xffdd44, 0, 12);
+    matchLight = new THREE.PointLight(0xffdd44, 0, 18);
     matchLight.castShadow = true;
     matchLight.shadow.camera.near = 0.1;
-    matchLight.shadow.camera.far = 12;
+    matchLight.shadow.camera.far = 18;
     scene.add(matchLight);
     
     // Flashlight (spotlight) - bright and focused
@@ -1052,6 +1061,13 @@ function createShadows() {
         mesh.add(leftEye);
         mesh.add(rightEye);
         
+        // Add red glow light to monster
+        const monsterGlow = new THREE.PointLight(0xff0033, 0, 8);
+        monsterGlow.decay = 2;
+        monsterGlow.position.copy(mesh.position);
+        scene.add(monsterGlow);
+        monsterGlows.push(monsterGlow);
+        
         // Vary monster types for more engagement
         const monsterType = i % 3;
         let speed, detection, hearing, size;
@@ -1086,7 +1102,8 @@ function createShadows() {
             wanderTimer: 0,
             wanderAngle: Math.random() * Math.PI * 2,
             eyes: [leftEye, rightEye],
-            type: monsterType
+            type: monsterType,
+            glowLight: monsterGlow
         });
     }
     
@@ -1353,9 +1370,9 @@ function updatePlayer() {
         player.matchTime--;
         matchLight.position.copy(camera.position);
         // Flickering yellow effect
-        const flicker = Math.sin(Date.now() / 50) * 0.5 + Math.random() * 0.8;
-        matchLight.intensity = 3 + flicker;
-        matchLight.distance = 12;
+        const flicker = Math.sin(Date.now() / 50) * 1.0 + Math.random() * 1.5;
+        matchLight.intensity = 6 + flicker;
+        matchLight.distance = 18;
         matchLight.color.setHex(Math.random() > 0.9 ? 0xffaa00 : 0xffdd44);
         
         if (player.matchTime <= 0) {
@@ -1445,7 +1462,7 @@ function updatePlayer() {
     player.fear = 1 - (player.sanity / 100);
     
     // Ambient light based on sanity (always provide some base light)
-    ambientLight.intensity = 0.15 + (player.sanity / 100) * 0.1;
+    ambientLight.intensity = 0.35 + (player.sanity / 100) * 0.15;
     
     // Check exit door
     const exitPos = new THREE.Vector3(exitCell.x * cellSize, player.height, exitCell.z * cellSize);
@@ -1731,6 +1748,28 @@ function checkBatteryPickups() {
             scene.remove(pickup.battery);
             scene.remove(pickup.glow);
             scene.remove(pickup.light);
+            
+            // Play battery pickup sound
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            // Create a pleasant pickup sound
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(400, audioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
+            
+            gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+            
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.3);
         }
     }
 }
@@ -1740,6 +1779,29 @@ function render() {
     if (!renderer || !scene || !camera) {
         console.error('Renderer, scene, or camera not initialized!');
         return;
+    }
+    
+    // Update monster glow lights only
+    const time = Date.now() / 1000;
+    for (let i = 0; i < shadows.length; i++) {
+        const shadow = shadows[i];
+        if (shadow.glowLight) {
+            const glowPulse = Math.sin(time * 3 + i) * 0.5 + 0.5;
+            
+            if (shadow.hunting) {
+                // Brighter, faster pulse when hunting
+                shadow.glowLight.intensity = 3 + glowPulse * 2;
+                shadow.glowLight.distance = 12 + glowPulse * 4;
+            } else {
+                // Dim idle glow
+                shadow.glowLight.intensity = 0.5 + glowPulse * 0.5;
+                shadow.glowLight.distance = 6 + glowPulse * 2;
+            }
+            
+            // Update position to follow monster
+            shadow.glowLight.position.copy(shadow.mesh.position);
+            shadow.glowLight.position.y += 1;
+        }
     }
     
     renderer.render(scene, camera);
@@ -1754,7 +1816,7 @@ function render() {
     }
     
     // ENHANCED VHS filter - much more pronounced and visible
-    const time = Date.now() / 1000;
+    // (time variable already declared at start of render function)
     
     // Strong base VHS effects
     let filterString = 'saturate(0.5) contrast(1.6) sepia(0.35) ';
@@ -1826,7 +1888,7 @@ function updateUI() {
     
     sanityFill.style.width = player.sanity + '%';
     sanityText.textContent = Math.floor(player.sanity) + '%';
-    matchesCount.textContent = player.matches;
+    matchesCount.textContent = '∞';
     batteryFill.style.width = player.battery + '%';
     batteryText.textContent = Math.floor(player.battery) + '%';
     
@@ -2078,14 +2140,18 @@ window.addEventListener('keydown', (e) => {
         case 'KeyA': moveLeft = true; break;
         case 'KeyD': moveRight = true; break;
         case 'Space':
-            if (!player.matchLit && player.matches > 0) {
+            if (!player.matchLit) {
                 player.matchLit = true;
                 player.matchTime = player.matchDuration;
-                player.matches--;
                 playMatchLight();
             }
             break;
         case 'KeyF':
+            // Resume audio context on first interaction
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
             if (player.battery > 0 || player.flashlight) {
                 player.flashlight = !player.flashlight;
                 console.log('Flashlight toggled:', player.flashlight);
