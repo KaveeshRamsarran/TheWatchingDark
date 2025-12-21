@@ -45,9 +45,9 @@
         
         <div id="note-screen">
             <div id="note-content">
-                <h2>RESEARCHER'S LOG - FINAL ENTRY</h2>
-                <p class="note-date">Date: [REDACTED]</p>
-                <div class="note-text">
+                <h2 id="note-title">RESEARCHER'S LOG - FINAL ENTRY</h2>
+                <p class="note-date" id="note-date">Date: [REDACTED]</p>
+                <div class="note-text" id="note-text">
                     <p>If you're reading this, you're already being watched.</p>
                     <p>They call them "The Watchers" - entities that exist in darkness. I've studied them for months, and I've learned their nature:</p>
                     <p><strong>They freeze when observed.</strong> Look directly at them and they become statues. But the moment you blink, the moment you look away... they move. Silent. Swift. Deadly.</p>
@@ -102,6 +102,9 @@
             <div class="ui-bottom">
                 <div id="heartbeat">♥</div>
                 <div id="status-text"></div>
+                <div id="godmode-indicator" style="display: none; position: fixed; top: 10px; right: 10px; background: rgba(0, 255, 0, 0.2); border: 2px solid #0f0; padding: 10px 20px; border-radius: 5px; color: #0f0; font-weight: bold; font-size: 18px; text-shadow: 0 0 10px #0f0; animation: pulse 1s infinite;">
+                    ⚡ GOD MODE ACTIVE ⚡
+                </div>
             </div>
         </div>
         

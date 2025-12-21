@@ -10,15 +10,18 @@ const victoryScreen = document.getElementById('victory-screen');
 // Three.js setup
 let scene, camera, renderer;
 let maze, shadows = [];
+let angels = []; // Level 2 monsters
 let weepingAngel = null; // Special monster that follows player but stops when looked at
 let matchLight, ambientLight, flashlight;
 let monsterGlows = []; // Red glow lights for each monster
 let clock = new THREE.Clock();
+let skybox = null; // For Level 2 outdoor environment
 
 // Game state
 const game = {
     running: false,
     paused: false,
+    currentLevel: 1,
     startTime: 0,
     survivalTime: 0,
     pointerLocked: false
@@ -43,7 +46,8 @@ const player = {
     batteryDrain: 0.015,
     stamina: 100,
     staminaDrain: 0.12,
-    staminaRegen: 0.15
+    staminaRegen: 0.15,
+    godMode: false // Testing mode - press Z to toggle
 };
 
 // Sound system
@@ -1220,11 +1224,13 @@ function buildMaze() {
     // Add decorative objects throughout maze
     addMazeDecor();
     
-    // Add light sources throughout maze
-    addLightSources();
-    
-    // Add battery pickups
-    addBatteryPickups();
+    // Add light sources throughout maze (only in level 1)
+    if (game.currentLevel !== 2) {
+        addLightSources();
+        
+        // Add battery pickups
+        addBatteryPickups();
+    }
 }
 
 // Add light sources throughout maze
@@ -1604,7 +1610,7 @@ function createShadows() {
     
     bloodGeometry.setAttribute('position', new THREE.BufferAttribute(bloodPositions, 3));
     const bloodMaterial = new THREE.PointsMaterial({
-        color: 0x880000,
+        color: 0xffdd00,
         size: 0.15,
         transparent: true,
         opacity: 0.9,
@@ -1628,7 +1634,7 @@ function createShadows() {
     
     dustGeometry.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
     const dustMaterial = new THREE.PointsMaterial({
-        color: 0xaaaaaa,
+        color: 0xffffff,
         size: 0.08,
         transparent: true,
         opacity: 0.5
@@ -1636,87 +1642,6 @@ function createShadows() {
     const dust = new THREE.Points(dustGeometry, dustMaterial);
     scene.add(dust);
     particleSystems.push(dust);
-    
-    // Create WEEPING ANGEL - always follows player but stops when looked at
-    // ALWAYS spawn directly IN FRONT of the player so they can see it immediately
-    // Get camera direction and spawn ahead
-    const cameraDir = new THREE.Vector3();
-    camera.getWorldDirection(cameraDir);
-    
-    // Spawn 20 units in front of camera in the direction it's facing
-    const angelSpawnX = camera.position.x + (cameraDir.x * 20);
-    const angelSpawnZ = camera.position.z + (cameraDir.z * 20);
-    
-    // Taller, more menacing figure
-    const angelGeometry = new THREE.ConeGeometry(0.8, 3.2, 6);
-    const angelMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0x1a0000,
-        transparent: true,
-        opacity: 0.98,
-        side: THREE.DoubleSide
-    });
-    const angelMesh = new THREE.Mesh(angelGeometry, angelMaterial);
-    angelMesh.position.set(angelSpawnX, 1.8, angelSpawnZ);
-    angelMesh.rotation.x = Math.PI;
-    scene.add(angelMesh);
-    
-    // Dark red aura
-    const angelAuraGeometry = new THREE.SphereGeometry(1.5, 8, 8);
-    const angelAuraMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0x330000,
-        transparent: true,
-        opacity: 0.4,
-        side: THREE.BackSide
-    });
-    const angelAura = new THREE.Mesh(angelAuraGeometry, angelAuraMaterial);
-    angelMesh.add(angelAura);
-    
-    // Larger, brighter red eyes
-    const angelEyeGeometry = new THREE.SphereGeometry(0.35, 8, 8);
-    const angelEyeMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0xff0000,
-        emissive: 0xff0000,
-        emissiveIntensity: 3
-    });
-    const angelLeftEye = new THREE.Mesh(angelEyeGeometry, angelEyeMaterial);
-    const angelRightEye = new THREE.Mesh(angelEyeGeometry, angelEyeMaterial);
-    angelLeftEye.position.set(-0.4, 1.0, 0.5);
-    angelRightEye.position.set(0.4, 1.0, 0.5);
-    angelMesh.add(angelLeftEye);
-    angelMesh.add(angelRightEye);
-    
-    // Dark trailing particles
-    const angelParticleCount = 150;
-    const angelParticleGeometry = new THREE.BufferGeometry();
-    const angelParticlePositions = new Float32Array(angelParticleCount * 3);
-    
-    for (let j = 0; j < angelParticleCount; j++) {
-        angelParticlePositions[j * 3] = (Math.random() - 0.5) * 4;
-        angelParticlePositions[j * 3 + 1] = (Math.random() - 0.5) * 4;
-        angelParticlePositions[j * 3 + 2] = (Math.random() - 0.5) * 4;
-    }
-    
-    angelParticleGeometry.setAttribute('position', new THREE.BufferAttribute(angelParticlePositions, 3));
-    const angelParticleMaterial = new THREE.PointsMaterial({
-        color: 0x660000,
-        size: 0.3,
-        transparent: true,
-        opacity: 0.7,
-        blending: THREE.AdditiveBlending
-    });
-    const angelParticleSystem = new THREE.Points(angelParticleGeometry, angelParticleMaterial);
-    angelParticleSystem.position.copy(angelMesh.position);
-    scene.add(angelParticleSystem);
-    
-    weepingAngel = {
-        mesh: angelMesh,
-        particles: angelParticleSystem,
-        velocity: new THREE.Vector3(),
-        speed: 0.035, // Even slower and more manageable
-        frozen: false,
-        eyes: [angelLeftEye, angelRightEye],
-        lastUnseenTime: Date.now()
-    };
 }
 
 // Start game
@@ -1761,7 +1686,10 @@ function startGame() {
     initThree();
     generateMaze();
     buildMaze();
-    createShadows();
+    // Only create shadows (old monsters) in level 1
+    if (game.currentLevel === 1) {
+        createShadows();
+    }
     
     console.log('Scene initialized, camera position:', camera.position);
     console.log('Flashlight setup:', flashlight);
@@ -1796,6 +1724,8 @@ function startGame() {
 
 // Check collision with walls
 function checkCollision(position) {
+    // Skip collision in god mode
+    if (player.godMode) return false;
     const playerRadius = 0.4;
     
     for (const wall of walls) {
@@ -1829,7 +1759,7 @@ function updatePlayer() {
     const wantsToSprint = keys['Shift'] && player.sanity > 20 && player.stamina > 0;
     const canSprint = wantsToSprint && isMoving;
     const isSprinting = canSprint;
-    const currentSpeed = isSprinting ? player.sprintSpeed : player.speed;
+    let currentSpeed = isSprinting ? player.sprintSpeed : player.speed;
     
     // Update stamina
     if (isSprinting) {
@@ -1840,10 +1770,19 @@ function updatePlayer() {
         player.stamina = Math.min(100, player.stamina + regenRate);
     }
     
+    // God mode speed boost
+    if (player.godMode) {
+        currentSpeed *= 3;
+    }
+    
     // Direct movement - no momentum
     const moveVector = new THREE.Vector3();
     camera.getWorldDirection(moveVector);
-    moveVector.y = 0;
+    
+    // In god mode, allow vertical movement; otherwise lock to horizontal
+    if (!player.godMode) {
+        moveVector.y = 0;
+    }
     moveVector.normalize();
     
     const strafeVector = new THREE.Vector3();
@@ -1865,6 +1804,16 @@ function updatePlayer() {
         newPosition.add(strafeVector.multiplyScalar(-currentSpeed));
     }
     
+    // God mode: Vertical movement with Shift (down) and Space (up)
+    if (player.godMode) {
+        if (keys['Shift']) {
+            newPosition.y -= currentSpeed * 2; // Move down
+        }
+        if (keys[' ']) {
+            newPosition.y += currentSpeed * 2; // Move up
+        }
+    }
+    
     // Check collision
     if (!checkCollision(newPosition)) {
         camera.position.copy(newPosition);
@@ -1881,16 +1830,18 @@ function updatePlayer() {
     }
     camera.updateProjectionMatrix();
     
-    // Flashlight mechanics - always update position and target
-    flashlight.position.copy(camera.position);
+    // Flashlight mechanics - disabled in level 2
+    if (game.currentLevel !== 2) {
+        flashlight.position.copy(camera.position);
+        
+        const forwardVector = new THREE.Vector3();
+        camera.getWorldDirection(forwardVector);
+        
+        flashlight.target.position.copy(camera.position).add(forwardVector.multiplyScalar(10));
+        flashlight.target.updateMatrixWorld();
+    }
     
-    const forwardVector = new THREE.Vector3();
-    camera.getWorldDirection(forwardVector);
-    
-    flashlight.target.position.copy(camera.position).add(forwardVector.multiplyScalar(10));
-    flashlight.target.updateMatrixWorld();
-    
-    if (player.flashlight && player.battery > 0) {
+    if (player.flashlight && player.battery > 0 && game.currentLevel !== 2) {
         player.battery -= player.batteryDrain;
         player.battery = Math.max(0, player.battery);
         
@@ -1971,7 +1922,7 @@ function updatePlayer() {
         camera.position.y += (player.height - camera.position.y) * 0.1;
     }
     
-    // Sanity mechanics - MORE INTENSE
+    // Sanity mechanics - different per level
     const nearShadow = shadows.some(s => {
         return camera.position.distanceTo(s.mesh.position) < 8;
     });
@@ -1979,57 +1930,82 @@ function updatePlayer() {
         return camera.position.distanceTo(s.mesh.position) < 4;
     });
     
-    // Light sources affect sanity
-    if (player.matchLit) {
-        player.sanity = Math.min(100, player.sanity + 0.2); // Matches restore sanity faster
-    } else if (player.flashlight && player.battery > 0) {
-        player.sanity = Math.min(100, player.sanity + 0.05); // Flashlight slows drain
-    } else {
-        // Check if near a light source
-        let nearLight = false;
-        for (const lightSource of lightSources) {
-            const dist = camera.position.distanceTo(lightSource.position);
-            if (dist < 10) {
-                nearLight = true;
-                player.sanity = Math.min(100, player.sanity + 0.15); // Light sources restore sanity
-                break;
+    const nearAngel = angels.some(a => {
+        return camera.position.distanceTo(a.mesh.position) < 10;
+    });
+    const veryAngelClose = angels.some(a => {
+        return camera.position.distanceTo(a.mesh.position) < 4;
+    });
+    
+    // Level 1: Darkness drains sanity
+    if (game.currentLevel === 1) {
+        // Light sources affect sanity
+        if (player.matchLit) {
+            player.sanity = Math.min(100, player.sanity + 0.2); // Matches restore sanity faster
+        } else if (player.flashlight && player.battery > 0) {
+            player.sanity = Math.min(100, player.sanity + 0.05); // Flashlight slows drain
+        } else {
+            // Check if near a light source
+            let nearLight = false;
+            for (const lightSource of lightSources) {
+                const dist = camera.position.distanceTo(lightSource.position);
+                if (dist < 10) {
+                    nearLight = true;
+                    player.sanity = Math.min(100, player.sanity + 0.15); // Light sources restore sanity
+                    break;
+                }
+            }
+            
+            if (!nearLight) {
+                // Sanity drains faster in darkness, even faster near shadows
+                if (veryShadowClose) {
+                    player.sanity -= 0.5; // Very close to shadow
+                } else if (nearShadow) {
+                    player.sanity -= 0.3; // Near shadow
+                } else {
+                    player.sanity -= 0.12; // In darkness
+                }
             }
         }
         
-        if (!nearLight) {
-            // Sanity drains faster in darkness, even faster near shadows
-            if (veryShadowClose) {
-                player.sanity -= 0.5; // Very close to shadow
-            } else if (nearShadow) {
-                player.sanity -= 0.3; // Near shadow
-            } else {
-                player.sanity -= 0.12; // In darkness
+        // Play heartbeat sound based on fear/darkness
+        if (!player.matchLit && (!player.flashlight || player.battery <= 0)) {
+            // In darkness - play heartbeat
+            if (Math.random() > 0.95) {
+                const rate = 1 + player.fear; // Faster at higher fear
+                sounds.heartbeat.play(rate);
+            }
+        } else if (player.sanity < 40) {
+            // Low sanity - occasional heartbeat
+            if (Math.random() > 0.98) {
+                const rate = 1 + (1 - player.sanity / 100);
+                sounds.heartbeat.play(rate);
             }
         }
+        
+        // Ambient light based on sanity
+        ambientLight.intensity = 0.6 + (player.sanity / 100) * 0.2;
     }
-    
-    // Play heartbeat sound based on fear/darkness
-    if (!player.matchLit && (!player.flashlight || player.battery <= 0)) {
-        // In darkness - play heartbeat
-        if (Math.random() > 0.95) {
-            const rate = 1 + player.fear; // Faster at higher fear
-            sounds.heartbeat.play(rate);
+    // Level 2: Bright environment, sanity only drains near Angels
+    else if (game.currentLevel === 2) {
+        // In Level 2, sanity slowly regenerates in the light
+        player.sanity = Math.min(100, player.sanity + 0.08);
+        
+        // But drains when near Angels
+        if (veryAngelClose) {
+            player.sanity -= 0.6; // Very close to angel
+        } else if (nearAngel) {
+            player.sanity -= 0.35; // Near angel
         }
-    } else if (player.sanity < 40) {
-        // Low sanity - occasional heartbeat
-        if (Math.random() > 0.98) {
-            const rate = 1 + (1 - player.sanity / 100);
-            sounds.heartbeat.play(rate);
-        }
+        
+        // Light stays constant in Level 2
+        ambientLight.intensity = 1.5;
     }
     
     // Removed annoying heartbeat and breathing sounds
     
     player.sanity = Math.max(0, player.sanity);
     player.fear = 1 - (player.sanity / 100);
-    
-    // Ambient light based on sanity (always provide natural base light)
-    ambientLight.intensity = 0.6 + (player.sanity / 100) * 0.2;
     
     // Check exit door
     const exitPos = new THREE.Vector3(exitCell.x * cellSize, player.height, exitCell.z * cellSize);
@@ -2038,7 +2014,7 @@ function updatePlayer() {
     }
     
     // Death by sanity
-    if (player.sanity <= 0) {
+    if (player.sanity <= 0 && !player.godMode) {
         gameOver("Your mind shattered in the darkness...");
     }
 }
@@ -2215,7 +2191,7 @@ function updateShadows() {
         shadow.particles.geometry.attributes.position.needsUpdate = true;
         
         // Collision with player
-        if (dist < 1.5) {
+        if (dist < 1.5 && !player.godMode) {
             gameOver("The darkness consumed you...");
         }
     }
@@ -2315,8 +2291,103 @@ function updateWeepingAngel() {
     weepingAngel.particles.geometry.attributes.position.needsUpdate = true;
     
     // Collision with player
-    if (dist < 1.5) {
+    if (dist < 1.5 && !player.godMode) {
         gameOver("The Angel caught you in the darkness...");
+    }
+}
+
+// Update Angels - Level 2 monsters with OPPOSITE behavior
+// Angels CHASE when looked at, FREEZE when not looked at
+function updateAngels() {
+    for (let i = 0; i < angels.length; i++) {
+        const angel = angels[i];
+        const dist = camera.position.distanceTo(angel.mesh.position);
+        
+        // Check if player is looking at this angel
+        const directionToAngel = new THREE.Vector3();
+        directionToAngel.subVectors(angel.mesh.position, camera.position).normalize();
+        
+        const cameraDirection = new THREE.Vector3();
+        camera.getWorldDirection(cameraDirection);
+        
+        const angle = cameraDirection.angleTo(directionToAngel);
+        const isBeingLookedAt = angle < Math.PI / 3 && dist < 40;
+        
+        if (isBeingLookedAt) {
+            // ANGELS CHASE WHEN LOOKED AT (opposite of weeping angels)
+            angel.huntMode = true;
+            angel.chargeTimer++;
+            
+            // Calculate direction to player
+            const direction = new THREE.Vector3();
+            direction.subVectors(camera.position, angel.mesh.position);
+            direction.y = 0;
+            direction.normalize();
+            
+            // Move faster the longer they're looked at (charging up)
+            const chargeMultiplier = 1 + Math.min(angel.chargeTimer / 60, 3); // Up to 4x speed
+            const moveSpeed = angel.speed * chargeMultiplier;
+            
+            // Move toward player
+            const movement = direction.multiplyScalar(moveSpeed);
+            const newPos = angel.mesh.position.clone().add(movement);
+            newPos.y = 0;
+            
+            // Check collision
+            const testPos = newPos.clone();
+            testPos.y = 1.5;
+            
+            if (!checkCollision(testPos)) {
+                angel.mesh.position.copy(newPos);
+                angel.glow.position.copy(newPos);
+                angel.glow.position.y = 2;
+            }
+            
+            // Face player
+            angel.mesh.lookAt(camera.position);
+            
+            // Eyes glow brighter when charging
+            angel.eyes[0].visible = true;
+            angel.eyes[1].visible = true;
+            const glowIntensity = 2 + chargeMultiplier;
+            angel.eyes[0].material.emissiveIntensity = glowIntensity;
+            angel.eyes[1].material.emissiveIntensity = glowIntensity;
+            
+            // Halo spins faster when charging
+            angel.halo.rotation.z += 0.05 * chargeMultiplier;
+            
+            // Wings flap when charging
+            const flapAngle = Math.sin(Date.now() / 100 * chargeMultiplier) * 0.3;
+            angel.wings[0].rotation.y = Math.PI / 6 + flapAngle;
+            angel.wings[1].rotation.y = -Math.PI / 6 - flapAngle;
+            
+            // Glow light pulses
+            angel.glow.intensity = 2 + Math.sin(Date.now() / 200) * chargeMultiplier;
+            
+        } else {
+            // FROZEN when not being looked at
+            angel.huntMode = false;
+            angel.chargeTimer = Math.max(0, angel.chargeTimer - 2); // Slowly lose charge
+            
+            // Eyes dim
+            angel.eyes[0].material.emissiveIntensity = 1;
+            angel.eyes[1].material.emissiveIntensity = 1;
+            
+            // Halo barely spins
+            angel.halo.rotation.z += 0.01;
+            
+            // Wings at rest
+            angel.wings[0].rotation.y = Math.PI / 6;
+            angel.wings[1].rotation.y = -Math.PI / 6;
+            
+            // Glow steady
+            angel.glow.intensity = 2;
+        }
+        
+        // Collision with player
+        if (dist < 1.5 && !player.godMode) {
+            gameOver("The Angel's light consumed you...");
+        }
     }
 }
 
@@ -2440,6 +2511,7 @@ function checkNotePickup() {
         if (dist < 3) {
             if (!noteScreenVisible) {
                 noteScreenVisible = true;
+                updateNoteContent(); // Update content based on level
                 noteScreen.style.display = 'flex';
             }
         } else {
@@ -2449,6 +2521,39 @@ function checkNotePickup() {
                 noteScreen.style.display = 'none';
             }
         }
+    }
+}
+
+// Update note content based on current level
+function updateNoteContent() {
+    const noteTitle = document.getElementById('note-title');
+    const noteDate = document.getElementById('note-date');
+    const noteText = document.getElementById('note-text');
+    
+    if (game.currentLevel === 1) {
+        noteTitle.textContent = "RESEARCHER'S LOG - FINAL ENTRY";
+        noteDate.textContent = "Date: [REDACTED]";
+        noteText.innerHTML = `
+            <p>If you're reading this, you're already being watched.</p>
+            <p>They call them "The Watchers" - entities that exist in darkness. I've studied them for months, and I've learned their nature:</p>
+            <p><strong>They freeze when observed.</strong> Look directly at them and they become statues. But the moment you blink, the moment you look away... they move. Silent. Swift. Deadly.</p>
+            <p><strong>They fear the flame.</strong> Light a match near them and they flee in terror. The fire reminds them of something ancient, something that hurt them long ago.</p>
+            <p><strong>You will hear them coming.</strong> Their footsteps echo through these halls - louder than yours, heavier than yours. When you hear them close, you have seconds to decide: look, or run.</p>
+            <p>If you want to survive, remember: <em>Don't blink. Don't turn your back. And whatever you do, don't let them get close.</em></p>
+            <p class="note-signature">- Dr. [ILLEGIBLE] [Walk away to close note]</p>
+        `;
+    } else if (game.currentLevel === 2) {
+        noteTitle.textContent = "SANCTUARY LOG - ASCENSION RECORD";
+        noteDate.textContent = "Location: The Eternal Gardens";
+        noteText.innerHTML = `
+            <p>You've escaped the darkness. But light can be just as dangerous.</p>
+            <p>Welcome to the realm of <strong>The Angels</strong> - beings of pure radiance. But do not let their beauty deceive you.</p>
+            <p><strong>They are drawn to attention.</strong> The Angels MOVE when you look at them. Your gaze awakens them. The longer you stare, the faster they charge toward you with terrible purpose.</p>
+            <p><strong>They freeze when ignored.</strong> Look away and they become statues of light, harmless and still. But turn your eyes back and their hunt resumes with even greater fervor.</p>
+            <p><strong>They build momentum.</strong> The more you watch them, the more power they gain. Their charge accelerates. Their wings beat faster. Soon they will be upon you.</p>
+            <p>This is the inverse of what you knew. <em>Here, to look is to invite doom. To ignore is to survive. Keep moving. Never stare too long.</em></p>
+            <p class="note-signature">- Keeper of the Light [Walk away to close note]</p>
+        `;
     }
 }
 
@@ -2493,57 +2598,8 @@ function render() {
         }
     }
     
-    // ENHANCED VHS filter - much more pronounced and visible
-    // (time variable already declared at start of render function)
-    
-    // Strong base VHS effects
-    let filterString = 'saturate(0.5) contrast(1.6) sepia(0.35) ';
-    
-    // Heavy chromatic aberration
-    const chromaticShift = Math.sin(time * 3) * 1.5 + 1.5;
-    filterString += `hue-rotate(${chromaticShift * 6}deg) `;
-    
-    // Strong brightness flicker (VHS tape degradation)
-    const flicker = 0.85 + Math.sin(time * 60) * 0.1 + Math.random() * 0.1;
-    filterString += `brightness(${flicker}) `;
-    
-    // Frequent strong glitches
-    if (Math.random() > 0.95) {
-        filterString += `hue-rotate(${Math.random() * 60 - 30}deg) `;
-        filterString += `contrast(${1 + Math.random() * 0.5}) `;
-    }
-    
-    // Add noticeable grain/noise
-    const grain = 0.05 + Math.random() * 0.05;
-    filterString += `opacity(${1 - grain}) `;
-    
-    // Scanline simulation
-    if (Math.floor(time * 10) % 2 === 0) {
-        filterString += 'brightness(0.95) ';
-    }
-    
-    // Static effect when monster is close
-    if (closestMonsterDist < 12) {
-        const staticIntensity = 1 - (closestMonsterDist / 12);
-        filterString += `brightness(${1 + Math.random() * staticIntensity * 0.2}) `;
-        filterString += `contrast(${1 + staticIntensity * 0.3}) `;
-    }
-    
-    // Post-processing fear effects - MORE INTENSE
-    if (player.fear > 0.4) {
-        // Camera shake increases with fear
-        const shake = (player.fear - 0.3) * 0.025;
-        camera.position.x += (Math.random() - 0.5) * shake;
-        camera.position.z += (Math.random() - 0.5) * shake;
-        
-        // Chromatic aberration and distortion
-        if (Math.random() > 0.95) {
-            const distortion = Math.floor(player.fear * 25);
-            filterString += `hue-rotate(${Math.random() * distortion}deg) blur(${player.fear * 0.8}px)`;
-        }
-    }
-    
-    renderer.domElement.style.filter = filterString;
+    // No VHS filter - clean visual experience
+    renderer.domElement.style.filter = 'none';
     
     // Vignette effect at low sanity
     if (player.sanity < 40) {
@@ -2722,8 +2778,15 @@ function gameOver(message) {
     }, 2000);
 }
 
-// Victory
+// Victory / Level Transition
 function victory() {
+    // Check if this is Level 1 - if so, transition to Level 2
+    if (game.currentLevel === 1) {
+        transitionToLevel2();
+        return;
+    }
+    
+    // Level 2 complete - show actual victory
     game.running = false;
     game.pointerLocked = false;
     
@@ -2750,6 +2813,339 @@ function victory() {
         `Time survived: ${game.survivalTime} seconds`;
 }
 
+// Transition to Level 2
+function transitionToLevel2() {
+    console.log('Transitioning to Level 2...');
+    
+    // Stop Level 1 sounds
+    stopFootstep();
+    if (sounds.soundtrack) sounds.soundtrack.pause();
+    if (sounds.ambience2) sounds.ambience2.pause();
+    
+    // Clean up Level 1
+    shadows.forEach(shadow => {
+        if (shadow.mesh) scene.remove(shadow.mesh);
+        if (shadow.particles) scene.remove(shadow.particles);
+        if (shadow.glow) scene.remove(shadow.glow);
+    });
+    shadows = [];
+    
+    // Clear monster footsteps
+    monsterFootsteps.forEach(fs => {
+        fs.pause();
+        fs.currentTime = 0;
+    });
+    monsterFootsteps.length = 0;
+    
+    // Remove Level 1 maze
+    if (maze) {
+        scene.remove(maze);
+        maze = null;
+    }
+    if (floor) scene.remove(floor);
+    if (ceiling) scene.remove(ceiling);
+    
+    walls.forEach(wall => scene.remove(wall));
+    walls = [];
+    
+    matchPickups.forEach(pickup => scene.remove(pickup));
+    matchPickups = [];
+    
+    batteryPickups.forEach(pickup => scene.remove(pickup));
+    batteryPickups = [];
+    
+    pillars.forEach(pillar => scene.remove(pillar));
+    pillars = [];
+    
+    // Update game state
+    game.currentLevel = 2;
+    player.sanity = 100;
+    player.matches = 10;
+    player.battery = 100;
+    
+    // Initialize Level 2
+    initLevel2();
+    
+    console.log('Level 2 initialized');
+}
+
+// Initialize Level 2 - Bright outdoor heaven-like maze
+function initLevel2() {
+    // Change background to bright blue sky
+    scene.background = new THREE.Color(0x4da6ff);
+    scene.fog = null; // Remove fog for outdoor feeling
+    
+    // Change ambient light to bright white/warm
+    ambientLight.color.setHex(0xffffee);
+    ambientLight.intensity = 1.5; // Much brighter
+    
+    // Add directional sunlight
+    const sunlight = new THREE.DirectionalLight(0xffeeaa, 1.2);
+    sunlight.position.set(50, 100, 30);
+    sunlight.castShadow = true;
+    scene.add(sunlight);
+    
+    // Create skybox (bright blue sky)
+    const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
+    const skyboxMaterials = [
+        new THREE.MeshBasicMaterial({ color: 0x4da6ff, side: THREE.BackSide }), // Right - bright blue
+        new THREE.MeshBasicMaterial({ color: 0x4da6ff, side: THREE.BackSide }), // Left - bright blue
+        new THREE.MeshBasicMaterial({ color: 0x66b3ff, side: THREE.BackSide }), // Top (lighter blue)
+        new THREE.MeshBasicMaterial({ color: 0x4da6ff, side: THREE.BackSide }), // Bottom - bright blue
+        new THREE.MeshBasicMaterial({ color: 0x4da6ff, side: THREE.BackSide }), // Front - bright blue
+        new THREE.MeshBasicMaterial({ color: 0x4da6ff, side: THREE.BackSide })  // Back - bright blue
+    ];
+    skybox = new THREE.Mesh(skyboxGeometry, skyboxMaterials);
+    scene.add(skybox);
+    
+    // Regenerate maze with white materials
+    generateMaze();
+    buildLevel2Maze();
+    createAngels();
+    
+    // Create note for Level 2 near spawn
+    const noteGeometry = new THREE.BoxGeometry(0.3, 0.4, 0.05);
+    const noteMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffD700,
+        emissive: 0xffaa00,
+        emissiveIntensity: 0.8
+    });
+    noteObject = new THREE.Mesh(noteGeometry, noteMaterial);
+    noteObject.position.set(10, 0.5, 10);
+    noteObject.rotation.y = Math.PI / 4;
+    scene.add(noteObject);
+    
+    // Golden glow to note
+    const noteGlow = new THREE.PointLight(0xffD700, 2, 8);
+    noteGlow.position.copy(noteObject.position);
+    scene.add(noteGlow);
+    noteScreenVisible = false;
+    
+    // Reset player position
+    camera.position.set(cellSize / 2, player.height, cellSize / 2);
+}
+
+// Build Level 2 maze - white and bright
+function buildLevel2Maze() {
+    const wallHeight = 6;
+    const wallMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff,
+        roughness: 0.3,
+        metalness: 0.1,
+        emissive: 0xffffee,
+        emissiveIntensity: 0.2
+    });
+    
+    // Create walls
+    for (let x = 0; x < mazeSize; x++) {
+        for (let z = 0; z < mazeSize; z++) {
+            if (mazeData[x][z] === 1) {
+                const wallGeometry = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
+                const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+                wall.position.set(x * cellSize, wallHeight / 2, z * cellSize);
+                wall.castShadow = true;
+                wall.receiveShadow = true;
+                scene.add(wall);
+                walls.push(wall);
+            }
+        }
+    }
+    
+    // Create white marble floor - larger to cover whole map
+    const floorGeometry = new THREE.PlaneGeometry(mazeSize * cellSize * 1.5, mazeSize * cellSize * 1.5);
+    const floorMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xf5f5f5,
+        roughness: 0.2,
+        metalness: 0.3
+    });
+    floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+    
+    // NO CEILING - outdoor environment
+    
+    // Exit marker - golden glowing portal
+    const exitGeometry = new THREE.CylinderGeometry(1.5, 1.5, 8, 32);
+    const exitMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffD700,
+        emissive: 0xffD700,
+        emissiveIntensity: 1.5,
+        transparent: true,
+        opacity: 0.7
+    });
+    const exitMarker = new THREE.Mesh(exitGeometry, exitMaterial);
+    exitMarker.position.set(exitCell.x * cellSize, 4, exitCell.z * cellSize);
+    scene.add(exitMarker);
+    
+    // Add golden light at exit
+    const exitLight = new THREE.PointLight(0xffD700, 3, 20);
+    exitLight.position.set(exitCell.x * cellSize, 4, exitCell.z * cellSize);
+    scene.add(exitLight);
+    
+    // Add outdoor structures - white marble pillars throughout the maze
+    const numPillars = 20 + Math.floor(Math.random() * 10);
+    for (let i = 0; i < numPillars; i++) {
+        let px, pz, attempts = 0;
+        do {
+            px = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            pz = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            attempts++;
+        } while ((mazeData[px][pz] === 1 || (px === 0 && pz === 0) || (px === exitCell.x && pz === exitCell.z)) && attempts < 100);
+        
+        // Tall marble pillar
+        const pillarGeometry = new THREE.CylinderGeometry(0.6, 0.7, 10, 8);
+        const pillarMaterial = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            roughness: 0.2,
+            metalness: 0.4,
+            emissive: 0xffffee,
+            emissiveIntensity: 0.3
+        });
+        const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
+        pillar.position.set(px * cellSize, 5, pz * cellSize);
+        pillar.castShadow = true;
+        pillar.receiveShadow = true;
+        scene.add(pillar);
+        pillars.push(pillar);
+        
+        // Golden capital on top
+        const capitalGeometry = new THREE.BoxGeometry(1.2, 0.5, 1.2);
+        const capitalMaterial = new THREE.MeshStandardMaterial({
+            color: 0xffD700,
+            emissive: 0xffaa00,
+            emissiveIntensity: 0.5,
+            roughness: 0.1,
+            metalness: 0.8
+        });
+        const capital = new THREE.Mesh(capitalGeometry, capitalMaterial);
+        capital.position.set(px * cellSize, 10.2, pz * cellSize);
+        capital.castShadow = true;
+        scene.add(capital);
+    }
+}
+
+// Create Angels - Level 2 monsters
+function createAngels() {
+    angels = [];
+    
+    const numAngels = 7 + Math.floor(Math.random() * 3); // 7-9 angels
+    
+    for (let i = 0; i < numAngels; i++) {
+        // Find random valid position
+        let spawnX, spawnZ;
+        let attempts = 0;
+        let validPosition = false;
+        
+        do {
+            const rx = 5 + Math.floor(Math.random() * (mazeSize - 10));
+            const rz = 5 + Math.floor(Math.random() * (mazeSize - 10));
+            
+            spawnX = rx * cellSize + cellSize * 0.5;
+            spawnZ = rz * cellSize + cellSize * 0.5;
+            
+            const testPos = new THREE.Vector3(spawnX, 1.5, spawnZ);
+            validPosition = !checkCollision(testPos);
+            
+            // Also check distance from player
+            const distFromPlayer = Math.sqrt(
+                (spawnX - camera.position.x) ** 2 + 
+                (spawnZ - camera.position.z) ** 2
+            );
+            if (distFromPlayer < 30) validPosition = false;
+            
+            attempts++;
+        } while (!validPosition && attempts < 100);
+        
+        if (!validPosition) continue;
+        
+        // Create Angel body - white and glowing
+        const bodyGroup = new THREE.Group();
+        
+        // Main body - white robe
+        const bodyGeometry = new THREE.CylinderGeometry(0.6, 0.8, 2.5, 8);
+        const bodyMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff,
+            emissive: 0xffffee,
+            emissiveIntensity: 0.5,
+            roughness: 0.4
+        });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.position.y = 1.2;
+        bodyGroup.add(body);
+        
+        // Head - white sphere
+        const headGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+        const head = new THREE.Mesh(headGeometry, bodyMaterial);
+        head.position.y = 2.7;
+        bodyGroup.add(head);
+        
+        // Yellow glowing eyes
+        const eyeGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+        const eyeMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffff00,
+            emissive: 0xffff00,
+            emissiveIntensity: 2
+        });
+        
+        const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        leftEye.position.set(-0.15, 2.7, 0.35);
+        bodyGroup.add(leftEye);
+        
+        const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        rightEye.position.set(0.15, 2.7, 0.35);
+        bodyGroup.add(rightEye);
+        
+        // Wings - white and feathered
+        const wingGeometry = new THREE.BoxGeometry(1.5, 2, 0.2);
+        const leftWing = new THREE.Mesh(wingGeometry, bodyMaterial);
+        leftWing.position.set(-0.8, 1.5, -0.2);
+        leftWing.rotation.y = Math.PI / 6;
+        bodyGroup.add(leftWing);
+        
+        const rightWing = new THREE.Mesh(wingGeometry, bodyMaterial);
+        rightWing.position.set(0.8, 1.5, -0.2);
+        rightWing.rotation.y = -Math.PI / 6;
+        bodyGroup.add(rightWing);
+        
+        // Halo - golden ring
+        const haloGeometry = new THREE.TorusGeometry(0.5, 0.05, 8, 32);
+        const haloMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffD700,
+            emissive: 0xffD700,
+            emissiveIntensity: 2
+        });
+        const halo = new THREE.Mesh(haloGeometry, haloMaterial);
+        halo.position.y = 3.5;
+        halo.rotation.x = Math.PI / 2;
+        bodyGroup.add(halo);
+        
+        bodyGroup.position.set(spawnX, 0, spawnZ);
+        scene.add(bodyGroup);
+        
+        // Golden glow light
+        const glowLight = new THREE.PointLight(0xffD700, 2, 8);
+        glowLight.position.copy(bodyGroup.position);
+        glowLight.position.y = 2;
+        scene.add(glowLight);
+        
+        angels.push({
+            mesh: bodyGroup,
+            x: spawnX,
+            y: spawnZ,
+            velocity: new THREE.Vector3(0, 0, 0),
+            speed: 0.05,
+            eyes: [leftEye, rightEye],
+            glow: glowLight,
+            halo: halo,
+            wings: [leftWing, rightWing],
+            huntMode: false, // Angels have different behavior
+            chargeTimer: 0
+        });
+    }
+}
+
+
 // Game loop
 function gameLoop() {
     // Always continue the loop, even when paused
@@ -2760,12 +3156,21 @@ function gameLoop() {
     
     // Game logic runs even when note is visible (no pausing)
     updatePlayer();
-    updateShadows();
-    updateWeepingAngel();
+    
+    // Update monsters based on current level
+    if (game.currentLevel === 1) {
+        updateShadows();
+        updateLowSanityFootsteps(); // Update overlapping footsteps when sanity is low
+    } else if (game.currentLevel === 2) {
+        updateAngels();
+    }
+    
     updateParticles();
-    updateLowSanityFootsteps(); // Update overlapping footsteps when sanity is low
     checkMatchPickups();
-    checkBatteryPickups();
+    // Only check battery pickups in level 1
+    if (game.currentLevel === 1) {
+        checkBatteryPickups();
+    }
     checkNotePickup();
     
     // Randomly play ambience2.mp3 at random timestamps
@@ -2938,6 +3343,32 @@ window.addEventListener('keydown', (e) => {
             } else {
                 toggleFlashlight();
             }
+            break;
+        case 'KeyZ':
+            // Toggle god mode for testing
+            player.godMode = !player.godMode;
+            console.log('GOD MODE:', player.godMode ? 'ENABLED' : 'DISABLED');
+            
+            // Show/hide persistent indicator
+            const godModeIndicator = document.getElementById('godmode-indicator');
+            if (godModeIndicator) {
+                godModeIndicator.style.display = player.godMode ? 'block' : 'none';
+            }
+            
+            // Show temporary notification
+            const godModeMsg = document.createElement('div');
+            godModeMsg.style.position = 'fixed';
+            godModeMsg.style.top = '20px';
+            godModeMsg.style.left = '50%';
+            godModeMsg.style.transform = 'translateX(-50%)';
+            godModeMsg.style.color = player.godMode ? '#0f0' : '#f00';
+            godModeMsg.style.fontSize = '24px';
+            godModeMsg.style.fontWeight = 'bold';
+            godModeMsg.style.textShadow = '0 0 10px currentColor';
+            godModeMsg.style.zIndex = '10000';
+            godModeMsg.textContent = 'GOD MODE: ' + (player.godMode ? 'ON' : 'OFF');
+            document.body.appendChild(godModeMsg);
+            setTimeout(() => godModeMsg.remove(), 2000);
             break;
     }
 });
