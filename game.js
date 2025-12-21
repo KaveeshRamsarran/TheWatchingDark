@@ -18,6 +18,7 @@ let clock = new THREE.Clock();
 // Game state
 const game = {
     running: false,
+    paused: false,
     startTime: 0,
     survivalTime: 0,
     pointerLocked: false
@@ -86,6 +87,7 @@ let matchPickups = [];
 let wallMaterial; // Store wall material for reuse
 let lightSources = []; // Track light sources in maze
 let batteryPickups = []; // Track battery pickups
+let pillars = []; // Track pillars for collision
 
 // Particles
 const particleSystems = [];
@@ -93,10 +95,21 @@ const particleSystems = [];
 // Monster footstep sounds
 const monsterFootsteps = [];
 
+// Low sanity overlapping footsteps (creates illusion of multiple monsters)
+const lowSanityFootsteps = [];
+const MAX_LOW_SANITY_FOOTSTEPS = 4; // Number of overlapping footstep sounds
+
 // Note system
 let noteObject = null;
 let notePickedUp = false;
 let noteScreenVisible = false;
+
+// Settings system
+const gameSettings = {
+    musicVolume: 0.3, // Default 30%
+    sfxVolume: 0.75, // Default 75%
+    cameraSensitivity: 0.002 // Default sensitivity
+};
 
 // Create sound effects using Web Audio API
 function createSounds() {
@@ -183,13 +196,24 @@ function playFootstep() {
     if (!sounds.footstepAudio) {
         sounds.footstepAudio = new Audio('audio/footsteps.mp3');
         sounds.footstepAudio.loop = true;
-        sounds.footstepAudio.volume = 0.99;
+        sounds.footstepAudio.volume = 1.0 * gameSettings.sfxVolume;
     }
     
     // Initialize match lighting audio
     if (!sounds.matchLightAudio) {
         sounds.matchLightAudio = new Audio('audio/lighting a match.mp3');
-        sounds.matchLightAudio.volume = 0.5;
+        sounds.matchLightAudio.volume = 0.5 * gameSettings.sfxVolume;
+    }
+    
+    // Initialize low sanity overlapping footsteps
+    if (lowSanityFootsteps.length === 0) {
+        for (let i = 0; i < MAX_LOW_SANITY_FOOTSTEPS; i++) {
+            const footstep = new Audio('audio/footsteps.mp3');
+            footstep.loop = true;
+            footstep.volume = 0;
+            footstep.playbackRate = 0.95 + (Math.random() * 0.1); // Slight variation in speed
+            lowSanityFootsteps.push(footstep);
+        }
     }
     
     // Start playing if not already
@@ -202,6 +226,52 @@ function stopFootstep() {
     if (sounds.footstepAudio && !sounds.footstepAudio.paused) {
         sounds.footstepAudio.pause();
         sounds.footstepAudio.currentTime = 0;
+    }
+}
+
+function updateLowSanityFootsteps() {
+    // When sanity is below 30, play overlapping footsteps to simulate multiple monsters
+    if (player.sanity < 30) {
+        const intensity = 1 - (player.sanity / 30); // 0 to 1, higher when sanity is lower
+        
+        lowSanityFootsteps.forEach((footstep, index) => {
+            // Resume audio context if needed
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            // Calculate volume for this footstep layer
+            // Each layer adds to the cacophony as sanity drops
+            const layerThreshold = index / MAX_LOW_SANITY_FOOTSTEPS;
+            if (intensity > layerThreshold) {
+                const layerIntensity = (intensity - layerThreshold) * MAX_LOW_SANITY_FOOTSTEPS;
+                footstep.volume = Math.min(0.6, layerIntensity * 0.4) * gameSettings.sfxVolume; // Cap at 0.6 per layer
+                
+                // Vary playback rate slightly over time for unsettling effect
+                footstep.playbackRate = 0.92 + (Math.sin(Date.now() / 1000 + index) * 0.08);
+                
+                // Start playing with slight offset
+                if (footstep.paused) {
+                    setTimeout(() => {
+                        footstep.play().catch(e => console.log('Low sanity footstep error:', e));
+                    }, index * 250); // Stagger start times
+                }
+            } else {
+                // Stop this layer if sanity is too high
+                if (!footstep.paused) {
+                    footstep.pause();
+                    footstep.currentTime = 0;
+                }
+            }
+        });
+    } else {
+        // Stop all low sanity footsteps when sanity is >= 30
+        lowSanityFootsteps.forEach(footstep => {
+            if (!footstep.paused) {
+                footstep.pause();
+                footstep.currentTime = 0;
+            }
+        });
     }
 }
 
@@ -364,7 +434,8 @@ function isValidSpawnPosition(x, z) {
 function initThree() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0a0a);
-    scene.fog = new THREE.Fog(0x0a0a0a, 5, 35);
+    // Volumetric exponential fog - denser and more atmospheric
+    scene.fog = new THREE.FogExp2(0x0a0a0a, 0.055);
     
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
     camera.position.set(8, player.height, 8);
@@ -467,7 +538,7 @@ function generateMaze() {
     }
     
     // Create open areas (rooms) by removing interior walls
-    const numRooms = 15 + Math.floor(Math.random() * 10); // 15-24 open areas for bigger map
+    const numRooms = 10 + Math.floor(Math.random() * 8); // 10-17 rectangular rooms
     for (let i = 0; i < numRooms; i++) {
         // Random room position and size
         const roomX = 1 + Math.floor(Math.random() * (mazeSize - 12));
@@ -487,6 +558,84 @@ function generateMaze() {
                     mazeData[rx][rz].walls.south = false;
                     if (rz + 1 < mazeSize) mazeData[rx][rz + 1].walls.north = false;
                 }
+            }
+        }
+    }
+    
+    // Create circular open areas
+    const numCircularRooms = 5 + Math.floor(Math.random() * 5); // 5-9 circular areas
+    for (let i = 0; i < numCircularRooms; i++) {
+        const centerX = 3 + Math.floor(Math.random() * (mazeSize - 6));
+        const centerZ = 3 + Math.floor(Math.random() * (mazeSize - 6));
+        const radius = 2 + Math.floor(Math.random() * 4); // Radius of 2-5 cells
+        
+        // Remove walls in circular pattern
+        for (let x = centerX - radius; x <= centerX + radius; x++) {
+            for (let z = centerZ - radius; z <= centerZ + radius; z++) {
+                if (x >= 0 && x < mazeSize && z >= 0 && z < mazeSize) {
+                    const dist = Math.sqrt((x - centerX) ** 2 + (z - centerZ) ** 2);
+                    if (dist <= radius) {
+                        // Remove all interior walls
+                        if (x < mazeSize - 1) {
+                            mazeData[x][z].walls.east = false;
+                            mazeData[x + 1][z].walls.west = false;
+                        }
+                        if (z < mazeSize - 1) {
+                            mazeData[x][z].walls.south = false;
+                            mazeData[x][z + 1].walls.north = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Create curved corridors by carving winding paths
+    const numCurvedCorridors = 8 + Math.floor(Math.random() * 6); // 8-13 curved corridors
+    for (let i = 0; i < numCurvedCorridors; i++) {
+        let x = Math.floor(Math.random() * mazeSize);
+        let z = Math.floor(Math.random() * mazeSize);
+        const length = 6 + Math.floor(Math.random() * 12); // Corridor length
+        let direction = Math.floor(Math.random() * 4); // 0=N, 1=E, 2=S, 3=W
+        
+        for (let step = 0; step < length; step++) {
+            // Randomly curve the corridor (30% chance each step)
+            if (Math.random() < 0.3) {
+                direction = (direction + (Math.random() < 0.5 ? 1 : 3)) % 4; // Turn left or right
+            }
+            
+            // Carve the corridor in current direction
+            let nx = x;
+            let nz = z;
+            let wall = '';
+            let oppositeWall = '';
+            
+            if (direction === 0) { // North
+                nz = z - 1;
+                wall = 'north';
+                oppositeWall = 'south';
+            } else if (direction === 1) { // East
+                nx = x + 1;
+                wall = 'east';
+                oppositeWall = 'west';
+            } else if (direction === 2) { // South
+                nz = z + 1;
+                wall = 'south';
+                oppositeWall = 'north';
+            } else { // West
+                nx = x - 1;
+                wall = 'west';
+                oppositeWall = 'east';
+            }
+            
+            // Check bounds and carve
+            if (nx >= 0 && nx < mazeSize && nz >= 0 && nz < mazeSize) {
+                mazeData[x][z].walls[wall] = false;
+                mazeData[nx][nz].walls[oppositeWall] = false;
+                x = nx;
+                z = nz;
+            } else {
+                break; // Hit boundary, stop this corridor
             }
         }
     }
@@ -702,6 +851,61 @@ function buildMaze() {
                 scene.add(wall);
                 walls.push(wall);
             }
+        }
+    }
+    
+    // Add curved wall segments for aesthetic variation
+    const numCurvedWalls = 12 + Math.floor(Math.random() * 8); // 12-19 curved walls
+    for (let i = 0; i < numCurvedWalls; i++) {
+        const cx = (Math.random() * (mazeSize - 2) + 1) * cellSize;
+        const cz = (Math.random() * (mazeSize - 2) + 1) * cellSize;
+        const radius = cellSize * (1.5 + Math.random() * 2); // Radius of curve
+        const startAngle = Math.random() * Math.PI * 2;
+        const arcLength = Math.PI * 0.3 + Math.random() * Math.PI * 0.4; // 54-126 degrees
+        
+        // Create curved wall using tube geometry
+        const curve = new THREE.EllipseCurve(
+            cx, cz, // center
+            radius, radius, // x radius, y radius
+            startAngle, startAngle + arcLength, // start angle, end angle
+            false, // clockwise
+            0 // rotation
+        );
+        
+        const points = curve.getPoints(20); // Get points along curve
+        const shape = new THREE.Shape();
+        shape.moveTo(points[0].x, points[0].y);
+        for (let j = 1; j < points.length; j++) {
+            shape.lineTo(points[j].x, points[j].y);
+        }
+        
+        // Create path for tube
+        const path3D = new THREE.CurvePath();
+        const curvePath = new THREE.QuadraticBezierCurve3(
+            new THREE.Vector3(points[0].x, wallHeight / 2, points[0].y),
+            new THREE.Vector3(points[Math.floor(points.length / 2)].x, wallHeight / 2, points[Math.floor(points.length / 2)].y),
+            new THREE.Vector3(points[points.length - 1].x, wallHeight / 2, points[points.length - 1].y)
+        );
+        
+        // Use lathe to create curved wall segments
+        for (let j = 0; j < points.length - 1; j++) {
+            const segmentGeometry = new THREE.BoxGeometry(
+                wallThickness,
+                wallHeight,
+                Math.sqrt((points[j+1].x - points[j].x)**2 + (points[j+1].y - points[j].y)**2)
+            );
+            const curvedWall = new THREE.Mesh(segmentGeometry, wallMaterial);
+            const angle = Math.atan2(points[j+1].y - points[j].y, points[j+1].x - points[j].x);
+            curvedWall.rotation.y = -angle + Math.PI / 2;
+            curvedWall.position.set(
+                (points[j].x + points[j+1].x) / 2,
+                wallHeight / 2,
+                (points[j].y + points[j+1].y) / 2
+            );
+            curvedWall.castShadow = true;
+            curvedWall.receiveShadow = true;
+            scene.add(curvedWall);
+            walls.push(curvedWall);
         }
     }
     
@@ -1041,13 +1245,14 @@ function addLightSources() {
         
         const px = lx * cellSize;
         const pz = lz * cellSize;
+        const ceilingHeight = 12; // Ceiling is at wallHeight = 12
         
-        // Create SPOTLIGHT (conical from ceiling to floor)
-        const light = new THREE.SpotLight(0xff8844, 1.5, 20, Math.PI / 4, 0.3, 0.8);
-        light.position.set(px, 3.8, pz); // Near ceiling
+        // Create SPOTLIGHT (conical from ceiling to floor) - MUCH BRIGHTER AND LARGER
+        const light = new THREE.SpotLight(0xff8844, 8.0, 50, Math.PI / 3, 0.2, 0.5);
+        light.position.set(px, ceilingHeight - 0.2, pz); // Just below ceiling surface
         light.castShadow = true;
-        light.shadow.mapSize.width = 512;
-        light.shadow.mapSize.height = 512;
+        light.shadow.mapSize.width = 1024;
+        light.shadow.mapSize.height = 1024;
         scene.add(light);
         
         // Spotlight target (pointing down)
@@ -1056,26 +1261,26 @@ function addLightSources() {
         scene.add(target);
         light.target = target;
         
-        // Add visible bulb at ceiling
-        const bulbGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+        // Add visible bulb at ceiling - LARGER AND BRIGHTER
+        const bulbGeometry = new THREE.SphereGeometry(0.35, 12, 12);
         const bulbMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffaa44,
-            emissive: 0xffaa44,
-            emissiveIntensity: 3
+            color: 0xffcc66,
+            emissive: 0xffcc66,
+            emissiveIntensity: 8
         });
         const bulb = new THREE.Mesh(bulbGeometry, bulbMaterial);
-        bulb.position.set(px, 3.8, pz);
+        bulb.position.set(px, ceilingHeight - 0.2, pz); // Just below ceiling surface
         scene.add(bulb);
         
-        // Add glow effect around bulb
-        const glowGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+        // Add glow effect around bulb - MUCH LARGER GLOW
+        const glowGeometry = new THREE.SphereGeometry(1.0, 16, 16);
         const glowMaterial = new THREE.MeshBasicMaterial({
-            color: 0xff8844,
+            color: 0xffaa44,
             transparent: true,
-            opacity: 0.5
+            opacity: 0.7
         });
         const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-        glow.position.set(px, 3.8, pz);
+        glow.position.set(px, ceilingHeight - 0.2, pz);
         scene.add(glow);
         
         lightSources.push({
@@ -1149,7 +1354,7 @@ function addBatteryPickups() {
 
 // Add decorative objects to make maze more interesting
 function addMazeDecor() {
-    const decorObjects = [];
+    pillars = [];
     
     // Add only pillars that go from floor to ceiling - use wall material
     for (let x = 1; x < mazeSize - 1; x++) {
@@ -1173,7 +1378,7 @@ function addMazeDecor() {
                 pillar.castShadow = true;
                 pillar.receiveShadow = true;
                 scene.add(pillar);
-                decorObjects.push(pillar);
+                pillars.push(pillar);
             }
         }
     }
@@ -1183,7 +1388,7 @@ function addMazeDecor() {
 function createShadows() {
     shadows = [];
     
-    const numMonsters = 5 + Math.floor(Math.random() * 3); // 5-7 monsters
+    const numMonsters = 9 + Math.floor(Math.random() * 3); // 9-11 monsters 
     
     for (let i = 0; i < numMonsters; i++) {
         // Find random valid position in maze (not in walls)
@@ -1601,6 +1806,17 @@ function checkCollision(position) {
             return true;
         }
     }
+    
+    // Check collision with pillars
+    for (const pillar of pillars) {
+        const box = new THREE.Box3().setFromObject(pillar);
+        const sphere = new THREE.Sphere(position, playerRadius);
+        
+        if (box.intersectsSphere(sphere)) {
+            return true;
+        }
+    }
+    
     return false;
 }
 
@@ -1936,9 +2152,9 @@ function updateShadows() {
                     // Max volume at close range, fade out at distance
                     const maxHearDistance = 40;
                     if (dist < maxHearDistance) {
-                        // Calculate volume: louder when closer, 1.5x louder than player's
+                        // Calculate volume: louder when closer, 4x louder than player's
                         const volumeRatio = 1 - (dist / maxHearDistance);
-                        monsterFootstep.volume = Math.min(1.0, volumeRatio * 1.5);
+                        monsterFootstep.volume = Math.min(1.0, volumeRatio * 4.0) * gameSettings.sfxVolume;
                         
                         // Start playing if not already
                         if (monsterFootstep.paused) {
@@ -2489,7 +2705,7 @@ function gameOver(message) {
     
     // Play jumpscare sound
     const jumpscareSound = new Audio('audio/jumpscare.mp3');
-    jumpscareSound.volume = 0.2; // Quieter - 20% volume
+    jumpscareSound.volume = 0.2 * gameSettings.sfxVolume; // Quieter - 20% volume
     jumpscareSound.play().catch(e => console.log('Jumpscare sound error:', e));
     
     // After 2 seconds, hide jumpscare and show death screen
@@ -2539,14 +2755,15 @@ function gameLoop() {
     // Always continue the loop, even when paused
     requestAnimationFrame(gameLoop);
     
-    // Pause game logic when not running
-    if (!game.running) return;
+    // Pause game logic when not running OR when paused
+    if (!game.running || game.paused) return;
     
     // Game logic runs even when note is visible (no pausing)
     updatePlayer();
     updateShadows();
     updateWeepingAngel();
     updateParticles();
+    updateLowSanityFootsteps(); // Update overlapping footsteps when sanity is low
     checkMatchPickups();
     checkBatteryPickups();
     checkNotePickup();
@@ -2556,7 +2773,7 @@ function gameLoop() {
     if (Math.random() > 0.9985) { // Very low chance per frame (~1-2 times per minute)
         if (!sounds.ambience2) {
             sounds.ambience2 = new Audio('audio/ambience2.mp3');
-            sounds.ambience2.volume = 0.15; // Lower volume
+            sounds.ambience2.volume = 0.15 * gameSettings.sfxVolume; // Lower volume
         }
         
         // Only play if not currently playing
@@ -2667,7 +2884,7 @@ document.getElementById('play-again-button').addEventListener('click', () => {
 document.addEventListener('mousemove', (e) => {
     if (!game.pointerLocked || !game.running) return;
     
-    const sensitivity = 0.002;
+    const sensitivity = gameSettings.cameraSensitivity;
     
     // Update camera rotation properly
     const euler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -2744,3 +2961,282 @@ window.addEventListener('resize', () => {
         renderer.setSize(window.innerWidth, window.innerHeight);
     }
 });
+// Settings Menu System
+const settingsIcon = document.getElementById('settings-icon');
+const settingsPanel = document.getElementById('settings-panel');
+const settingsClose = document.getElementById('settings-close');
+const settingsReset = document.getElementById('settings-reset');
+const musicVolumeSlider = document.getElementById('music-volume');
+const sfxVolumeSlider = document.getElementById('sfx-volume');
+const cameraSensitivitySlider = document.getElementById('camera-sensitivity');
+const musicVolumeValue = document.getElementById('music-volume-value');
+const sfxVolumeValue = document.getElementById('sfx-volume-value');
+const cameraSensitivityValue = document.getElementById('camera-sensitivity-value');
+
+// Load settings from localStorage or use defaults
+function loadSettings() {
+    const saved = localStorage.getItem('gameSettings');
+    if (saved) {
+        const parsed = JSON.parse(saved);
+        gameSettings.musicVolume = parsed.musicVolume || 0.3;
+        gameSettings.sfxVolume = parsed.sfxVolume || 0.75;
+        gameSettings.cameraSensitivity = parsed.cameraSensitivity || 0.002;
+    }
+    
+    // Update sliders
+    musicVolumeSlider.value = gameSettings.musicVolume * 100;
+    sfxVolumeSlider.value = gameSettings.sfxVolume * 100;
+    cameraSensitivitySlider.value = (gameSettings.cameraSensitivity / 0.002) * 100;
+    
+    // Update displays
+    updateSettingsDisplay();
+    applySettings();
+}
+
+// Save settings to localStorage
+function saveSettings() {
+    localStorage.setItem('gameSettings', JSON.stringify(gameSettings));
+}
+
+// Update display values
+function updateSettingsDisplay() {
+    musicVolumeValue.textContent = Math.round(gameSettings.musicVolume * 100) + '%';
+    sfxVolumeValue.textContent = Math.round(gameSettings.sfxVolume * 100) + '%';
+    cameraSensitivityValue.textContent = Math.round((gameSettings.cameraSensitivity / 0.002) * 100) + '%';
+}
+
+// Apply settings to game
+function applySettings() {
+    // Apply music volume
+    if (menuMusic) {
+        menuMusic.volume = gameSettings.musicVolume;
+    }
+    if (sounds.soundtrack) {
+        sounds.soundtrack.volume = 0.05 * (gameSettings.musicVolume / 0.3); // Scale based on default
+    }
+    
+    // Apply SFX volumes to all active sounds
+    if (sounds.footstepAudio) {
+        sounds.footstepAudio.volume = 1.0 * gameSettings.sfxVolume;
+    }
+    if (sounds.matchLightAudio) {
+        sounds.matchLightAudio.volume = 0.5 * gameSettings.sfxVolume;
+    }
+    if (sounds.ambience2) {
+        sounds.ambience2.volume = 0.15 * gameSettings.sfxVolume;
+    }
+    
+    // Update monster footsteps
+    monsterFootsteps.forEach(footstep => {
+        if (footstep && footstep.volume > 0) {
+            // Preserve relative volume but apply settings multiplier
+            const baseVolume = footstep.volume / (gameSettings.sfxVolume || 1);
+            footstep.volume = baseVolume * gameSettings.sfxVolume;
+        }
+    });
+}
+
+// Settings icon click
+settingsIcon.addEventListener('click', () => {
+    settingsPanel.classList.add('active');
+});
+
+// Close button click
+settingsClose.addEventListener('click', () => {
+    settingsPanel.classList.remove('active');
+});
+
+// Close when clicking outside
+settingsPanel.addEventListener('click', (e) => {
+    if (e.target === settingsPanel) {
+        settingsPanel.classList.remove('active');
+    }
+});
+
+// Music volume slider
+musicVolumeSlider.addEventListener('input', (e) => {
+    gameSettings.musicVolume = e.target.value / 100;
+    updateSettingsDisplay();
+    applySettings();
+    saveSettings();
+});
+
+// SFX volume slider
+sfxVolumeSlider.addEventListener('input', (e) => {
+    gameSettings.sfxVolume = e.target.value / 100;
+    updateSettingsDisplay();
+    applySettings();
+    saveSettings();
+});
+
+// Camera sensitivity slider
+cameraSensitivitySlider.addEventListener('input', (e) => {
+    gameSettings.cameraSensitivity = (e.target.value / 100) * 0.002;
+    updateSettingsDisplay();
+    saveSettings();
+});
+
+// Reset to defaults
+settingsReset.addEventListener('click', () => {
+    gameSettings.musicVolume = 0.3;
+    gameSettings.sfxVolume = 0.75;
+    gameSettings.cameraSensitivity = 0.002;
+    
+    musicVolumeSlider.value = 30;
+    sfxVolumeSlider.value = 75;
+    cameraSensitivitySlider.value = 100;
+    
+    updateSettingsDisplay();
+    applySettings();
+    saveSettings();
+});
+
+// Initialize settings on page load
+loadSettings();
+
+// Pause Menu System
+const pauseMenu = document.getElementById('pause-menu');
+const pauseResumeBtn = document.getElementById('pause-resume');
+const pauseQuitBtn = document.getElementById('pause-quit');
+const pauseMusicVolumeSlider = document.getElementById('pause-music-volume');
+const pauseSfxVolumeSlider = document.getElementById('pause-sfx-volume');
+const pauseCameraSensitivitySlider = document.getElementById('pause-camera-sensitivity');
+const pauseMusicVolumeValue = document.getElementById('pause-music-volume-value');
+const pauseSfxVolumeValue = document.getElementById('pause-sfx-volume-value');
+const pauseCameraSensitivityValue = document.getElementById('pause-camera-sensitivity-value');
+const pauseSettingsReset = document.getElementById('pause-settings-reset');
+
+// Toggle pause menu
+function togglePause() {
+    if (!game.running) return; // Can't pause if game isn't running
+    
+    game.paused = !game.paused;
+    
+    if (game.paused) {
+        pauseMenu.classList.add('active');
+        // Unlock pointer when paused
+        if (document.pointerLockElement) {
+            document.exitPointerLock();
+        }
+        // Sync pause menu sliders with current settings
+        syncPauseMenuSettings();
+        
+        // Pause all sounds
+        if (sounds.footstepAudio && !sounds.footstepAudio.paused) {
+            sounds.footstepAudio.pause();
+        }
+        lowSanityFootsteps.forEach(fs => {
+            if (!fs.paused) fs.pause();
+        });
+        monsterFootsteps.forEach(fs => {
+            if (!fs.paused) fs.pause();
+        });
+    } else {
+        pauseMenu.classList.remove('active');
+        // Re-lock pointer when resuming
+        container.requestPointerLock();
+    }
+}
+
+// Sync pause menu settings with current values
+function syncPauseMenuSettings() {
+    pauseMusicVolumeSlider.value = gameSettings.musicVolume * 100;
+    pauseSfxVolumeSlider.value = gameSettings.sfxVolume * 100;
+    pauseCameraSensitivitySlider.value = (gameSettings.cameraSensitivity / 0.002) * 100;
+    
+    pauseMusicVolumeValue.textContent = Math.round(gameSettings.musicVolume * 100) + '%';
+    pauseSfxVolumeValue.textContent = Math.round(gameSettings.sfxVolume * 100) + '%';
+    pauseCameraSensitivityValue.textContent = Math.round((gameSettings.cameraSensitivity / 0.002) * 100) + '%';
+}
+
+// Resume button
+pauseResumeBtn.addEventListener('click', () => {
+    togglePause();
+});
+
+// Quit button
+pauseQuitBtn.addEventListener('click', () => {
+    // Stop the game
+    game.running = false;
+    game.paused = false;
+    pauseMenu.classList.remove('active');
+    
+    // Stop all sounds
+    if (sounds.footstepAudio) sounds.footstepAudio.pause();
+    if (sounds.soundtrack) sounds.soundtrack.pause();
+    if (sounds.ambience2) sounds.ambience2.pause();
+    lowSanityFootsteps.forEach(fs => fs.pause());
+    monsterFootsteps.forEach(fs => fs.pause());
+    
+    // Show start screen
+    startScreen.style.display = 'flex';
+    
+    // Restart menu music
+    if (menuMusic) {
+        menuMusic.currentTime = 0;
+        menuMusic.play().catch(e => console.log('Menu music error:', e));
+    }
+    
+    // Clean up scene
+    if (scene) {
+        while(scene.children.length > 0) { 
+            scene.remove(scene.children[0]); 
+        }
+    }
+    if (renderer && renderer.domElement && container.contains(renderer.domElement)) {
+        container.removeChild(renderer.domElement);
+    }
+});
+
+// Pause menu sliders
+pauseMusicVolumeSlider.addEventListener('input', (e) => {
+    gameSettings.musicVolume = e.target.value / 100;
+    pauseMusicVolumeValue.textContent = Math.round(gameSettings.musicVolume * 100) + '%';
+    musicVolumeValue.textContent = Math.round(gameSettings.musicVolume * 100) + '%';
+    musicVolumeSlider.value = e.target.value;
+    applySettings();
+    saveSettings();
+});
+
+pauseSfxVolumeSlider.addEventListener('input', (e) => {
+    gameSettings.sfxVolume = e.target.value / 100;
+    pauseSfxVolumeValue.textContent = Math.round(gameSettings.sfxVolume * 100) + '%';
+    sfxVolumeValue.textContent = Math.round(gameSettings.sfxVolume * 100) + '%';
+    sfxVolumeSlider.value = e.target.value;
+    applySettings();
+    saveSettings();
+});
+
+pauseCameraSensitivitySlider.addEventListener('input', (e) => {
+    gameSettings.cameraSensitivity = (e.target.value / 100) * 0.002;
+    pauseCameraSensitivityValue.textContent = e.target.value + '%';
+    cameraSensitivityValue.textContent = e.target.value + '%';
+    cameraSensitivitySlider.value = e.target.value;
+    saveSettings();
+});
+
+// Pause menu reset button
+pauseSettingsReset.addEventListener('click', () => {
+    gameSettings.musicVolume = 0.3;
+    gameSettings.sfxVolume = 0.75;
+    gameSettings.cameraSensitivity = 0.002;
+    
+    syncPauseMenuSettings();
+    
+    // Also sync main settings menu
+    musicVolumeSlider.value = 30;
+    sfxVolumeSlider.value = 75;
+    cameraSensitivitySlider.value = 100;
+    updateSettingsDisplay();
+    
+    applySettings();
+    saveSettings();
+});
+
+// ESC key to toggle pause
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        togglePause();
+    }
+}, true); // Use capture phase to ensure it fires first

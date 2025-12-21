@@ -18,6 +18,7 @@
             <div class="shadow-figure" style="right: 5%; top: 40%; animation-delay: 1s;"></div>
             <div class="eyes" style="left: 10%; top: 30%;"></div>
             <div class="eyes" style="right: 15%; top: 70%;"></div>
+            <div id="settings-icon" title="Settings">⚙</div>
             <h1 class="glitch">THE WATCHING DARK</h1>
             <p class="subtitle">They sense your fear...</p>
             <div class="warning">⚠ Headphones recommended ⚠</div>
@@ -53,7 +54,7 @@
                     <p><strong>They fear the flame.</strong> Light a match near them and they flee in terror. The fire reminds them of something ancient, something that hurt them long ago.</p>
                     <p><strong>You will hear them coming.</strong> Their footsteps echo through these halls - louder than yours, heavier than yours. When you hear them close, you have seconds to decide: look, or run.</p>
                     <p>If you want to survive, remember: <em>Don't blink. Don't turn your back. And whatever you do, don't let them get close.</em></p>
-                    <p class="note-signature">- Dr. [ILLEGIBLE]</p>
+                    <p class="note-signature">- Dr. [ILLEGIBLE] [Walk away to close note]</p>
                 </div>
             </div>
         </div>
@@ -119,6 +120,81 @@
             <p>You escaped the watching dark...</p>
             <p id="survival-time"></p>
             <button id="play-again-button">PLAY AGAIN</button>
+        </div>
+        
+        <div id="pause-menu">
+            <div id="pause-content">
+                <h2 class="pause-title">PAUSED</h2>
+                <p class="pause-hint">Press ESC to resume</p>
+                
+                <div class="pause-settings">
+                    <h3 class="settings-subtitle">SETTINGS</h3>
+                    
+                    <div class="setting-group">
+                        <label for="pause-music-volume">Music Volume</label>
+                        <div class="slider-container">
+                            <input type="range" id="pause-music-volume" min="0" max="100" value="30">
+                            <span class="slider-value" id="pause-music-volume-value">30%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-group">
+                        <label for="pause-sfx-volume">Sound Effects Volume</label>
+                        <div class="slider-container">
+                            <input type="range" id="pause-sfx-volume" min="0" max="100" value="75">
+                            <span class="slider-value" id="pause-sfx-volume-value">75%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="setting-group">
+                        <label for="pause-camera-sensitivity">Camera Sensitivity</label>
+                        <div class="slider-container">
+                            <input type="range" id="pause-camera-sensitivity" min="50" max="200" value="100">
+                            <span class="slider-value" id="pause-camera-sensitivity-value">100%</span>
+                        </div>
+                    </div>
+                    
+                    <button id="pause-settings-reset" class="reset-button">Reset to Defaults</button>
+                </div>
+                
+                <div class="pause-buttons">
+                    <button id="pause-resume" class="pause-button">RESUME GAME</button>
+                    <button id="pause-quit" class="pause-button quit-button">QUIT TO MENU</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="settings-panel">
+            <div id="settings-content">
+                <h2 class="settings-title">SETTINGS</h2>
+                <button id="settings-close">✕</button>
+                
+                <div class="setting-group">
+                    <label for="music-volume">Music Volume</label>
+                    <div class="slider-container">
+                        <input type="range" id="music-volume" min="0" max="100" value="30">
+                        <span class="slider-value" id="music-volume-value">30%</span>
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <label for="sfx-volume">Sound Effects Volume</label>
+                    <div class="slider-container">
+                        <input type="range" id="sfx-volume" min="0" max="100" value="75">
+                        <span class="slider-value" id="sfx-volume-value">75%</span>
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <label for="camera-sensitivity">Camera Sensitivity</label>
+                    <div class="slider-container">
+                        <input type="range" id="camera-sensitivity" min="50" max="200" value="100">
+                        <span class="slider-value" id="camera-sensitivity-value">100%</span>
+                    </div>
+                </div>
+                
+                <button id="settings-reset" class="reset-button">Reset to Defaults</button>
+            </div>
         </div>
     </div>
     <script src="game.js"></script>
