@@ -451,7 +451,17 @@ function initThree() {
     scene.fog = new THREE.FogExp2(0x0a0a0a, 0.055);
     
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-    camera.position.set(8, player.height, 8);
+    
+    // Find valid spawn position (not in walls or pillars)
+    let spawnPos = new THREE.Vector3(8, player.height, 8);
+    let attempts = 0;
+    while (checkCollision(spawnPos) && attempts < 50) {
+        spawnPos.x = 4 + Math.random() * 8;
+        spawnPos.z = 4 + Math.random() * 8;
+        spawnPos.y = player.height;
+        attempts++;
+    }
+    camera.position.copy(spawnPos);
     
     // Create note near spawn describing the Watchers
     const noteGeometry = new THREE.BoxGeometry(0.3, 0.4, 0.05);
@@ -1317,8 +1327,72 @@ function addLightSources() {
 function addBatteryPickups() {
     batteryPickups = [];
     
-    // Skip battery pickups in Level 2
+    // In Level 2, create sacred relics instead of batteries
     if (game.currentLevel === 2) {
+        const numRelics = 3 + Math.floor(Math.random() * 2); // 3-4 relics
+        
+        for (let i = 0; i < numRelics; i++) {
+            let bx, bz, attempts = 0;
+            do {
+                bx = 2 + Math.floor(Math.random() * (mazeSize - 4));
+                bz = 2 + Math.floor(Math.random() * (mazeSize - 4));
+                attempts++;
+            } while (((bx === 0 && bz === 0) || (bx === exitCell.x && bz === exitCell.z)) && attempts < 100);
+            
+            const px = bx * cellSize;
+            const pz = bz * cellSize;
+            
+            // Create sacred relic (glowing lantern)
+            const baseGeometry = new THREE.CylinderGeometry(0.2, 0.25, 0.3, 6);
+            const baseMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffd700,
+                emissive: 0xffaa00,
+                emissiveIntensity: 0.7,
+                metalness: 0.8,
+                roughness: 0.2
+            });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.position.set(px, 0.5, pz);
+            base.castShadow = true;
+            scene.add(base);
+            
+            // Glowing orb on top
+            const orbGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+            const orbMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffaa,
+                emissive: 0xffffaa,
+                emissiveIntensity: 1.5
+            });
+            const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+            orb.position.set(px, 0.8, pz);
+            scene.add(orb);
+            
+            // Bright glow effect
+            const glowGeometry = new THREE.SphereGeometry(0.5, 8, 8);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffaa,
+                transparent: true,
+                opacity: 0.4
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            glow.position.set(px, 0.6, pz);
+            scene.add(glow);
+            
+            // Strong point light
+            const light = new THREE.PointLight(0xffffaa, 1, 8);
+            light.position.set(px, 0.6, pz);
+            scene.add(light);
+            
+            batteryPickups.push({
+                battery: base,
+                glow: glow,
+                light: light,
+                orb: orb,
+                position: new THREE.Vector3(px, 0.5, pz),
+                collected: false,
+                isRelic: true // Mark as sacred relic
+            });
+        }
         return;
     }
     
@@ -1407,13 +1481,51 @@ function addMazeDecor() {
             }
         }
     }
+    
+    // Add THICK pillars in open areas for Level 1
+    if (game.currentLevel === 1) {
+        const numThickPillars = 8 + Math.floor(Math.random() * 5); // 8-12 thick pillars
+        
+        for (let i = 0; i < numThickPillars; i++) {
+            let px, pz, attempts = 0;
+            let validPosition = false;
+            
+            do {
+                // Random position in open areas
+                const x = 2 + Math.floor(Math.random() * (mazeSize - 4));
+                const z = 2 + Math.floor(Math.random() * (mazeSize - 4));
+                px = x * cellSize;
+                pz = z * cellSize;
+                
+                // Check if in open area (not a wall)
+                const inOpenArea = mazeData[x][z] === 0;
+                const notAtSpawn = !(x <= 1 && z <= 1);
+                const notAtExit = !(Math.abs(x - exitCell.x) < 2 && Math.abs(z - exitCell.z) < 2);
+                
+                validPosition = inOpenArea && notAtSpawn && notAtExit;
+                attempts++;
+            } while (!validPosition && attempts < 100);
+            
+            if (validPosition) {
+                // Create THICK pillar (1.0-1.5 unit radius)
+                const thickness = 1.0 + Math.random() * 0.5;
+                const geometry = new THREE.CylinderGeometry(thickness, thickness * 1.1, 12, 12);
+                const pillar = new THREE.Mesh(geometry, wallMaterial);
+                pillar.position.set(px, 6, pz);
+                pillar.castShadow = true;
+                pillar.receiveShadow = true;
+                scene.add(pillar);
+                pillars.push(pillar);
+            }
+        }
+    }
 }
 
 // Create shadow creatures
 function createShadows() {
     shadows = [];
     
-    const numMonsters = 9 + Math.floor(Math.random() * 3); // 9-11 monsters 
+    const numMonsters = 18 + Math.floor(Math.random() * 5); // 18-22 monsters (doubled)
     
     for (let i = 0; i < numMonsters; i++) {
         // Find random valid position in maze (not in walls)
@@ -1681,7 +1793,7 @@ function startGame() {
     game.startTime = Date.now();
     
     player.sanity = 100;
-    player.matches = 10;
+    player.matches = 5;
     player.matchLit = false;
     player.fear = 0;
     player.battery = 100;
@@ -2323,9 +2435,16 @@ function updateWeepingAngel() {
 // Update Angels - Level 2 monsters with OPPOSITE behavior
 // Angels CHASE when looked at, FREEZE when not looked at
 function updateAngels() {
+    let closestAngelDist = Infinity;
+    
     for (let i = 0; i < angels.length; i++) {
         const angel = angels[i];
         const dist = camera.position.distanceTo(angel.mesh.position);
+        
+        // Track closest angel for audio cues
+        if (dist < closestAngelDist) {
+            closestAngelDist = dist;
+        }
         
         // Check if player is looking at this angel
         const directionToAngel = new THREE.Vector3();
@@ -2349,7 +2468,15 @@ function updateAngels() {
             direction.normalize();
             
             // Move faster the longer they're looked at (charging up)
-            const chargeMultiplier = 1 + Math.min(angel.chargeTimer / 60, 3); // Up to 4x speed
+            let chargeMultiplier = 1 + Math.min(angel.chargeTimer / 60, 3); // Up to 4x speed
+            
+            // Sacred relic effect: slow down angels
+            if (player.relicActive && Date.now() < player.relicEndTime) {
+                chargeMultiplier *= 0.3; // 70% slower
+            } else if (player.relicActive && Date.now() >= player.relicEndTime) {
+                player.relicActive = false; // Deactivate expired relic
+            }
+            
             const moveSpeed = angel.speed * chargeMultiplier;
             
             // Move toward player
@@ -2406,6 +2533,28 @@ function updateAngels() {
         // Collision with player - immediate jumpscare on contact
         if (dist < 2.0 && !player.godMode) {
             gameOver("The Angel's light consumed you...");
+        }
+    }
+    
+    // Play angel proximity audio cues (ethereal chimes)
+    if (!sounds.angelChimes) {
+        sounds.angelChimes = new Audio('audio/angelchimes.mp3');
+        sounds.angelChimes.loop = true;
+        sounds.angelChimes.volume = 0;
+    }
+    
+    // Adjust volume based on closest angel distance
+    if (closestAngelDist < 15) {
+        const volume = Math.max(0, 1 - closestAngelDist / 15) * 1.5 * gameSettings.sfxVolume; // Tripled volume
+        sounds.angelChimes.volume = volume;
+        
+        if (sounds.angelChimes.paused && volume > 0) {
+            sounds.angelChimes.play().catch(e => console.log('Angel chimes error:', e));
+        }
+    } else {
+        sounds.angelChimes.volume = 0;
+        if (!sounds.angelChimes.paused) {
+            sounds.angelChimes.pause();
         }
     }
 }
@@ -2491,6 +2640,13 @@ function checkBatteryPickups() {
             scene.remove(pickup.battery);
             scene.remove(pickup.glow);
             scene.remove(pickup.light);
+            if (pickup.orb) scene.remove(pickup.orb);
+            
+            // Sacred relic effect: slow nearby angels for 10 seconds
+            if (pickup.isRelic) {
+                player.relicActive = true;
+                player.relicEndTime = Date.now() + 10000; // 10 seconds
+            }
             
             // Play battery pickup sound
             if (audioContext) {
@@ -2949,7 +3105,7 @@ function transitionToLevel2() {
     // Update game state
     game.currentLevel = 2;
     player.sanity = 100;
-    player.matches = 10;
+    player.matches = 5;
     player.battery = 100;
     
     // Initialize Level 2
@@ -3353,7 +3509,7 @@ function buildLevel2Maze() {
     scene.add(exitLight);
     
     // Add MANY MORE trees throughout the forest with varied sizes
-    const numTrees = 450 + Math.floor(Math.random() * 150); // Increased from 400-550 to 450-600
+    const numTrees = 900 + Math.floor(Math.random() * 300); // Doubled from 450-600 to 900-1200 for dense forest
     const treePositions = []; // Track tree positions to avoid overlap
     
     for (let i = 0; i < numTrees; i++) {
@@ -3469,13 +3625,104 @@ function buildLevel2Maze() {
             scene.add(foliage);
         }
     }
+    
+    // Add fallen logs, rocks, and stumps for visual variety
+    const numDecorations = 80 + Math.floor(Math.random() * 40); // Increased from 30-50 to 80-120 decorations
+    
+    for (let i = 0; i < numDecorations; i++) {
+        let px, pz, attempts = 0;
+        let validPosition = false;
+        
+        do {
+            px = 1 + Math.floor(Math.random() * (mazeSize - 2));
+            pz = 1 + Math.floor(Math.random() * (mazeSize - 2));
+            
+            // Check if position is valid (not in wall, not at spawn/exit)
+            const notInWall = mazeData[px][pz] !== 1;
+            const notAtSpawn = !(px <= 1 && pz <= 1);
+            const notAtExit = !(Math.abs(px - exitCell.x) < 2 && Math.abs(pz - exitCell.z) < 2);
+            
+            // Check distance from trees to avoid overlap
+            let tooCloseToTree = false;
+            for (const treePos of treePositions) {
+                const dist = Math.sqrt((px - treePos.x) ** 2 + (pz - treePos.z) ** 2);
+                if (dist < 1.2) { // Minimum distance from trees
+                    tooCloseToTree = true;
+                    break;
+                }
+            }
+            
+            validPosition = notInWall && notAtSpawn && notAtExit && !tooCloseToTree;
+            attempts++;
+        } while (!validPosition && attempts < 100);
+        
+        if (attempts >= 100) continue;
+        
+        const decorationType = Math.random();
+        
+        if (decorationType < 0.4) {
+            // FALLEN LOG
+            const logLength = 2 + Math.random() * 3;
+            const logRadius = 0.2 + Math.random() * 0.2;
+            const logGeometry = new THREE.CylinderGeometry(logRadius, logRadius, logLength, 8);
+            const logMaterial = new THREE.MeshStandardMaterial({
+                color: 0x4a3520,
+                roughness: 0.9
+            });
+            const log = new THREE.Mesh(logGeometry, logMaterial);
+            log.position.set(px * cellSize, logRadius, pz * cellSize);
+            log.rotation.z = Math.PI / 2; // Lay it flat
+            log.rotation.y = Math.random() * Math.PI;
+            log.castShadow = true;
+            scene.add(log);
+            
+        } else if (decorationType < 0.7) {
+            // ROCK
+            const rockSize = 0.3 + Math.random() * 0.5;
+            const rockGeometry = new THREE.DodecahedronGeometry(rockSize, 0);
+            const rockMaterial = new THREE.MeshStandardMaterial({
+                color: 0x555555,
+                roughness: 0.95
+            });
+            const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+            rock.position.set(px * cellSize, rockSize * 0.6, pz * cellSize);
+            rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            rock.castShadow = true;
+            scene.add(rock);
+            
+        } else {
+            // TREE STUMP
+            const stumpHeight = 0.5 + Math.random() * 0.8;
+            const stumpRadius = 0.3 + Math.random() * 0.3;
+            const stumpGeometry = new THREE.CylinderGeometry(stumpRadius, stumpRadius + 0.1, stumpHeight, 8);
+            const stumpMaterial = new THREE.MeshStandardMaterial({
+                color: 0x3d2817,
+                roughness: 0.9
+            });
+            const stump = new THREE.Mesh(stumpGeometry, stumpMaterial);
+            stump.position.set(px * cellSize, stumpHeight / 2, pz * cellSize);
+            stump.castShadow = true;
+            scene.add(stump);
+            
+            // Add rings on top
+            const topGeometry = new THREE.CircleGeometry(stumpRadius, 16);
+            const topMaterial = new THREE.MeshStandardMaterial({
+                color: 0x5a4a30,
+                roughness: 0.8
+            });
+            const top = new THREE.Mesh(topGeometry, topMaterial);
+            top.position.set(px * cellSize, stumpHeight + 0.01, pz * cellSize);
+            top.rotation.x = -Math.PI / 2;
+            scene.add(top);
+        }
+    }
 }
 
 // Create Angels - Level 2 monsters
 function createAngels() {
     angels = [];
     
-    const numAngels = 12 + Math.floor(Math.random() * 5); // 12-16 angels
+    const numAngels = 15 + Math.floor(Math.random() * 5); // 15-19 angels (added 3 more)
     
     for (let i = 0; i < numAngels; i++) {
         // Find random valid position
@@ -3792,7 +4039,7 @@ window.addEventListener('keydown', (e) => {
                 
                 // Show big match counter message
                 const matchMessage = document.getElementById('match-counter-message');
-                matchMessage.textContent = player.matches + '/10';
+                matchMessage.textContent = player.matches + '/5';
                 matchMessage.classList.remove('show');
                 // Force reflow to restart animation
                 void matchMessage.offsetWidth;
