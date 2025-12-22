@@ -196,9 +196,16 @@ function createBreathing() {
 }
 
 function playFootstep() {
+    // Use different footstep sounds based on level
+    const footstepFile = game.currentLevel === 2 ? 'Walking on Grass.mp3' : 'footsteps.mp3';
+    
     // Initialize looping footstep audio
-    if (!sounds.footstepAudio) {
-        sounds.footstepAudio = new Audio('audio/footsteps.mp3');
+    if (!sounds.footstepAudio || !sounds.footstepAudio.src.includes(footstepFile)) {
+        // Stop old footstep if it exists
+        if (sounds.footstepAudio) {
+            sounds.footstepAudio.pause();
+        }
+        sounds.footstepAudio = new Audio('audio/' + footstepFile);
         sounds.footstepAudio.loop = true;
         sounds.footstepAudio.volume = 1.0 * gameSettings.sfxVolume;
     }
@@ -1237,6 +1244,11 @@ function buildMaze() {
 function addLightSources() {
     lightSources = [];
     
+    // Skip light sources in Level 2
+    if (game.currentLevel === 2) {
+        return;
+    }
+    
     // Add 8-12 light sources randomly
     const numLights = 8 + Math.floor(Math.random() * 5);
     
@@ -1302,6 +1314,11 @@ function addLightSources() {
 // Add battery pickups
 function addBatteryPickups() {
     batteryPickups = [];
+    
+    // Skip battery pickups in Level 2
+    if (game.currentLevel === 2) {
+        return;
+    }
     
     // Add 4-6 battery pickups
     const numBatteries = 4 + Math.floor(Math.random() * 3);
@@ -2333,15 +2350,10 @@ function updateAngels() {
             const newPos = angel.mesh.position.clone().add(movement);
             newPos.y = 0;
             
-            // Check collision
-            const testPos = newPos.clone();
-            testPos.y = 1.5;
-            
-            if (!checkCollision(testPos)) {
-                angel.mesh.position.copy(newPos);
-                angel.glow.position.copy(newPos);
-                angel.glow.position.y = 2;
-            }
+            // Angels can clip through trees - no collision check
+            angel.mesh.position.copy(newPos);
+            angel.glow.position.copy(newPos);
+            angel.glow.position.y = 2;
             
             // Face player
             angel.mesh.lookAt(camera.position);
@@ -2384,8 +2396,8 @@ function updateAngels() {
             angel.glow.intensity = 2;
         }
         
-        // Collision with player
-        if (dist < 1.5 && !player.godMode) {
+        // Collision with player - immediate jumpscare on contact
+        if (dist < 2.0 && !player.godMode) {
             gameOver("The Angel's light consumed you...");
         }
     }
@@ -2695,18 +2707,20 @@ function updateMinimap() {
     );
     ctx.fill();
     
-    // Draw light sources
-    ctx.fillStyle = '#ff9944';
-    for (const lightSource of lightSources) {
-        ctx.beginPath();
-        ctx.arc(
-            lightSource.position.x * scale,
-            lightSource.position.z * scale,
-            2,
-            0,
-            Math.PI * 2
-        );
-        ctx.fill();
+    // Draw light sources (only in level 1)
+    if (game.currentLevel === 1) {
+        ctx.fillStyle = '#ff9944';
+        for (const lightSource of lightSources) {
+            ctx.beginPath();
+            ctx.arc(
+                lightSource.position.x * scale,
+                lightSource.position.z * scale,
+                2,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+        }
     }
     
     // Draw battery pickups
@@ -2757,6 +2771,15 @@ function gameOver(message) {
     
     // Show jumpscare image first
     const jumpscareScreen = document.getElementById('jumpscare-screen');
+    const jumpscareImage = document.getElementById('jumpscare-image');
+    
+    // Use different jumpscare images based on level
+    if (game.currentLevel === 1) {
+        jumpscareImage.src = 'images/monster.png';
+    } else {
+        jumpscareImage.src = 'images/angel.jpg';
+    }
+    
     jumpscareScreen.style.display = 'flex';
     
     // Play jumpscare sound
@@ -2851,7 +2874,11 @@ function transitionToLevel2() {
     matchPickups.forEach(pickup => scene.remove(pickup));
     matchPickups = [];
     
-    batteryPickups.forEach(pickup => scene.remove(pickup));
+    batteryPickups.forEach(pickup => {
+        scene.remove(pickup.battery);
+        scene.remove(pickup.glow);
+        scene.remove(pickup.light);
+    });
     batteryPickups = [];
     
     pillars.forEach(pillar => scene.remove(pillar));
@@ -2869,31 +2896,32 @@ function transitionToLevel2() {
     console.log('Level 2 initialized');
 }
 
-// Initialize Level 2 - Bright outdoor heaven-like maze
+// Initialize Level 2 - Dark forest maze
 function initLevel2() {
-    // Change background to bright blue sky
-    scene.background = new THREE.Color(0x4da6ff);
-    scene.fog = null; // Remove fog for outdoor feeling
+    // Change background to gray sky
+    scene.background = new THREE.Color(0x555555);
+    // Add completely opaque fog to heavily obscure visibility
+    scene.fog = new THREE.Fog(0x666666, 8, 20); // Fog starts at 8 units, completely opaque at 20 units
     
-    // Change ambient light to bright white/warm
-    ambientLight.color.setHex(0xffffee);
-    ambientLight.intensity = 1.5; // Much brighter
+    // Change ambient light to dim gray/cool
+    ambientLight.color.setHex(0x888888);
+    ambientLight.intensity = 0.8; // Dimmer for forest
     
-    // Add directional sunlight
-    const sunlight = new THREE.DirectionalLight(0xffeeaa, 1.2);
+    // Add dim directional light for overcast forest
+    const sunlight = new THREE.DirectionalLight(0x666666, 0.6);
     sunlight.position.set(50, 100, 30);
     sunlight.castShadow = true;
     scene.add(sunlight);
     
-    // Create skybox (bright blue sky)
+    // Create skybox (gray overcast sky)
     const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
     const skyboxMaterials = [
-        new THREE.MeshBasicMaterial({ color: 0x4da6ff, side: THREE.BackSide }), // Right - bright blue
-        new THREE.MeshBasicMaterial({ color: 0x4da6ff, side: THREE.BackSide }), // Left - bright blue
-        new THREE.MeshBasicMaterial({ color: 0x66b3ff, side: THREE.BackSide }), // Top (lighter blue)
-        new THREE.MeshBasicMaterial({ color: 0x4da6ff, side: THREE.BackSide }), // Bottom - bright blue
-        new THREE.MeshBasicMaterial({ color: 0x4da6ff, side: THREE.BackSide }), // Front - bright blue
-        new THREE.MeshBasicMaterial({ color: 0x4da6ff, side: THREE.BackSide })  // Back - bright blue
+        new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.BackSide }), // Right - gray
+        new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.BackSide }), // Left - gray
+        new THREE.MeshBasicMaterial({ color: 0x666666, side: THREE.BackSide }), // Top - lighter gray
+        new THREE.MeshBasicMaterial({ color: 0x444444, side: THREE.BackSide }), // Bottom - darker gray
+        new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.BackSide }), // Front - gray
+        new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.BackSide })  // Back - gray
     ];
     skybox = new THREE.Mesh(skyboxGeometry, skyboxMaterials);
     scene.add(skybox);
@@ -2928,12 +2956,59 @@ function initLevel2() {
 // Build Level 2 maze - white and bright
 function buildLevel2Maze() {
     const wallHeight = 6;
+    
+    // Create marble wall material with procedural texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    // Base marble color
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(0, 0, 512, 512);
+    
+    // Add marble veins
+    ctx.strokeStyle = 'rgba(180, 180, 180, 0.3)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 30; i++) {
+        ctx.beginPath();
+        ctx.moveTo(Math.random() * 512, Math.random() * 512);
+        for (let j = 0; j < 5; j++) {
+            ctx.quadraticCurveTo(
+                Math.random() * 512, Math.random() * 512,
+                Math.random() * 512, Math.random() * 512
+            );
+        }
+        ctx.stroke();
+    }
+    
+    // Add darker veins
+    ctx.strokeStyle = 'rgba(140, 140, 140, 0.2)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 20; i++) {
+        ctx.beginPath();
+        ctx.moveTo(Math.random() * 512, Math.random() * 512);
+        for (let j = 0; j < 3; j++) {
+            ctx.quadraticCurveTo(
+                Math.random() * 512, Math.random() * 512,
+                Math.random() * 512, Math.random() * 512
+            );
+        }
+        ctx.stroke();
+    }
+    
+    const marbleTexture = new THREE.CanvasTexture(canvas);
+    marbleTexture.wrapS = THREE.RepeatWrapping;
+    marbleTexture.wrapT = THREE.RepeatWrapping;
+    marbleTexture.repeat.set(2, 2);
+    
     const wallMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xffffff,
-        roughness: 0.3,
-        metalness: 0.1,
-        emissive: 0xffffee,
-        emissiveIntensity: 0.2
+        map: marbleTexture,
+        color: 0x3d2817,  // Dark brown bark color
+        roughness: 0.9,
+        metalness: 0.0,
+        emissive: 0x000000,
+        emissiveIntensity: 0
     });
     
     // Create walls
@@ -2951,19 +3026,48 @@ function buildLevel2Maze() {
         }
     }
     
-    // Create white marble floor - larger to cover whole map
-    const floorGeometry = new THREE.PlaneGeometry(mazeSize * cellSize * 1.5, mazeSize * cellSize * 1.5);
+    // Create grass floor
+    const floorSize = mazeSize * cellSize * 2;
+    const floorGeometry = new THREE.PlaneGeometry(floorSize, floorSize, 50, 50);
+    
     const floorMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xf5f5f5,
-        roughness: 0.2,
-        metalness: 0.3
+        color: 0x2d5016,  // Dark grass green
+        roughness: 0.9,
+        metalness: 0.0,
+        side: THREE.DoubleSide
     });
+    
     floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0;
     floor.receiveShadow = true;
     scene.add(floor);
     
+    // Add 3D grass blades throughout the floor
+    const grassBladeGeometry = new THREE.ConeGeometry(0.03, 0.4, 3); // Thinner and taller for spiky look
+    const grassMaterial = new THREE.MeshStandardMaterial({
+        color: 0x3d6b1f,
+        roughness: 0.8,
+        metalness: 0.0
+    });
+    
+    // Create grass patches (reduced for performance)
+    for (let i = 0; i < 3000; i++) {
+        const grassBlade = new THREE.Mesh(grassBladeGeometry, grassMaterial);
+        grassBlade.position.set(
+            (Math.random() - 0.5) * floorSize * 0.9,
+            0.15,
+            (Math.random() - 0.5) * floorSize * 0.9
+        );
+        grassBlade.rotation.z = (Math.random() - 0.5) * 0.4; // More varied tilt
+        grassBlade.rotation.y = Math.random() * Math.PI * 2; // Random rotation
+        grassBlade.scale.y = 0.7 + Math.random() * 0.6; // More height variation
+        scene.add(grassBlade);
+    }
+    
     // NO CEILING - outdoor environment
+    // NO BATTERY PICKUPS in Level 2
+    // NO LIGHT SOURCES in Level 2
     
     // Exit marker - golden glowing portal
     const exitGeometry = new THREE.CylinderGeometry(1.5, 1.5, 8, 32);
@@ -2983,45 +3087,44 @@ function buildLevel2Maze() {
     exitLight.position.set(exitCell.x * cellSize, 4, exitCell.z * cellSize);
     scene.add(exitLight);
     
-    // Add outdoor structures - white marble pillars throughout the maze
-    const numPillars = 20 + Math.floor(Math.random() * 10);
-    for (let i = 0; i < numPillars; i++) {
+    // Add MANY MORE trees throughout the forest
+    const numTrees = 200 + Math.floor(Math.random() * 100);
+    for (let i = 0; i < numTrees; i++) {
         let px, pz, attempts = 0;
         do {
-            px = 2 + Math.floor(Math.random() * (mazeSize - 4));
-            pz = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            px = Math.floor(Math.random() * mazeSize);
+            pz = Math.floor(Math.random() * mazeSize);
             attempts++;
         } while ((mazeData[px][pz] === 1 || (px === 0 && pz === 0) || (px === exitCell.x && pz === exitCell.z)) && attempts < 100);
         
-        // Tall marble pillar
-        const pillarGeometry = new THREE.CylinderGeometry(0.6, 0.7, 10, 8);
-        const pillarMaterial = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            roughness: 0.2,
-            metalness: 0.4,
-            emissive: 0xffffee,
-            emissiveIntensity: 0.3
+        // Tree trunk - brown cylinder
+        const trunkHeight = 8 + Math.random() * 6;
+        const trunkRadius = 0.3 + Math.random() * 0.3;
+        const trunkGeometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius + 0.1, trunkHeight, 8);
+        const trunkMaterial = new THREE.MeshStandardMaterial({
+            color: 0x3d2817,  // Dark brown bark
+            roughness: 0.9,
+            metalness: 0.0
         });
-        const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
-        pillar.position.set(px * cellSize, 5, pz * cellSize);
-        pillar.castShadow = true;
-        pillar.receiveShadow = true;
-        scene.add(pillar);
-        pillars.push(pillar);
+        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+        trunk.position.set(px * cellSize, trunkHeight / 2, pz * cellSize);
+        trunk.castShadow = true;
+        trunk.receiveShadow = true;
+        scene.add(trunk);
+        pillars.push(trunk);
         
-        // Golden capital on top
-        const capitalGeometry = new THREE.BoxGeometry(1.2, 0.5, 1.2);
-        const capitalMaterial = new THREE.MeshStandardMaterial({
-            color: 0xffD700,
-            emissive: 0xffaa00,
-            emissiveIntensity: 0.5,
-            roughness: 0.1,
-            metalness: 0.8
+        // Tree foliage - dark green sphere
+        const foliageRadius = 1.5 + Math.random() * 1.5;
+        const foliageGeometry = new THREE.SphereGeometry(foliageRadius, 8, 8);
+        const foliageMaterial = new THREE.MeshStandardMaterial({
+            color: 0x1a4d0d,  // Dark forest green
+            roughness: 0.8,
+            metalness: 0.0
         });
-        const capital = new THREE.Mesh(capitalGeometry, capitalMaterial);
-        capital.position.set(px * cellSize, 10.2, pz * cellSize);
-        capital.castShadow = true;
-        scene.add(capital);
+        const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
+        foliage.position.set(px * cellSize, trunkHeight + foliageRadius - 0.5, pz * cellSize);
+        foliage.castShadow = true;
+        scene.add(foliage);
     }
 }
 
@@ -3244,17 +3347,22 @@ document.getElementById('restart-button').addEventListener('click', () => {
         container.removeChild(renderer.domElement);
     }
     
-    // Reset game state
+    // Reset game state completely
     game.running = false;
     game.pointerLocked = false;
+    game.currentLevel = 1; // Reset to level 1
     shadows = [];
+    angels = []; // Clear angels
     weepingAngel = null;
     walls = [];
     particleSystems.length = 0;
     lightSources = [];
     batteryPickups = [];
+    pillars = [];
+    matchPickups = [];
+    skybox = null;
     
-    // Start fresh
+    // Start fresh from level 1
     startGame();
 });
 
