@@ -105,6 +105,7 @@ const MAX_LOW_SANITY_FOOTSTEPS = 4; // Number of overlapping footstep sounds
 
 // Note system
 let noteObject = null;
+let noteObjects = []; // Array to hold multiple notes in level 2
 let notePickedUp = false;
 let noteScreenVisible = false;
 
@@ -197,13 +198,14 @@ function createBreathing() {
 
 function playFootstep() {
     // Use different footstep sounds based on level
-    const footstepFile = game.currentLevel === 2 ? 'Walking on Grass.mp3' : 'footsteps.mp3';
+    const footstepFile = game.currentLevel === 2 ? 'grass.mp3' : 'footsteps.mp3';
     
-    // Initialize looping footstep audio
-    if (!sounds.footstepAudio || !sounds.footstepAudio.src.includes(footstepFile)) {
+    // Initialize looping footstep audio - recreate if wrong file
+    if (!sounds.footstepAudio || !sounds.footstepAudio.src.includes(footstepFile.replace('.mp3', ''))) {
         // Stop old footstep if it exists
         if (sounds.footstepAudio) {
             sounds.footstepAudio.pause();
+            sounds.footstepAudio = null;
         }
         sounds.footstepAudio = new Audio('audio/' + footstepFile);
         sounds.footstepAudio.loop = true;
@@ -451,7 +453,7 @@ function initThree() {
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
     camera.position.set(8, player.height, 8);
     
-    // Create note near spawn (always close to player start)
+    // Create note near spawn describing the Watchers
     const noteGeometry = new THREE.BoxGeometry(0.3, 0.4, 0.05);
     const noteMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xffffcc,
@@ -1778,6 +1780,11 @@ function updatePlayer() {
     const isSprinting = canSprint;
     let currentSpeed = isSprinting ? player.sprintSpeed : player.speed;
     
+    // Slow down when stamina is depleted
+    if (player.stamina <= 0 && isMoving) {
+        currentSpeed *= 0.5; // Half speed when exhausted
+    }
+    
     // Update stamina
     if (isSprinting) {
         player.stamina = Math.max(0, player.stamina - player.staminaDrain);
@@ -2516,18 +2523,48 @@ function checkBatteryPickups() {
 function checkNotePickup() {
     const noteScreen = document.getElementById('note-screen');
     
-    if (noteObject) {
+    if (game.currentLevel === 1 && noteObject) {
+        // Level 1: single note
         const dist = camera.position.distanceTo(noteObject.position);
         
-        // Automatically show note when close (within 3 units)
         if (dist < 3) {
             if (!noteScreenVisible) {
                 noteScreenVisible = true;
-                updateNoteContent(); // Update content based on level
+                updateNoteContent();
                 noteScreen.style.display = 'flex';
             }
         } else {
-            // Automatically hide note when far
+            if (noteScreenVisible) {
+                noteScreenVisible = false;
+                noteScreen.style.display = 'none';
+            }
+        }
+    } else if (game.currentLevel === 2 && noteObjects.length > 0) {
+        // Level 2: multiple notes
+        let closestNote = null;
+        let closestDist = Infinity;
+        
+        for (const note of noteObjects) {
+            const dist = camera.position.distanceTo(note.position);
+            if (dist < 3 && dist < closestDist) {
+                closestDist = dist;
+                closestNote = note;
+            }
+        }
+        
+        if (closestNote) {
+            if (!noteScreenVisible) {
+                noteScreenVisible = true;
+                // Update with specific note content
+                const noteTitle = document.getElementById('note-title');
+                const noteDate = document.getElementById('note-date');
+                const noteText = document.getElementById('note-text');
+                noteTitle.textContent = closestNote.userData.title;
+                noteDate.textContent = closestNote.userData.date;
+                noteText.innerHTML = closestNote.userData.text;
+                noteScreen.style.display = 'flex';
+            }
+        } else {
             if (noteScreenVisible) {
                 noteScreenVisible = false;
                 noteScreen.style.display = 'none';
@@ -2739,6 +2776,22 @@ function updateMinimap() {
         }
     }
     
+    // Draw notes (Level 2)
+    if (game.currentLevel === 2 && noteObjects.length > 0) {
+        ctx.fillStyle = '#ffd700';
+        for (const note of noteObjects) {
+            ctx.beginPath();
+            ctx.arc(
+                note.position.x * scale,
+                note.position.z * scale,
+                3,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+        }
+    }
+    
     // Draw player
     ctx.fillStyle = '#ffff00';
     ctx.beginPath();
@@ -2791,6 +2844,15 @@ function gameOver(message) {
     setTimeout(() => {
         jumpscareScreen.style.display = 'none';
         deathScreen.style.display = 'flex';
+        
+        // Change death title based on level
+        const deathTitle = document.getElementById('death-title');
+        if (game.currentLevel === 1) {
+            deathTitle.textContent = 'CONSUMED BY DARKNESS';
+        } else {
+            deathTitle.textContent = 'CONSUMED BY LIGHT';
+        }
+        
         document.getElementById('death-message').textContent = message;
         
         // Exit pointer lock to show cursor
@@ -2893,6 +2955,16 @@ function transitionToLevel2() {
     // Initialize Level 2
     initLevel2();
     
+    // Start Level 2 music
+    if (sounds.soundtrack) {
+        sounds.soundtrack.pause();
+        sounds.soundtrack = null;
+    }
+    sounds.soundtrack = new Audio('audio/Level2.mp3');
+    sounds.soundtrack.loop = true;
+    sounds.soundtrack.volume = 0.9 * gameSettings.musicVolume; // Tripled from 0.3 to 0.9
+    sounds.soundtrack.play().catch(e => console.log('Level 2 soundtrack error:', e));
+    
     console.log('Level 2 initialized');
 }
 
@@ -2901,7 +2973,7 @@ function initLevel2() {
     // Change background to gray sky
     scene.background = new THREE.Color(0x555555);
     // Add completely opaque fog to heavily obscure visibility
-    scene.fog = new THREE.Fog(0x666666, 8, 20); // Fog starts at 8 units, completely opaque at 20 units
+    scene.fog = new THREE.Fog(0x666666, 5, 15); // Fog starts at 5 units, completely opaque at 15 units
     
     // Change ambient light to dim gray/cool
     ambientLight.color.setHex(0x888888);
@@ -2912,6 +2984,11 @@ function initLevel2() {
     sunlight.position.set(50, 100, 30);
     sunlight.castShadow = true;
     scene.add(sunlight);
+    
+    // Add MASSIVE sun light source above the forest
+    const massiveSun = new THREE.PointLight(0xffffaa, 3, 500);
+    massiveSun.position.set(mazeSize * cellSize / 2, 200, mazeSize * cellSize / 2);
+    scene.add(massiveSun);
     
     // Create skybox (gray overcast sky)
     const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
@@ -2931,22 +3008,164 @@ function initLevel2() {
     buildLevel2Maze();
     createAngels();
     
-    // Create note for Level 2 near spawn
-    const noteGeometry = new THREE.BoxGeometry(0.3, 0.4, 0.05);
-    const noteMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xffD700,
-        emissive: 0xffaa00,
-        emissiveIntensity: 0.8
-    });
-    noteObject = new THREE.Mesh(noteGeometry, noteMaterial);
-    noteObject.position.set(10, 0.5, 10);
-    noteObject.rotation.y = Math.PI / 4;
-    scene.add(noteObject);
+    // Create multiple notes for Level 2 with lore
+    noteObjects = [];
     
-    // Golden glow to note
-    const noteGlow = new THREE.PointLight(0xffD700, 2, 8);
-    noteGlow.position.copy(noteObject.position);
-    scene.add(noteGlow);
+    // Generate random positions for notes, ensuring they're valid and not too close to each other
+    const notePositions = [];
+    const minNoteDistance = 3; // Minimum distance between notes
+    
+    for (let i = 0; i < 6; i++) { // 6 notes total
+        let px, pz, attempts = 0;
+        let validPosition = false;
+        
+        do {
+            // Random position within maze boundaries
+            px = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            pz = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            
+            // Check if position is valid (not in wall, not at spawn/exit)
+            const notInWall = mazeData[px][pz] !== 1;
+            const notAtSpawn = !(px <= 1 && pz <= 1);
+            const notAtExit = !(Math.abs(px - exitCell.x) < 2 && Math.abs(pz - exitCell.z) < 2);
+            
+            // Check distance from other notes
+            let tooClose = false;
+            for (const pos of notePositions) {
+                const dist = Math.sqrt((px - pos.x) ** 2 + (pz - pos.z) ** 2);
+                if (dist < minNoteDistance) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            
+            validPosition = notInWall && notAtSpawn && notAtExit && !tooClose;
+            attempts++;
+        } while (!validPosition && attempts < 200);
+        
+        if (validPosition) {
+            notePositions.push({ x: px * cellSize, z: pz * cellSize });
+        }
+    }
+    
+    const level2Notes = [
+        {
+            position: notePositions[0] || { x: 10, z: 10 },
+            title: "DR. HELENA'S JOURNAL - DAY 1",
+            date: "The First Discovery",
+            text: `
+                <p>I found it. After months of research, I finally understand what happened in the dark facility.</p>
+                <p>The creatures there - the "Watchers" - they weren't born in darkness. They <strong>fled</strong> into it.</p>
+                <p>My colleague Dr. Shaw was right. The shadows fear light not because it hurts them, but because of what dwells IN the light.</p>
+                <p>I'm following the trail they left. There's a place they call "The Eternal Garden." The shadows whisper about it in terror.</p>
+                <p>Tomorrow, I enter the forest. God help me.</p>
+                <p class="note-signature">- Dr. Helena Marsh, Paranormal Research Division</p>
+            `
+        },
+        {
+            position: notePositions[1] || { x: mazeSize * cellSize * 0.2, z: mazeSize * cellSize * 0.25 },
+            title: "DR. HELENA'S JOURNAL - DAY 3",
+            date: "The Angels",
+            text: `
+                <p>I was wrong. So terribly wrong.</p>
+                <p>The entities here are not guardians. They're <strong>hunters</strong>. Beautiful. Luminous. Deadly.</p>
+                <p>My research assistant, Marcus, looked at one for too long. It... changed. Its eyes ignited with golden fire.</p>
+                <p>It didn't freeze like the shadows do. It CHARGED. Faster and faster the longer he stared.</p>
+                <p>I pulled him behind a tree. The Angel stopped moving the moment we broke eye contact.</p>
+                <p>Marcus is gone now. He ran. I heard him scream.</p>
+                <p><em>Never stare. Never let them see you watching.</em></p>
+                <p class="note-signature">- Dr. Helena Marsh</p>
+            `
+        },
+        {
+            position: notePositions[2] || { x: mazeSize * cellSize * 0.4, z: mazeSize * cellSize * 0.35 },
+            title: "ANCIENT TABLET TRANSLATION",
+            date: "Age Unknown",
+            text: `
+                <p>"In the time before time, there was only the Light Eternal."</p>
+                <p>"The First Beings were born of radiance - perfect, unwavering, absolute."</p>
+                <p>"But perfection cannot tolerate imperfection. The shadows that danced at their feet grew conscious, grew willful."</p>
+                <p>"The First Beings - the Angels - declared war. All shadow must be purged."</p>
+                <p>"The shadows learned to mimic their hunters. To freeze when seen. To move unseen."</p>
+                <p>"They scattered into the void, creating the Dark Places as sanctuary."</p>
+                <p><strong>"The war never ended. It merely split into two fronts: Light and Dark."</strong></p>
+                <p class="note-signature">- Translated from Pre-Human Script</p>
+            `
+        },
+        {
+            position: notePositions[3] || { x: mazeSize * cellSize * 0.5, z: mazeSize * cellSize * 0.5 },
+            title: "DR. HELENA'S JOURNAL - DAY 7",
+            date: "The Pattern",
+            text: `
+                <p>I've survived by understanding the pattern.</p>
+                <p>The Angels <strong>feed on attention</strong>. Your gaze is their sustenance. The more you look, the stronger they become.</p>
+                <p>I watched one charge a deer today. The animal couldn't look away - animals don't understand. The Angel accelerated until it was a blur of light.</p>
+                <p>It's the opposite of everything we learned about the shadows. The shadows move when unwatched. The Angels move when watched.</p>
+                <p>This is their revenge. The shadows copied the Angels' weakness to escape. So the Angels inverted it, weaponized it.</p>
+                <p><em>I'm running out of food. The exit must be close.</em></p>
+                <p class="note-signature">- Dr. Helena Marsh</p>
+            `
+        },
+        {
+            position: notePositions[4] || { x: mazeSize * cellSize * 0.65, z: mazeSize * cellSize * 0.55 },
+            title: "SURVIVOR'S WARNING",
+            date: "Left by Someone Who Escaped",
+            text: `
+                <p>YOU CAN MAKE IT OUT.</p>
+                <p>I did. Barely. Here's what you need to know:</p>
+                <p><strong>1. Peripheral vision is your friend.</strong> You can see Angels without looking AT them. Navigate by what you see at the edge of your vision.</p>
+                <p><strong>2. Quick glances only.</strong> If you must look directly at one, make it brief. One second maximum.</p>
+                <p><strong>3. They build momentum.</strong> An Angel you've stared at for 10 seconds is four times faster than one you just glanced at.</p>
+                <p><strong>4. Multiple Angels stack.</strong> If three are chasing, look away from ALL of them, or they'll keep accelerating.</p>
+                <p>The golden glow ahead is the exit. I marked it for you.</p>
+                <p>Don't give up. Don't panic. <em>And whatever you do, don't stare.</em></p>
+                <p class="note-signature">- Someone who made it</p>
+            `
+        },
+        {
+            position: notePositions[5] || { x: mazeSize * cellSize * 0.75, z: mazeSize * cellSize * 0.7 },
+            title: "DR. HELENA'S JOURNAL - FINAL ENTRY",
+            date: "Day 12",
+            text: `
+                <p>I see the exit. Golden light, just like the tablets said.</p>
+                <p>But I understand now. There is no escape. Not really.</p>
+                <p>The shadows in the dark. The Angels in the light. Both hunting. Both eternal.</p>
+                <p>We thought we could study them, contain them, understand them. But they're not subjects. They're forces of nature.</p>
+                <p><strong>Whoever reads this: RUN. Don't look back. Not at the shadows. Not at the Angels.</strong></p>
+                <p>The exit is ahead. I'm going through. Maybe I'll find peace. Maybe just another nightmare.</p>
+                <p>If I don't make it... tell my daughter I tried.</p>
+                <p class="note-signature">- Dr. Helena Marsh, final words</p>
+            `
+        }
+    ];
+    
+    level2Notes.forEach((noteData, index) => {
+        const noteGeometry = new THREE.BoxGeometry(0.3, 0.4, 0.05);
+        const noteMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0xffD700,
+            emissive: 0xffaa00,
+            emissiveIntensity: 0.8
+        });
+        const note = new THREE.Mesh(noteGeometry, noteMaterial);
+        note.position.set(noteData.position.x, 0.5, noteData.position.z);
+        note.rotation.y = Math.PI / 4;
+        note.userData = {
+            title: noteData.title,
+            date: noteData.date,
+            text: noteData.text
+        };
+        scene.add(note);
+        
+        // Golden glow to note
+        const noteGlow = new THREE.PointLight(0xffD700, 2, 8);
+        noteGlow.position.copy(note.position);
+        scene.add(noteGlow);
+        
+        noteObjects.push(note);
+    });
+    
+    // Set first note as main noteObject for compatibility
+    noteObject = noteObjects[0];
     noteScreenVisible = false;
     
     // Reset player position
@@ -3069,6 +3288,52 @@ function buildLevel2Maze() {
     // NO BATTERY PICKUPS in Level 2
     // NO LIGHT SOURCES in Level 2
     
+    // Add boundary walls around the map to prevent players from leaving
+    const boundaryHeight = 15;
+    const boundaryThickness = 2;
+    const mapSize = mazeSize * cellSize;
+    const boundaryMaterial = new THREE.MeshStandardMaterial({
+        color: 0x2d2d2d,
+        roughness: 0.9,
+        metalness: 0.0
+    });
+    
+    // North wall
+    const northWall = new THREE.Mesh(
+        new THREE.BoxGeometry(mapSize + boundaryThickness * 2, boundaryHeight, boundaryThickness),
+        boundaryMaterial
+    );
+    northWall.position.set(mapSize / 2, boundaryHeight / 2, -boundaryThickness / 2);
+    scene.add(northWall);
+    walls.push(northWall);
+    
+    // South wall
+    const southWall = new THREE.Mesh(
+        new THREE.BoxGeometry(mapSize + boundaryThickness * 2, boundaryHeight, boundaryThickness),
+        boundaryMaterial
+    );
+    southWall.position.set(mapSize / 2, boundaryHeight / 2, mapSize + boundaryThickness / 2);
+    scene.add(southWall);
+    walls.push(southWall);
+    
+    // West wall
+    const westWall = new THREE.Mesh(
+        new THREE.BoxGeometry(boundaryThickness, boundaryHeight, mapSize),
+        boundaryMaterial
+    );
+    westWall.position.set(-boundaryThickness / 2, boundaryHeight / 2, mapSize / 2);
+    scene.add(westWall);
+    walls.push(westWall);
+    
+    // East wall
+    const eastWall = new THREE.Mesh(
+        new THREE.BoxGeometry(boundaryThickness, boundaryHeight, mapSize),
+        boundaryMaterial
+    );
+    eastWall.position.set(mapSize + boundaryThickness / 2, boundaryHeight / 2, mapSize / 2);
+    scene.add(eastWall);
+    walls.push(eastWall);
+    
     // Exit marker - golden glowing portal
     const exitGeometry = new THREE.CylinderGeometry(1.5, 1.5, 8, 32);
     const exitMaterial = new THREE.MeshStandardMaterial({ 
@@ -3087,44 +3352,122 @@ function buildLevel2Maze() {
     exitLight.position.set(exitCell.x * cellSize, 4, exitCell.z * cellSize);
     scene.add(exitLight);
     
-    // Add MANY MORE trees throughout the forest
-    const numTrees = 200 + Math.floor(Math.random() * 100);
+    // Add MANY MORE trees throughout the forest with varied sizes
+    const numTrees = 450 + Math.floor(Math.random() * 150); // Increased from 400-550 to 450-600
+    const treePositions = []; // Track tree positions to avoid overlap
+    
     for (let i = 0; i < numTrees; i++) {
         let px, pz, attempts = 0;
+        let validPosition = false;
+        
         do {
-            px = Math.floor(Math.random() * mazeSize);
-            pz = Math.floor(Math.random() * mazeSize);
+            // Ensure trees spawn within map boundaries (0 to mazeSize-1)
+            px = 1 + Math.floor(Math.random() * (mazeSize - 2));
+            pz = 1 + Math.floor(Math.random() * (mazeSize - 2));
+            
+            // Check if position is valid (not in walls, not at spawn/exit)
+            const notInWall = mazeData[px][pz] !== 1;
+            const notAtSpawn = !(px === 0 && pz === 0);
+            const notAtExit = !(px === exitCell.x && pz === exitCell.z);
+            
+            // Check if too close to other trees
+            let tooClose = false;
+            for (const pos of treePositions) {
+                const dist = Math.sqrt((px - pos.x) ** 2 + (pz - pos.z) ** 2);
+                if (dist < 0.8) { // Minimum distance between trees
+                    tooClose = true;
+                    break;
+                }
+            }
+            
+            validPosition = notInWall && notAtSpawn && notAtExit && !tooClose;
             attempts++;
-        } while ((mazeData[px][pz] === 1 || (px === 0 && pz === 0) || (px === exitCell.x && pz === exitCell.z)) && attempts < 100);
+        } while (!validPosition && attempts < 100);
         
-        // Tree trunk - brown cylinder
-        const trunkHeight = 8 + Math.random() * 6;
-        const trunkRadius = 0.3 + Math.random() * 0.3;
-        const trunkGeometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius + 0.1, trunkHeight, 8);
-        const trunkMaterial = new THREE.MeshStandardMaterial({
-            color: 0x3d2817,  // Dark brown bark
-            roughness: 0.9,
-            metalness: 0.0
-        });
-        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-        trunk.position.set(px * cellSize, trunkHeight / 2, pz * cellSize);
-        trunk.castShadow = true;
-        trunk.receiveShadow = true;
-        scene.add(trunk);
-        pillars.push(trunk);
+        if (!validPosition) continue;
         
-        // Tree foliage - dark green sphere
-        const foliageRadius = 1.5 + Math.random() * 1.5;
-        const foliageGeometry = new THREE.SphereGeometry(foliageRadius, 8, 8);
-        const foliageMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a4d0d,  // Dark forest green
-            roughness: 0.8,
-            metalness: 0.0
-        });
-        const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
-        foliage.position.set(px * cellSize, trunkHeight + foliageRadius - 0.5, pz * cellSize);
-        foliage.castShadow = true;
-        scene.add(foliage);
+        // Store this tree position
+        treePositions.push({ x: px, z: pz });
+        
+        const treeType = Math.random();
+        
+        if (treeType < 0.3) {
+            // SHORT BUSH - low, wide foliage
+            const bushRadius = 0.8 + Math.random() * 0.7;
+            const bushGeometry = new THREE.SphereGeometry(bushRadius, 6, 6);
+            const bushMaterial = new THREE.MeshStandardMaterial({
+                color: 0x2a5a1a,
+                roughness: 0.9,
+                metalness: 0.0
+            });
+            const bush = new THREE.Mesh(bushGeometry, bushMaterial);
+            bush.position.set(px * cellSize, bushRadius * 0.6, pz * cellSize); // Position at ground level
+            bush.scale.y = 0.6; // Flatten it
+            bush.castShadow = true;
+            scene.add(bush);
+            pillars.push(bush);
+            
+        } else if (treeType < 0.6) {
+            // CONE/PINE TREE - tall and narrow
+            const coneHeight = 5 + Math.random() * 8;
+            const coneRadius = 0.8 + Math.random() * 0.6;
+            const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 8);
+            const coneMaterial = new THREE.MeshStandardMaterial({
+                color: 0x1a4d0d,
+                roughness: 0.9,
+                metalness: 0.0
+            });
+            const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+            cone.position.set(px * cellSize, coneHeight / 2, pz * cellSize);
+            cone.castShadow = true;
+            scene.add(cone);
+            pillars.push(cone);
+            
+            // Small trunk
+            const smallTrunkGeometry = new THREE.CylinderGeometry(0.15, 0.2, coneHeight * 0.4, 6);
+            const trunkMaterial = new THREE.MeshStandardMaterial({
+                color: 0x3d2817,
+                roughness: 0.9,
+                metalness: 0.0
+            });
+            const smallTrunk = new THREE.Mesh(smallTrunkGeometry, trunkMaterial);
+            smallTrunk.position.set(px * cellSize, coneHeight * 0.2, pz * cellSize);
+            scene.add(smallTrunk);
+            
+        } else {
+            // REGULAR TREE - varied heights with round foliage
+            const trunkHeight = 4 + Math.random() * 12; // 4-16 units tall
+            const trunkRadius = 0.2 + Math.random() * 0.4;
+            const trunkGeometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius + 0.1, trunkHeight, 8);
+            const trunkMaterial = new THREE.MeshStandardMaterial({
+                color: 0x3d2817,
+                roughness: 0.9,
+                metalness: 0.0
+            });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.set(px * cellSize, trunkHeight / 2, pz * cellSize);
+            trunk.castShadow = true;
+            trunk.receiveShadow = true;
+            scene.add(trunk);
+            pillars.push(trunk);
+            
+            // Foliage - vary between sphere and elongated shapes
+            const foliageRadius = 1.2 + Math.random() * 1.5;
+            const foliageGeometry = new THREE.SphereGeometry(foliageRadius, 8, 8);
+            const foliageMaterial = new THREE.MeshStandardMaterial({
+                color: 0x1a4d0d,
+                roughness: 0.8,
+                metalness: 0.0
+            });
+            const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
+            foliage.position.set(px * cellSize, trunkHeight + foliageRadius - 0.5, pz * cellSize);
+            // Randomly elongate some foliage
+            if (Math.random() > 0.5) {
+                foliage.scale.y = 1.2 + Math.random() * 0.5;
+            }
+            foliage.castShadow = true;
+            scene.add(foliage);
+        }
     }
 }
 
@@ -3132,7 +3475,7 @@ function buildLevel2Maze() {
 function createAngels() {
     angels = [];
     
-    const numAngels = 7 + Math.floor(Math.random() * 3); // 7-9 angels
+    const numAngels = 12 + Math.floor(Math.random() * 5); // 12-16 angels
     
     for (let i = 0; i < numAngels; i++) {
         // Find random valid position
@@ -3369,7 +3712,7 @@ document.getElementById('restart-button').addEventListener('click', () => {
 document.getElementById('play-again-button').addEventListener('click', () => {
     victoryScreen.style.display = 'none';
     
-    // Clean up old game
+    // Clean up old game completely
     if (scene) {
         while(scene.children.length > 0) { 
             scene.remove(scene.children[0]); 
@@ -3379,18 +3722,37 @@ document.getElementById('play-again-button').addEventListener('click', () => {
         container.removeChild(renderer.domElement);
     }
     
-    // Reset game state
+    // Stop all sounds
+    if (sounds.soundtrack) {
+        sounds.soundtrack.pause();
+        sounds.soundtrack = null;
+    }
+    if (sounds.ambient) {
+        sounds.ambient.stop();
+        sounds.ambient = null;
+    }
+    
+    // Reset game state completely
     game.running = false;
     game.pointerLocked = false;
+    game.currentLevel = 1;
     shadows = [];
+    angels = [];
     weepingAngel = null;
     walls = [];
     particleSystems.length = 0;
     lightSources = [];
     batteryPickups = [];
+    pillars = [];
+    matchPickups = [];
+    noteObjects = [];
+    skybox = null;
+    scene = null;
+    camera = null;
+    renderer = null;
     
-    // Start fresh
-    startGame();
+    // Return to main menu
+    startScreen.style.display = 'flex';
 });
 
 // Mouse movement

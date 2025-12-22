@@ -571,24 +571,25 @@ body {
 }
 
 #note-content {
-    background: linear-gradient(to bottom, #2a2416, #1a1410);
+    background: linear-gradient(to bottom, #f5f0e8, #e8dcc8);
     border: 3px solid #8b7355;
     border-radius: 4px;
     padding: 3rem;
     max-width: 800px;
     max-height: 80vh;
     overflow-y: hidden;
-    box-shadow: 0 0 40px rgba(0, 0, 0, 0.9), inset 0 0 20px rgba(0, 0, 0, 0.5);
-    color: #d4c5a9;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.9), inset 0 0 20px rgba(0, 0, 0, 0.3);
+    color: #1a1410;
     font-family: 'Courier New', monospace;
+    font-size: 1.1rem;
 }
 
 #note-content h2 {
     color: #8b0000;
     text-align: center;
     margin-bottom: 0.5rem;
-    font-size: 2rem;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    font-size: 2.2rem;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
     border-bottom: 2px solid #8b7355;
     padding-bottom: 1rem;
 }
@@ -596,8 +597,9 @@ body {
 .note-date {
     text-align: center;
     font-style: italic;
-    color: #999;
+    color: #555;
     margin-bottom: 2rem;
+    font-size: 1rem;
 }
 
 .note-text p {
