@@ -46,7 +46,7 @@ const player = {
     batteryDrain: 0.015,
     stamina: 100,
     staminaDrain: 0.12,
-    staminaRegen: 0.15,
+    staminaRegen: 0.35,
     godMode: false, // Testing mode - press Z to toggle
     noiseLevel: 0, // 0-100 scale, monsters detect above 30
     noisePosition: null, // Last position where noise was made
@@ -932,90 +932,177 @@ function buildMaze() {
         }
     }
     
-    // Floor - bloody, nasty seamless texture
+    // Floor - bloody, fleshy organic texture
     const floorCanvas = document.createElement('canvas');
     floorCanvas.width = 512;
     floorCanvas.height = 512;
     const floorCtx = floorCanvas.getContext('2d');
     
-    // Base dark reddish-brown (dried blood color)
-    floorCtx.fillStyle = '#2a0a0a';
+    // Base dark blood red color
+    floorCtx.fillStyle = '#1a0808';
     floorCtx.fillRect(0, 0, 512, 512);
     
-    // Large blood stains and splatters
-    for (let i = 0; i < 60; i++) {
+    // Fleshy tissue layers - gradient patches (darker tones)
+    for (let i = 0; i < 40; i++) {
         const x = Math.random() * 512;
         const y = Math.random() * 512;
-        const size = 30 + Math.random() * 80;
+        const size = 60 + Math.random() * 120;
         
-        // Darker dried blood pools
-        const redVal = 20 + Math.random() * 30;
-        const greenVal = Math.random() * 5;
-        floorCtx.fillStyle = `rgba(${redVal}, ${greenVal}, 0, ${0.5 + Math.random() * 0.4})`;
-        
+        const gradient = floorCtx.createRadialGradient(x, y, 0, x, y, size);
+        const fleshTone = Math.random();
+        if (fleshTone < 0.33) {
+            // Dark bloody flesh
+            gradient.addColorStop(0, 'rgba(70, 20, 25, 0.7)');
+            gradient.addColorStop(0.5, 'rgba(45, 12, 15, 0.5)');
+            gradient.addColorStop(1, 'rgba(25, 8, 8, 0)');
+        } else if (fleshTone < 0.66) {
+            // Very dark muscle tissue
+            gradient.addColorStop(0, 'rgba(55, 12, 15, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(35, 8, 10, 0.5)');
+            gradient.addColorStop(1, 'rgba(20, 5, 5, 0)');
+        } else {
+            // Darker exposed tissue
+            gradient.addColorStop(0, 'rgba(80, 30, 35, 0.6)');
+            gradient.addColorStop(0.5, 'rgba(50, 18, 22, 0.4)');
+            gradient.addColorStop(1, 'rgba(30, 10, 10, 0)');
+        }
+        floorCtx.fillStyle = gradient;
         floorCtx.beginPath();
         floorCtx.arc(x, y, size, 0, Math.PI * 2);
         floorCtx.fill();
+    }
+    
+    // Veins and capillaries network
+    for (let i = 0; i < 80; i++) {
+        let x = Math.random() * 512;
+        let y = Math.random() * 512;
+        const veinColor = Math.random() < 0.5 ? 
+            `rgba(${100 + Math.random() * 50}, ${10 + Math.random() * 20}, ${20 + Math.random() * 15}, ${0.6 + Math.random() * 0.3})` :
+            `rgba(${60 + Math.random() * 30}, ${5 + Math.random() * 10}, ${15 + Math.random() * 10}, ${0.5 + Math.random() * 0.4})`;
         
-        // Splatter marks around edges
-        for (let j = 0; j < 12; j++) {
-            const angle = (j / 12) * Math.PI * 2;
-            const dist = size + Math.random() * 30;
+        floorCtx.strokeStyle = veinColor;
+        floorCtx.lineWidth = 1 + Math.random() * 3;
+        floorCtx.beginPath();
+        floorCtx.moveTo(x, y);
+        
+        // Branching vein pattern
+        const segments = 5 + Math.floor(Math.random() * 8);
+        for (let s = 0; s < segments; s++) {
+            const nextX = x + (Math.random() - 0.5) * 60;
+            const nextY = y + (Math.random() - 0.5) * 60;
+            floorCtx.quadraticCurveTo(
+                x + (Math.random() - 0.5) * 30,
+                y + (Math.random() - 0.5) * 30,
+                nextX, nextY
+            );
+            x = nextX;
+            y = nextY;
+        }
+        floorCtx.stroke();
+        
+        // Small capillary branches
+        for (let b = 0; b < 3; b++) {
+            const branchX = x + (Math.random() - 0.5) * 40;
+            const branchY = y + (Math.random() - 0.5) * 40;
+            floorCtx.lineWidth = 0.5 + Math.random() * 1;
+            floorCtx.beginPath();
+            floorCtx.moveTo(x, y);
+            floorCtx.lineTo(branchX, branchY);
+            floorCtx.stroke();
+        }
+    }
+    
+    // Large blood pools with coagulated edges
+    for (let i = 0; i < 25; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 40 + Math.random() * 80;
+        
+        // Fresh blood pool
+        const bloodGradient = floorCtx.createRadialGradient(x, y, 0, x, y, size);
+        bloodGradient.addColorStop(0, 'rgba(130, 10, 15, 0.9)');
+        bloodGradient.addColorStop(0.6, 'rgba(80, 5, 10, 0.7)');
+        bloodGradient.addColorStop(1, 'rgba(40, 0, 5, 0.3)');
+        
+        floorCtx.fillStyle = bloodGradient;
+        floorCtx.beginPath();
+        // Irregular blob shape
+        for (let a = 0; a < Math.PI * 2; a += 0.3) {
+            const radius = size * (0.7 + Math.random() * 0.4);
+            const px = x + Math.cos(a) * radius;
+            const py = y + Math.sin(a) * radius;
+            if (a === 0) floorCtx.moveTo(px, py);
+            else floorCtx.lineTo(px, py);
+        }
+        floorCtx.closePath();
+        floorCtx.fill();
+        
+        // Splatter around pool
+        for (let j = 0; j < 15; j++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = size + Math.random() * 40;
             const splatterX = x + Math.cos(angle) * dist;
             const splatterY = y + Math.sin(angle) * dist;
-            const splatterSize = 3 + Math.random() * 8;
+            const splatterSize = 2 + Math.random() * 6;
             
-            floorCtx.fillStyle = `rgba(${redVal + 10}, 0, 0, ${Math.random() * 0.6})`;
+            floorCtx.fillStyle = `rgba(${100 + Math.random() * 30}, 5, 10, ${0.5 + Math.random() * 0.4})`;
             floorCtx.beginPath();
             floorCtx.arc(splatterX, splatterY, splatterSize, 0, Math.PI * 2);
             floorCtx.fill();
         }
     }
     
-    // Fresh blood drips and trails
+    // Fleshy bumps and nodules
     for (let i = 0; i < 100; i++) {
-        const startX = Math.random() * 512;
-        const startY = Math.random() * 512;
-        const length = 20 + Math.random() * 60;
-        
-        floorCtx.strokeStyle = `rgba(${80 + Math.random() * 40}, ${Math.random() * 10}, 0, ${0.4 + Math.random() * 0.5})`;
-        floorCtx.lineWidth = 1 + Math.random() * 4;
-        floorCtx.beginPath();
-        floorCtx.moveTo(startX, startY);
-        floorCtx.lineTo(startX + (Math.random() - 0.5) * 40, startY + length);
-        floorCtx.stroke();
-    }
-    
-    // Grime and dirt patches
-    for (let i = 0; i < 200; i++) {
         const x = Math.random() * 512;
         const y = Math.random() * 512;
-        const size = 5 + Math.random() * 25;
+        const size = 3 + Math.random() * 12;
         
-        const grimeVal = Math.random() * 20;
-        floorCtx.fillStyle = `rgba(${grimeVal}, ${grimeVal * 0.7}, ${grimeVal * 0.5}, ${0.3 + Math.random() * 0.3})`;
+        const bumpGradient = floorCtx.createRadialGradient(x - size*0.3, y - size*0.3, 0, x, y, size);
+        bumpGradient.addColorStop(0, 'rgba(160, 80, 85, 0.8)');
+        bumpGradient.addColorStop(0.5, 'rgba(100, 40, 45, 0.6)');
+        bumpGradient.addColorStop(1, 'rgba(60, 20, 25, 0.3)');
+        
+        floorCtx.fillStyle = bumpGradient;
         floorCtx.beginPath();
         floorCtx.arc(x, y, size, 0, Math.PI * 2);
         floorCtx.fill();
     }
     
-    // Cracks and scratches
-    for (let i = 0; i < 50; i++) {
-        const startX = Math.random() * 512;
-        const startY = Math.random() * 512;
-        const endX = startX + (Math.random() - 0.5) * 100;
-        const endY = startY + (Math.random() - 0.5) * 100;
+    // Torn flesh and wounds
+    for (let i = 0; i < 30; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const length = 20 + Math.random() * 50;
+        const angle = Math.random() * Math.PI;
         
-        floorCtx.strokeStyle = `rgba(0, 0, 0, ${0.5 + Math.random() * 0.4})`;
+        // Dark wound opening
+        floorCtx.strokeStyle = 'rgba(20, 0, 5, 0.9)';
+        floorCtx.lineWidth = 3 + Math.random() * 5;
+        floorCtx.beginPath();
+        floorCtx.moveTo(x, y);
+        floorCtx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+        floorCtx.stroke();
+        
+        // Pink flesh edges
+        floorCtx.strokeStyle = 'rgba(150, 60, 70, 0.7)';
         floorCtx.lineWidth = 1 + Math.random() * 2;
         floorCtx.beginPath();
-        floorCtx.moveTo(startX, startY);
-        floorCtx.quadraticCurveTo(
-            startX + (endX - startX) / 2 + (Math.random() - 0.5) * 30,
-            startY + (endY - startY) / 2 + (Math.random() - 0.5) * 30,
-            endX, endY
-        );
+        floorCtx.moveTo(x + 2, y + 2);
+        floorCtx.lineTo(x + Math.cos(angle) * length + 2, y + Math.sin(angle) * length + 2);
         floorCtx.stroke();
+    }
+    
+    // Glistening wet highlights
+    for (let i = 0; i < 60; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 1 + Math.random() * 4;
+        
+        floorCtx.fillStyle = `rgba(200, 150, 155, ${0.2 + Math.random() * 0.3})`;
+        floorCtx.beginPath();
+        floorCtx.arc(x, y, size, 0, Math.PI * 2);
+        floorCtx.fill();
     }
     
     // Load floor texture
@@ -1558,35 +1645,165 @@ function createShadows() {
             attempts++;
         } while (!validPosition && attempts < 1000);
         
-        // Create simple tall black monster with glowing red eyes
+        // Create humanoid shadow monster with distinct body parts
         const bodyGroup = new THREE.Group();
         
-        // Tall lean black body
-        const bodyGeometry = new THREE.CylinderGeometry(0.15, 0.12, 2.5, 8);
-        const bodyMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x000000,
+        const monsterMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x050505,
             transparent: true,
-            opacity: 0.98
+            opacity: 0.95
         });
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        body.position.y = 1.25;
-        bodyGroup.add(body);
         
-        // Left eye - glowing red
-        const eyeGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+        // Head - slightly elongated skull shape
+        const headGeometry = new THREE.SphereGeometry(0.22, 12, 10);
+        headGeometry.scale(0.9, 1.2, 0.95);
+        const head = new THREE.Mesh(headGeometry, monsterMaterial);
+        head.position.y = 2.45;
+        bodyGroup.add(head);
+        
+        // Neck - thin connection
+        const neckGeometry = new THREE.CylinderGeometry(0.06, 0.08, 0.25, 8);
+        const neck = new THREE.Mesh(neckGeometry, monsterMaterial);
+        neck.position.y = 2.15;
+        bodyGroup.add(neck);
+        
+        // Torso - humanoid chest tapering to waist
+        const torsoGeometry = new THREE.CylinderGeometry(0.12, 0.22, 0.7, 10);
+        const torso = new THREE.Mesh(torsoGeometry, monsterMaterial);
+        torso.position.y = 1.75;
+        bodyGroup.add(torso);
+        
+        // Abdomen/waist
+        const waistGeometry = new THREE.CylinderGeometry(0.10, 0.12, 0.35, 8);
+        const waist = new THREE.Mesh(waistGeometry, monsterMaterial);
+        waist.position.y = 1.25;
+        bodyGroup.add(waist);
+        
+        // Pelvis
+        const pelvisGeometry = new THREE.CylinderGeometry(0.14, 0.10, 0.25, 8);
+        const pelvis = new THREE.Mesh(pelvisGeometry, monsterMaterial);
+        pelvis.position.y = 1.0;
+        bodyGroup.add(pelvis);
+        
+        // Left arm - upper arm
+        const upperArmGeo = new THREE.CylinderGeometry(0.045, 0.055, 0.55, 8);
+        const leftUpperArm = new THREE.Mesh(upperArmGeo, monsterMaterial);
+        leftUpperArm.position.set(-0.28, 1.85, 0);
+        leftUpperArm.rotation.z = 0.15;
+        bodyGroup.add(leftUpperArm);
+        
+        // Left arm - forearm
+        const forearmGeo = new THREE.CylinderGeometry(0.035, 0.045, 0.50, 8);
+        const leftForearm = new THREE.Mesh(forearmGeo, monsterMaterial);
+        leftForearm.position.set(-0.35, 1.35, 0);
+        leftForearm.rotation.z = 0.1;
+        bodyGroup.add(leftForearm);
+        
+        // Left hand with elongated fingers
+        const handGeo = new THREE.BoxGeometry(0.08, 0.12, 0.04);
+        const leftHand = new THREE.Mesh(handGeo, monsterMaterial);
+        leftHand.position.set(-0.38, 1.05, 0);
+        bodyGroup.add(leftHand);
+        
+        // Left fingers (3 long creepy fingers)
+        for (let f = 0; f < 3; f++) {
+            const fingerGeo = new THREE.CylinderGeometry(0.012, 0.008, 0.18, 6);
+            const finger = new THREE.Mesh(fingerGeo, monsterMaterial);
+            finger.position.set(-0.38 + (f - 1) * 0.025, 0.90, 0);
+            finger.rotation.z = (f - 1) * 0.15;
+            bodyGroup.add(finger);
+        }
+        
+        // Right arm - upper arm
+        const rightUpperArm = new THREE.Mesh(upperArmGeo, monsterMaterial);
+        rightUpperArm.position.set(0.28, 1.85, 0);
+        rightUpperArm.rotation.z = -0.15;
+        bodyGroup.add(rightUpperArm);
+        
+        // Right arm - forearm
+        const rightForearm = new THREE.Mesh(forearmGeo, monsterMaterial);
+        rightForearm.position.set(0.35, 1.35, 0);
+        rightForearm.rotation.z = -0.1;
+        bodyGroup.add(rightForearm);
+        
+        // Right hand
+        const rightHand = new THREE.Mesh(handGeo, monsterMaterial);
+        rightHand.position.set(0.38, 1.05, 0);
+        bodyGroup.add(rightHand);
+        
+        // Right fingers
+        for (let f = 0; f < 3; f++) {
+            const fingerGeo = new THREE.CylinderGeometry(0.012, 0.008, 0.18, 6);
+            const finger = new THREE.Mesh(fingerGeo, monsterMaterial);
+            finger.position.set(0.38 + (f - 1) * 0.025, 0.90, 0);
+            finger.rotation.z = (f - 1) * -0.15;
+            bodyGroup.add(finger);
+        }
+        
+        // Left leg - thigh
+        const thighGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.55, 8);
+        const leftThigh = new THREE.Mesh(thighGeo, monsterMaterial);
+        leftThigh.position.set(-0.10, 0.78, 0);
+        bodyGroup.add(leftThigh);
+        
+        // Left leg - shin
+        const shinGeo = new THREE.CylinderGeometry(0.04, 0.055, 0.55, 8);
+        const leftShin = new THREE.Mesh(shinGeo, monsterMaterial);
+        leftShin.position.set(-0.10, 0.28, 0);
+        bodyGroup.add(leftShin);
+        
+        // Left foot
+        const footGeo = new THREE.BoxGeometry(0.08, 0.05, 0.18);
+        const leftFoot = new THREE.Mesh(footGeo, monsterMaterial);
+        leftFoot.position.set(-0.10, 0.03, 0.04);
+        bodyGroup.add(leftFoot);
+        
+        // Right leg - thigh
+        const rightThigh = new THREE.Mesh(thighGeo, monsterMaterial);
+        rightThigh.position.set(0.10, 0.78, 0);
+        bodyGroup.add(rightThigh);
+        
+        // Right leg - shin
+        const rightShin = new THREE.Mesh(shinGeo, monsterMaterial);
+        rightShin.position.set(0.10, 0.28, 0);
+        bodyGroup.add(rightShin);
+        
+        // Right foot
+        const rightFoot = new THREE.Mesh(footGeo, monsterMaterial);
+        rightFoot.position.set(0.10, 0.03, 0.04);
+        bodyGroup.add(rightFoot);
+        
+        // Shoulders - slight bulk
+        const shoulderGeo = new THREE.SphereGeometry(0.08, 8, 8);
+        const leftShoulder = new THREE.Mesh(shoulderGeo, monsterMaterial);
+        leftShoulder.position.set(-0.24, 2.0, 0);
+        bodyGroup.add(leftShoulder);
+        
+        const rightShoulder = new THREE.Mesh(shoulderGeo, monsterMaterial);
+        rightShoulder.position.set(0.24, 2.0, 0);
+        bodyGroup.add(rightShoulder);
+        
+        // Eyes - glowing red, sunken into head
+        const eyeGeometry = new THREE.SphereGeometry(0.05, 8, 8);
         const eyeMaterial = new THREE.MeshBasicMaterial({ 
             color: 0xff0000,
             emissive: 0xff0000,
-            emissiveIntensity: 1.0
+            emissiveIntensity: 1.5
         });
         const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-        leftEye.position.set(-0.1, 2.5, 0.12);
+        leftEye.position.set(-0.08, 2.50, 0.15);
         bodyGroup.add(leftEye);
         
-        // Right eye - glowing red
         const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-        rightEye.position.set(0.1, 2.5, 0.12);
+        rightEye.position.set(0.08, 2.50, 0.15);
         bodyGroup.add(rightEye);
+        
+        // Mouth - dark gash
+        const mouthGeo = new THREE.BoxGeometry(0.12, 0.02, 0.05);
+        const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0x200000 });
+        const mouth = new THREE.Mesh(mouthGeo, mouthMaterial);
+        mouth.position.set(0, 2.32, 0.18);
+        bodyGroup.add(mouth);
         
         const mesh = bodyGroup;
         mesh.position.set(spawnX, 0, spawnZ);
@@ -1603,8 +1820,8 @@ function createShadows() {
         monsterFootstep.volume = 0; // Start silent
         monsterFootsteps.push(monsterFootstep);
         
-        // Add dark aura
-        const auraGeometry = new THREE.SphereGeometry(1.2, 8, 8);
+        // Add dark aura centered on torso
+        const auraGeometry = new THREE.SphereGeometry(1.8, 8, 8);
         const auraMaterial = new THREE.MeshBasicMaterial({ 
             color: 0x110011,
             transparent: true,
@@ -1612,36 +1829,22 @@ function createShadows() {
             side: THREE.BackSide
         });
         const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+        aura.position.y = 1.5; // Center on full body height
         mesh.add(aura);
         
-        // Add creepy floating tendrils
-        for (let t = 0; t < 8; t++) {
-            const tendrilGeometry = new THREE.BoxGeometry(0.08, 2, 0.08);
-            const tendrilMaterial = new THREE.MeshBasicMaterial({ 
-                color: 0x1a001a,
-                transparent: true,
-                opacity: 0.7
-            });
-            const tendril = new THREE.Mesh(tendrilGeometry, tendrilMaterial);
-            const angle = (t / 8) * Math.PI * 2;
-            tendril.position.set(
-                Math.cos(angle) * 0.6,
-                -0.8,
-                Math.sin(angle) * 0.6
-            );
-            tendril.rotation.z = Math.random() * Math.PI / 4;
-            mesh.add(tendril);
-        }
-        
-        // Particle system for shadow
+        // Particle system for shadow - surrounds entire body
         const particleCount = 100;
         const particleGeometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particleCount * 3);
         
         for (let j = 0; j < particleCount; j++) {
-            positions[j * 3] = (Math.random() - 0.5) * 3;
-            positions[j * 3 + 1] = (Math.random() - 0.5) * 3;
-            positions[j * 3 + 2] = (Math.random() - 0.5) * 3;
+            // Spread particles in a sphere around the monster's center
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI;
+            const radius = 1.0 + Math.random() * 1.5; // Radius between 1.0 and 2.5
+            positions[j * 3] = Math.sin(phi) * Math.cos(theta) * radius;
+            positions[j * 3 + 1] = Math.cos(phi) * radius + 1.5; // Center around body height
+            positions[j * 3 + 2] = Math.sin(phi) * Math.sin(theta) * radius;
         }
         
         particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -1653,7 +1856,7 @@ function createShadows() {
             blending: THREE.AdditiveBlending
         });
         const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
-        particleSystem.position.copy(mesh.position);
+        mesh.add(particleSystem); // Attach to mesh so it follows the monster
         scene.add(particleSystem);
         
         // Add red glow light to monster
