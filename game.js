@@ -31,8 +31,8 @@ const game = {
 const player = {
     velocity: new THREE.Vector3(),
     direction: new THREE.Vector3(),
-    speed: 0.05,
-    sprintSpeed: 0.11,
+    speed: 0.07,
+    sprintSpeed: 0.14,
     sanity: 100,
     matches: 5,
     matchLit: false,
@@ -2840,9 +2840,9 @@ function updateAngels() {
             angel.glow.intensity = 2;
         }
         
-        // Collision with player - immediate jumpscare on contact
-        if (dist < 2.0 && !player.godMode) {
-            gameOver("The Angel's light consumed you...");
+        // Collision with player - immediate jumpscare on contact (larger range for tall angel)
+        if (dist < 2.5 && !player.godMode) {
+            gameOver("The Angel's cold embrace took you...");
         }
     }
     
@@ -3439,35 +3439,35 @@ function transitionToLevel2() {
 
 // Initialize Level 2 - Dark forest maze
 function initLevel2() {
-    // Change background to gray sky
-    scene.background = new THREE.Color(0x555555);
-    // Add completely opaque fog to heavily obscure visibility
-    scene.fog = new THREE.Fog(0x666666, 5, 15); // Fog starts at 5 units, completely opaque at 15 units
+    // Change background to match fog - opaque wall of fog
+    scene.background = new THREE.Color(0x1a1a1a);
+    // Dense fog - player can see about 10 units around them
+    scene.fog = new THREE.Fog(0x1a1a1a, 1, 10); // Fog starts at 1 unit, completely opaque at 10 units
     
-    // Change ambient light to dim gray/cool
-    ambientLight.color.setHex(0x888888);
-    ambientLight.intensity = 0.8; // Dimmer for forest
+    // Change ambient light to very dim - enhances fog effect
+    ambientLight.color.setHex(0x444444);
+    ambientLight.intensity = 0.3; // Much dimmer to enhance fog opacity
     
-    // Add dim directional light for overcast forest
-    const sunlight = new THREE.DirectionalLight(0x666666, 0.6);
+    // Very dim directional light - fog swallows most light
+    const sunlight = new THREE.DirectionalLight(0x333333, 0.2);
     sunlight.position.set(50, 100, 30);
     sunlight.castShadow = true;
     scene.add(sunlight);
     
-    // Add MASSIVE sun light source above the forest
-    const massiveSun = new THREE.PointLight(0xffffaa, 3, 500);
+    // Reduced sun - fog obscures everything beyond tiny radius
+    const massiveSun = new THREE.PointLight(0x888866, 0.5, 200);
     massiveSun.position.set(mazeSize * cellSize / 2, 200, mazeSize * cellSize / 2);
     scene.add(massiveSun);
     
-    // Create skybox (gray overcast sky)
+    // Create skybox (dark to match impenetrable fog)
     const skyboxGeometry = new THREE.BoxGeometry(1000, 1000, 1000);
     const skyboxMaterials = [
-        new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.BackSide }), // Right - gray
-        new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.BackSide }), // Left - gray
-        new THREE.MeshBasicMaterial({ color: 0x666666, side: THREE.BackSide }), // Top - lighter gray
-        new THREE.MeshBasicMaterial({ color: 0x444444, side: THREE.BackSide }), // Bottom - darker gray
-        new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.BackSide }), // Front - gray
-        new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.BackSide })  // Back - gray
+        new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.BackSide }), // Right - matches fog
+        new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.BackSide }), // Left - matches fog
+        new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.BackSide }), // Top - matches fog
+        new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.BackSide }), // Bottom - matches fog
+        new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.BackSide }), // Front - matches fog
+        new THREE.MeshBasicMaterial({ color: 0x1a1a1a, side: THREE.BackSide })  // Back - matches fog
     ];
     skybox = new THREE.Mesh(skyboxGeometry, skyboxMaterials);
     scene.add(skybox);
@@ -3832,8 +3832,8 @@ function buildLevel2Maze() {
     exitLight.position.set(level2ExitCell.x * cellSize, 4, level2ExitCell.z * cellSize);
     scene.add(exitLight);
     
-    // Add MANY MORE trees throughout the forest with varied sizes
-    const numTrees = 900 + Math.floor(Math.random() * 300); // Doubled from 450-600 to 900-1200 for dense forest
+    // Optimized tree count for better performance
+    const numTrees = 200 + Math.floor(Math.random() * 80); // Reduced to 200-280 trees for smooth FPS
     const treePositions = []; // Track tree positions to avoid overlap
     const objectPositions = []; // Track all object positions (trees, pillars, structures, statues)
     
@@ -4372,75 +4372,225 @@ function createAngels() {
         
         if (!validPosition) continue;
         
-        // Create Angel body - white and glowing
+        // Create TERRIFYING Angel - tall, impossibly thin, unsettling
         const bodyGroup = new THREE.Group();
         
-        // Main body - white robe
-        const bodyGeometry = new THREE.CylinderGeometry(0.6, 0.8, 2.5, 8);
+        // Ghostly pale material with eerie glow
         const bodyMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0xffffff,
-            emissive: 0xffffee,
-            emissiveIntensity: 0.5,
-            roughness: 0.4
+            color: 0xd8d0c8,
+            emissive: 0xeee8dd,
+            emissiveIntensity: 0.4,
+            roughness: 0.2,
+            metalness: 0.1
         });
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        body.position.y = 1.2;
-        bodyGroup.add(body);
         
-        // Head - white sphere
-        const headGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+        // Darker material for contrast
+        const darkMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x1a1a1a,
+            emissive: 0x000000,
+            roughness: 0.9
+        });
+        
+        // TALL thin torso - elongated and skeletal
+        const torsoGeometry = new THREE.CylinderGeometry(0.15, 0.25, 3.5, 8);
+        const torso = new THREE.Mesh(torsoGeometry, bodyMaterial);
+        torso.position.y = 2.5;
+        bodyGroup.add(torso);
+        
+        // Ribcage detail - visible bones
+        for (let r = 0; r < 5; r++) {
+            const ribGeo = new THREE.TorusGeometry(0.18, 0.02, 4, 12, Math.PI);
+            const rib = new THREE.Mesh(ribGeo, bodyMaterial);
+            rib.position.set(0, 1.8 + r * 0.35, 0.05);
+            rib.rotation.x = Math.PI / 2;
+            rib.rotation.z = Math.PI;
+            bodyGroup.add(rib);
+        }
+        
+        // Lower body - tattered robe-like
+        const robeGeometry = new THREE.ConeGeometry(0.4, 2.0, 8);
+        const robe = new THREE.Mesh(robeGeometry, bodyMaterial);
+        robe.position.y = 0.5;
+        robe.rotation.x = Math.PI;
+        bodyGroup.add(robe);
+        
+        // Elongated neck - unnaturally long
+        const neckGeometry = new THREE.CylinderGeometry(0.06, 0.08, 0.8, 6);
+        const neck = new THREE.Mesh(neckGeometry, bodyMaterial);
+        neck.position.y = 4.6;
+        bodyGroup.add(neck);
+        
+        // Head - gaunt, elongated skull shape
+        const headGeometry = new THREE.SphereGeometry(0.25, 12, 12);
+        headGeometry.scale(0.8, 1.4, 0.9);
         const head = new THREE.Mesh(headGeometry, bodyMaterial);
-        head.position.y = 2.7;
+        head.position.y = 5.3;
         bodyGroup.add(head);
         
-        // Yellow glowing eyes
-        const eyeGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+        // Sunken eye sockets - dark voids
+        const socketGeo = new THREE.SphereGeometry(0.08, 8, 8);
+        const leftSocket = new THREE.Mesh(socketGeo, darkMaterial);
+        leftSocket.position.set(-0.10, 5.35, 0.18);
+        leftSocket.scale.z = 0.5;
+        bodyGroup.add(leftSocket);
+        
+        const rightSocket = new THREE.Mesh(socketGeo, darkMaterial);
+        rightSocket.position.set(0.10, 5.35, 0.18);
+        rightSocket.scale.z = 0.5;
+        bodyGroup.add(rightSocket);
+        
+        // Glowing eyes inside sockets - piercing
+        const eyeGeometry = new THREE.SphereGeometry(0.045, 8, 8);
         const eyeMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xffff00,
-            emissive: 0xffff00,
-            emissiveIntensity: 2
+            color: 0xffdd00,
+            emissive: 0xffaa00,
+            emissiveIntensity: 4
         });
         
         const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-        leftEye.position.set(-0.15, 2.7, 0.35);
+        leftEye.position.set(-0.10, 5.35, 0.20);
         bodyGroup.add(leftEye);
         
         const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-        rightEye.position.set(0.15, 2.7, 0.35);
+        rightEye.position.set(0.10, 5.35, 0.20);
         bodyGroup.add(rightEye);
         
-        // Wings - white and feathered
-        const wingGeometry = new THREE.BoxGeometry(1.5, 2, 0.2);
-        const leftWing = new THREE.Mesh(wingGeometry, bodyMaterial);
-        leftWing.position.set(-0.8, 1.5, -0.2);
-        leftWing.rotation.y = Math.PI / 6;
+        // Eye glow light
+        const eyeGlow = new THREE.PointLight(0xffcc00, 0.8, 4);
+        eyeGlow.position.set(0, 5.35, 0.25);
+        bodyGroup.add(eyeGlow);
+        
+        // Gaping mouth - dark hollow
+        const mouthGeo = new THREE.BoxGeometry(0.12, 0.06, 0.08);
+        const mouth = new THREE.Mesh(mouthGeo, darkMaterial);
+        mouth.position.set(0, 5.15, 0.20);
+        bodyGroup.add(mouth);
+        
+        // LONG skeletal arms - disturbingly thin
+        const upperArmGeo = new THREE.CylinderGeometry(0.03, 0.04, 1.4, 6);
+        const forearmGeo = new THREE.CylinderGeometry(0.025, 0.03, 1.3, 6);
+        
+        // Left arm
+        const leftUpperArm = new THREE.Mesh(upperArmGeo, bodyMaterial);
+        leftUpperArm.position.set(-0.25, 3.8, 0);
+        leftUpperArm.rotation.z = 0.3;
+        bodyGroup.add(leftUpperArm);
+        
+        const leftForearm = new THREE.Mesh(forearmGeo, bodyMaterial);
+        leftForearm.position.set(-0.55, 2.7, 0);
+        leftForearm.rotation.z = 0.15;
+        bodyGroup.add(leftForearm);
+        
+        // Right arm
+        const rightUpperArm = new THREE.Mesh(upperArmGeo, bodyMaterial);
+        rightUpperArm.position.set(0.25, 3.8, 0);
+        rightUpperArm.rotation.z = -0.3;
+        bodyGroup.add(rightUpperArm);
+        
+        const rightForearm = new THREE.Mesh(forearmGeo, bodyMaterial);
+        rightForearm.position.set(0.55, 2.7, 0);
+        rightForearm.rotation.z = -0.15;
+        bodyGroup.add(rightForearm);
+        
+        // Bony hands with long fingers
+        const handGeo = new THREE.BoxGeometry(0.08, 0.06, 0.03);
+        const leftHand = new THREE.Mesh(handGeo, bodyMaterial);
+        leftHand.position.set(-0.65, 2.0, 0);
+        bodyGroup.add(leftHand);
+        
+        const rightHand = new THREE.Mesh(handGeo, bodyMaterial);
+        rightHand.position.set(0.65, 2.0, 0);
+        bodyGroup.add(rightHand);
+        
+        // Long creepy fingers
+        for (let f = 0; f < 4; f++) {
+            const fingerGeo = new THREE.CylinderGeometry(0.008, 0.005, 0.25, 4);
+            const leftFinger = new THREE.Mesh(fingerGeo, bodyMaterial);
+            leftFinger.position.set(-0.65 + (f - 1.5) * 0.02, 1.8, 0);
+            leftFinger.rotation.z = (f - 1.5) * 0.1;
+            bodyGroup.add(leftFinger);
+            
+            const rightFinger = new THREE.Mesh(fingerGeo, bodyMaterial);
+            rightFinger.position.set(0.65 + (f - 1.5) * 0.02, 1.8, 0);
+            rightFinger.rotation.z = -(f - 1.5) * 0.1;
+            bodyGroup.add(rightFinger);
+        }
+        
+        // MASSIVE tattered wings - ragged and skeletal
+        const wingMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0xc8c0b8,
+            emissive: 0xddd8d0,
+            emissiveIntensity: 0.3,
+            roughness: 0.3,
+            transparent: true,
+            opacity: 0.85,
+            side: THREE.DoubleSide
+        });
+        
+        // Wing bone structure
+        const wingBoneGeo = new THREE.CylinderGeometry(0.02, 0.015, 2.5, 4);
+        
+        // Left wing bones
+        const leftWingBone1 = new THREE.Mesh(wingBoneGeo, bodyMaterial);
+        leftWingBone1.position.set(-0.3, 3.5, -0.1);
+        leftWingBone1.rotation.z = Math.PI / 3;
+        leftWingBone1.rotation.x = 0.2;
+        bodyGroup.add(leftWingBone1);
+        
+        // Wing membrane - tattered
+        const wingGeometry = new THREE.PlaneGeometry(2.5, 3.0, 4, 4);
+        const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
+        leftWing.position.set(-1.5, 3.2, -0.15);
+        leftWing.rotation.y = Math.PI / 5;
+        leftWing.rotation.z = 0.2;
         bodyGroup.add(leftWing);
         
-        const rightWing = new THREE.Mesh(wingGeometry, bodyMaterial);
-        rightWing.position.set(0.8, 1.5, -0.2);
-        rightWing.rotation.y = -Math.PI / 6;
+        const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
+        rightWing.position.set(1.5, 3.2, -0.15);
+        rightWing.rotation.y = -Math.PI / 5;
+        rightWing.rotation.z = -0.2;
         bodyGroup.add(rightWing);
         
-        // Halo - golden ring
-        const haloGeometry = new THREE.TorusGeometry(0.5, 0.05, 8, 32);
+        // Broken/cracked halo - corrupted divine
+        const haloGeometry = new THREE.TorusGeometry(0.4, 0.03, 6, 24);
         const haloMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xffD700,
-            emissive: 0xffD700,
+            color: 0xccaa00,
+            emissive: 0xaa8800,
             emissiveIntensity: 2
         });
         const halo = new THREE.Mesh(haloGeometry, haloMaterial);
-        halo.position.y = 3.5;
+        halo.position.y = 5.9;
         halo.rotation.x = Math.PI / 2;
+        halo.rotation.z = 0.15; // Slightly tilted - imperfect
         bodyGroup.add(halo);
+        
+        // Dark ethereal aura around the Angel
+        const auraGeo = new THREE.SphereGeometry(1.5, 8, 8);
+        const auraMat = new THREE.MeshBasicMaterial({
+            color: 0x111108,
+            transparent: true,
+            opacity: 0.15,
+            side: THREE.BackSide
+        });
+        const aura = new THREE.Mesh(auraGeo, auraMat);
+        aura.position.y = 3;
+        aura.scale.y = 2.5;
+        bodyGroup.add(aura);
         
         bodyGroup.position.set(spawnX, 0, spawnZ);
         scene.add(bodyGroup);
         
-        // Golden glow light
-        const glowLight = new THREE.PointLight(0xffD700, 2, 8);
+        // Eerie glow light - positioned at chest height of tall angel
+        const glowLight = new THREE.PointLight(0xeedd88, 2.5, 12);
         glowLight.position.copy(bodyGroup.position);
-        glowLight.position.y = 2;
+        glowLight.position.y = 3.5;
         scene.add(glowLight);
+        
+        // Secondary dimmer light at head for face illumination
+        const headGlow = new THREE.PointLight(0xffcc66, 1, 6);
+        headGlow.position.copy(bodyGroup.position);
+        headGlow.position.y = 5.3;
+        scene.add(headGlow);
         
         angels.push({
             mesh: bodyGroup,
