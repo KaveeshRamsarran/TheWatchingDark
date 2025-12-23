@@ -31,8 +31,8 @@ const game = {
 const player = {
     velocity: new THREE.Vector3(),
     direction: new THREE.Vector3(),
-    speed: 0.04,
-    sprintSpeed: 0.09,
+    speed: 0.05,
+    sprintSpeed: 0.11,
     sanity: 100,
     matches: 5,
     matchLit: false,
@@ -47,7 +47,10 @@ const player = {
     stamina: 100,
     staminaDrain: 0.12,
     staminaRegen: 0.15,
-    godMode: false // Testing mode - press Z to toggle
+    godMode: false, // Testing mode - press Z to toggle
+    noiseLevel: 0, // 0-100 scale, monsters detect above 30
+    noisePosition: null, // Last position where noise was made
+    noiseDecay: 0.5 // How fast noise fades per frame
 };
 
 // Sound system
@@ -92,6 +95,7 @@ let wallMaterial; // Store wall material for reuse
 let lightSources = []; // Track light sources in maze
 let batteryPickups = []; // Track battery pickups
 let pillars = []; // Track pillars for collision
+let exitCells = []; // Multiple exit doors
 
 // Particles
 const particleSystems = [];
@@ -452,16 +456,8 @@ function initThree() {
     
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
     
-    // Find valid spawn position (not in walls or pillars)
-    let spawnPos = new THREE.Vector3(8, player.height, 8);
-    let attempts = 0;
-    while (checkCollision(spawnPos) && attempts < 50) {
-        spawnPos.x = 4 + Math.random() * 8;
-        spawnPos.z = 4 + Math.random() * 8;
-        spawnPos.y = player.height;
-        attempts++;
-    }
-    camera.position.copy(spawnPos);
+    // Set initial spawn position - will be validated after maze is built
+    camera.position.set(8, player.height, 8);
     
     // Create note near spawn describing the Watchers
     const noteGeometry = new THREE.BoxGeometry(0.3, 0.4, 0.05);
@@ -663,12 +659,16 @@ function generateMaze() {
         }
     }
     
-    // Place exit at far corner
-    exitCell = { x: mazeSize - 1, z: mazeSize - 1 };
+    // Place exits at two corners
+    exitCells = [
+        { x: mazeSize - 1, z: mazeSize - 1 }, // Far corner
+        { x: 0, z: mazeSize - 1 } // Left far corner
+    ];
+    exitCell = exitCells[0]; // Keep for compatibility
     
     // ENSURE PATH EXISTS - Use flood fill to verify connectivity
-    // If no path exists, carve a guaranteed route from start to exit
-    if (!isPathExists(0, 0, exitCell.x, exitCell.z)) {
+    // If no path exists, carve a guaranteed route to first exit
+    if (!isPathExists(0, 0, exitCells[0].x, exitCells[0].z)) {
         carvePathToExit();
     }
 }
@@ -1150,95 +1150,97 @@ function buildMaze() {
     ceiling.position.set((mazeSize * cellSize) / 2 - cellSize / 2, wallHeight, (mazeSize * cellSize) / 2 - cellSize / 2);
     scene.add(ceiling);
     
-    // Create exit door
-    const doorGroup = new THREE.Group();
-    
-    // Door frame
-    const frameMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x2a4a2a,
-        roughness: 0.7,
-        metalness: 0.3
-    });
-    
-    const leftFrame = new THREE.Mesh(
-        new THREE.BoxGeometry(0.3, 3.5, 0.3),
-        frameMaterial
-    );
-    leftFrame.position.set(-1.2, 1.75, 0);
-    doorGroup.add(leftFrame);
-    
-    const rightFrame = new THREE.Mesh(
-        new THREE.BoxGeometry(0.3, 3.5, 0.3),
-        frameMaterial
-    );
-    rightFrame.position.set(1.2, 1.75, 0);
-    doorGroup.add(rightFrame);
-    
-    const topFrame = new THREE.Mesh(
-        new THREE.BoxGeometry(2.7, 0.3, 0.3),
-        frameMaterial
-    );
-    topFrame.position.set(0, 3.5, 0);
-    doorGroup.add(topFrame);
-    
-    // Door itself
-    const doorMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x1a3a1a,
-        roughness: 0.8,
-        metalness: 0.2,
-        emissive: 0x00ff00,
-        emissiveIntensity: 0.2
-    });
-    
-    const door = new THREE.Mesh(
-        new THREE.BoxGeometry(2.1, 3.2, 0.2),
-        doorMaterial
-    );
-    door.position.set(0, 1.6, 0);
-    doorGroup.add(door);
-    
-    // Door handle
-    const handleMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x888888,
-        roughness: 0.3,
-        metalness: 0.9
-    });
-    const handle = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8),
-        handleMaterial
-    );
-    handle.rotation.z = Math.PI / 2;
-    handle.position.set(0.8, 1.6, 0.15);
-    doorGroup.add(handle);
-    
-    // Position door at exit
-    doorGroup.position.set(
-        exitCell.x * cellSize,
-        0,
-        exitCell.z * cellSize
-    );
-    scene.add(doorGroup);
-    
-    // Add glow effect around door
-    const glowGeometry = new THREE.PlaneGeometry(4, 4);
-    const glowMaterial = new THREE.MeshBasicMaterial({
-        color: 0x00ff00,
-        transparent: true,
-        opacity: 0.15,
-        side: THREE.DoubleSide
-    });
-    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-    glow.position.set(
-        exitCell.x * cellSize,
-        2,
-        exitCell.z * cellSize
-    );
-    scene.add(glow);
-    
-    // Add exit light
-    const exitLight = new THREE.PointLight(0x00ff00, 0.5, 15);
-    exitLight.position.set(exitCell.x * cellSize, 2, exitCell.z * cellSize);
-    scene.add(exitLight);
+    // Create exit doors (multiple)
+    for (const exit of exitCells) {
+        const doorGroup = new THREE.Group();
+        
+        // Door frame
+        const frameMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x2a4a2a,
+            roughness: 0.7,
+            metalness: 0.3
+        });
+        
+        const leftFrame = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 3.5, 0.3),
+            frameMaterial
+        );
+        leftFrame.position.set(-1.2, 1.75, 0);
+        doorGroup.add(leftFrame);
+        
+        const rightFrame = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 3.5, 0.3),
+            frameMaterial
+        );
+        rightFrame.position.set(1.2, 1.75, 0);
+        doorGroup.add(rightFrame);
+        
+        const topFrame = new THREE.Mesh(
+            new THREE.BoxGeometry(2.7, 0.3, 0.3),
+            frameMaterial
+        );
+        topFrame.position.set(0, 3.5, 0);
+        doorGroup.add(topFrame);
+        
+        // Door itself
+        const doorMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x1a3a1a,
+            roughness: 0.8,
+            metalness: 0.2,
+            emissive: 0x00ff00,
+            emissiveIntensity: 0.2
+        });
+        
+        const door = new THREE.Mesh(
+            new THREE.BoxGeometry(2.1, 3.2, 0.2),
+            doorMaterial
+        );
+        door.position.set(0, 1.6, 0);
+        doorGroup.add(door);
+        
+        // Door handle
+        const handleMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x888888,
+            roughness: 0.3,
+            metalness: 0.9
+        });
+        const handle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8),
+            handleMaterial
+        );
+        handle.rotation.z = Math.PI / 2;
+        handle.position.set(0.8, 1.6, 0.15);
+        doorGroup.add(handle);
+        
+        // Position door at exit
+        doorGroup.position.set(
+            exit.x * cellSize,
+            0,
+            exit.z * cellSize
+        );
+        scene.add(doorGroup);
+        
+        // Add glow effect around door
+        const glowGeometry = new THREE.PlaneGeometry(4, 4);
+        const glowMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.15,
+            side: THREE.DoubleSide
+        });
+        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+        glow.position.set(
+            exit.x * cellSize,
+            2,
+            exit.z * cellSize
+        );
+        scene.add(glow);
+        
+        // Add exit light
+        const exitLight = new THREE.PointLight(0x00ff00, 0.5, 15);
+        exitLight.position.set(exit.x * cellSize, 2, exit.z * cellSize);
+        scene.add(exitLight);
+    }
     
     // Add decorative objects throughout maze
     addMazeDecor();
@@ -1775,6 +1777,49 @@ function createShadows() {
     particleSystems.push(dust);
 }
 
+// Validate spawn position after maze is built to ensure no collision with pillars/walls
+function validateSpawnPosition() {
+    // Check if current camera position is valid
+    if (!checkCollision(camera.position)) {
+        return; // Already in a good spot
+    }
+    
+    // Try to find a valid spawn position
+    let attempts = 0;
+    const maxAttempts = 100;
+    
+    while (attempts < maxAttempts) {
+        // Try positions in a grid pattern radiating from center
+        const offset = Math.floor(attempts / 4) + 1;
+        const direction = attempts % 4;
+        
+        let testPos = new THREE.Vector3();
+        switch(direction) {
+            case 0: testPos.set(8 + offset, player.height, 8); break;
+            case 1: testPos.set(8 - offset, player.height, 8); break;
+            case 2: testPos.set(8, player.height, 8 + offset); break;
+            case 3: testPos.set(8, player.height, 8 - offset); break;
+        }
+        
+        // Make sure position is within maze bounds
+        if (testPos.x >= 1 && testPos.x < gameSettings.mazeSize - 1 &&
+            testPos.z >= 1 && testPos.z < gameSettings.mazeSize - 1) {
+            
+            if (!checkCollision(testPos)) {
+                camera.position.copy(testPos);
+                console.log('Found valid spawn position:', testPos);
+                return;
+            }
+        }
+        
+        attempts++;
+    }
+    
+    // Fallback: place at a known safe position near edge
+    camera.position.set(2, player.height, 2);
+    console.warn('Could not find ideal spawn, using fallback position');
+}
+
 // Start game
 function startGame() {
     console.log('Starting game...');
@@ -1817,6 +1862,10 @@ function startGame() {
     initThree();
     generateMaze();
     buildMaze();
+    
+    // Validate and adjust spawn position after maze is built
+    validateSpawnPosition();
+    
     // Only create shadows (old monsters) in level 1
     if (game.currentLevel === 1) {
         createShadows();
@@ -1900,11 +1949,22 @@ function updatePlayer() {
     // Update stamina
     if (isSprinting) {
         player.stamina = Math.max(0, player.stamina - player.staminaDrain);
+        // Generate noise when sprinting
+        player.noiseLevel = Math.min(100, player.noiseLevel + 8);
+        player.noisePosition = camera.position.clone();
     } else {
         // Regenerate stamina when not sprinting (slower when moving)
         const regenRate = isMoving ? player.staminaRegen * 0.5 : player.staminaRegen;
         player.stamina = Math.min(100, player.stamina + regenRate);
+        // Walking generates less noise
+        if (isMoving) {
+            player.noiseLevel = Math.min(100, player.noiseLevel + 2);
+            player.noisePosition = camera.position.clone();
+        }
     }
+    
+    // Decay noise over time
+    player.noiseLevel = Math.max(0, player.noiseLevel - player.noiseDecay);
     
     // God mode speed boost
     if (player.godMode) {
@@ -2143,10 +2203,15 @@ function updatePlayer() {
     player.sanity = Math.max(0, player.sanity);
     player.fear = 1 - (player.sanity / 100);
     
-    // Check exit door
-    const exitPos = new THREE.Vector3(exitCell.x * cellSize, player.height, exitCell.z * cellSize);
-    if (camera.position.distanceTo(exitPos) < 2.5) {
-        victory();
+    // Check if player reached exit door(s)
+    // Level 2 only has one exit, Level 1 has two
+    const exitsToCheck = game.currentLevel === 2 ? [exitCells[0]] : exitCells;
+    for (const exit of exitsToCheck) {
+        const exitPos = new THREE.Vector3(exit.x * cellSize, player.height, exit.z * cellSize);
+        if (camera.position.distanceTo(exitPos) < 2.5) {
+            victory();
+            break;
+        }
     }
     
     // Death by sanity
@@ -2215,11 +2280,29 @@ function updateShadows() {
                     const fleeSpeed = shadow.speed * 3; // 3x faster when fleeing
                     shadow.velocity.copy(direction.multiplyScalar(fleeSpeed));
                 } else {
-                    // Normal behavior: move toward player
-                    direction.subVectors(camera.position, shadow.mesh.position).normalize();
+                    // Check if player is making loud noise (sprinting)
+                    const noiseThreshold = 30;
+                    let targetPosition = camera.position;
+                    
+                    if (player.noiseLevel > noiseThreshold && player.noisePosition) {
+                        // Move toward the noise source
+                        targetPosition = player.noisePosition;
+                        shadow.investigatingNoise = true;
+                    } else {
+                        shadow.investigatingNoise = false;
+                    }
+                    
+                    // Normal behavior: move toward player or noise source
+                    direction.subVectors(targetPosition, shadow.mesh.position).normalize();
                     
                     // Speed increases the longer it's unseen (up to 1.5x)
-                    const speedMultiplier = Math.min(1.5, 1 + timeSinceUnseen * 0.1);
+                    let speedMultiplier = Math.min(1.5, 1 + timeSinceUnseen * 0.1);
+                    
+                    // Move faster when investigating noise
+                    if (shadow.investigatingNoise) {
+                        speedMultiplier *= 1.3;
+                    }
+                    
                     shadow.velocity.copy(direction.multiplyScalar(shadow.speed * speedMultiplier));
                 }
                 
@@ -2511,13 +2594,37 @@ function updateAngels() {
             angel.glow.intensity = 2 + Math.sin(Date.now() / 200) * chargeMultiplier;
             
         } else {
-            // FROZEN when not being looked at
+            // FROZEN when not being looked at, BUT can investigate loud noises
             angel.huntMode = false;
             angel.chargeTimer = Math.max(0, angel.chargeTimer - 2); // Slowly lose charge
             
             // Eyes dim
             angel.eyes[0].material.emissiveIntensity = 1;
             angel.eyes[1].material.emissiveIntensity = 1;
+            
+            // Check if player is making loud noise (sprinting)
+            const noiseThreshold = 40; // Angels need louder noise to detect
+            if (player.noiseLevel > noiseThreshold && player.noisePosition) {
+                // Slowly drift toward noise source even when frozen
+                const direction = new THREE.Vector3();
+                direction.subVectors(player.noisePosition, angel.mesh.position);
+                direction.y = 0;
+                direction.normalize();
+                
+                // Move slowly toward noise (30% normal speed)
+                const moveSpeed = angel.speed * 0.3;
+                const movement = direction.multiplyScalar(moveSpeed);
+                const newPos = angel.mesh.position.clone().add(movement);
+                newPos.y = 0;
+                
+                angel.mesh.position.copy(newPos);
+                angel.glow.position.copy(newPos);
+                angel.glow.position.y = 2;
+                
+                // Eyes glow slightly when investigating
+                angel.eyes[0].material.emissiveIntensity = 1.5;
+                angel.eyes[1].material.emissiveIntensity = 1.5;
+            }
             
             // Halo barely spins
             angel.halo.rotation.z += 0.01;
@@ -2888,17 +2995,20 @@ function updateMinimap() {
         ctx.strokeRect(x - 1, z - 1, 2, 2);
     }
     
-    // Draw exit
+    // Draw exits (all exit doors in level 1, only first in level 2)
     ctx.fillStyle = '#00ff00';
-    ctx.beginPath();
-    ctx.arc(
-        exitCell.x * cellSize * scale,
-        exitCell.z * cellSize * scale,
-        4,
-        0,
-        Math.PI * 2
-    );
-    ctx.fill();
+    const exitsToShow = game.currentLevel === 2 ? [exitCells[0]] : exitCells;
+    for (const exit of exitsToShow) {
+        ctx.beginPath();
+        ctx.arc(
+            exit.x * cellSize * scale,
+            exit.z * cellSize * scale,
+            4,
+            0,
+            Math.PI * 2
+        );
+        ctx.fill();
+    }
     
     // Draw light sources (only in level 1)
     if (game.currentLevel === 1) {
@@ -3161,13 +3271,13 @@ function initLevel2() {
     
     // Regenerate maze with white materials
     generateMaze();
-    buildLevel2Maze();
+    const treePositions = buildLevel2Maze(); // Get tree positions to avoid
     createAngels();
     
     // Create multiple notes for Level 2 with lore
     noteObjects = [];
     
-    // Generate random positions for notes, ensuring they're valid and not too close to each other
+    // Generate random positions for notes, ensuring they're valid and not too close to each other or trees
     const notePositions = [];
     const minNoteDistance = 3; // Minimum distance between notes
     
@@ -3195,7 +3305,17 @@ function initLevel2() {
                 }
             }
             
-            validPosition = notInWall && notAtSpawn && notAtExit && !tooClose;
+            // Check distance from trees
+            let tooCloseToTree = false;
+            for (const treePos of treePositions) {
+                const dist = Math.sqrt((px - treePos.x) ** 2 + (pz - treePos.z) ** 2);
+                if (dist < 2) { // Must be at least 2 cells away from trees
+                    tooCloseToTree = true;
+                    break;
+                }
+            }
+            
+            validPosition = notInWall && notAtSpawn && notAtExit && !tooClose && !tooCloseToTree;
             attempts++;
         } while (!validPosition && attempts < 200);
         
@@ -3490,7 +3610,8 @@ function buildLevel2Maze() {
     scene.add(eastWall);
     walls.push(eastWall);
     
-    // Exit marker - golden glowing portal
+    // Exit marker - golden glowing portal (ONLY ONE in Level 2)
+    const level2ExitCell = exitCells[0]; // Use only the first exit
     const exitGeometry = new THREE.CylinderGeometry(1.5, 1.5, 8, 32);
     const exitMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xffD700,
@@ -3500,17 +3621,18 @@ function buildLevel2Maze() {
         opacity: 0.7
     });
     const exitMarker = new THREE.Mesh(exitGeometry, exitMaterial);
-    exitMarker.position.set(exitCell.x * cellSize, 4, exitCell.z * cellSize);
+    exitMarker.position.set(level2ExitCell.x * cellSize, 4, level2ExitCell.z * cellSize);
     scene.add(exitMarker);
     
     // Add golden light at exit
     const exitLight = new THREE.PointLight(0xffD700, 3, 20);
-    exitLight.position.set(exitCell.x * cellSize, 4, exitCell.z * cellSize);
+    exitLight.position.set(level2ExitCell.x * cellSize, 4, level2ExitCell.z * cellSize);
     scene.add(exitLight);
     
     // Add MANY MORE trees throughout the forest with varied sizes
     const numTrees = 900 + Math.floor(Math.random() * 300); // Doubled from 450-600 to 900-1200 for dense forest
     const treePositions = []; // Track tree positions to avoid overlap
+    const objectPositions = []; // Track all object positions (trees, pillars, structures, statues)
     
     for (let i = 0; i < numTrees; i++) {
         let px, pz, attempts = 0;
@@ -3526,11 +3648,11 @@ function buildLevel2Maze() {
             const notAtSpawn = !(px === 0 && pz === 0);
             const notAtExit = !(px === exitCell.x && pz === exitCell.z);
             
-            // Check if too close to other trees
+            // Check if too close to other objects
             let tooClose = false;
-            for (const pos of treePositions) {
+            for (const pos of objectPositions) {
                 const dist = Math.sqrt((px - pos.x) ** 2 + (pz - pos.z) ** 2);
-                if (dist < 0.8) { // Minimum distance between trees
+                if (dist < 0.8) { // Minimum distance between objects
                     tooClose = true;
                     break;
                 }
@@ -3544,40 +3666,74 @@ function buildLevel2Maze() {
         
         // Store this tree position
         treePositions.push({ x: px, z: pz });
+        objectPositions.push({ x: px, z: pz });
         
         const treeType = Math.random();
         
         if (treeType < 0.3) {
-            // SHORT BUSH - low, wide foliage
+            // SHORT BUSH - low, wide foliage with multiple leaf clusters
             const bushRadius = 0.8 + Math.random() * 0.7;
-            const bushGeometry = new THREE.SphereGeometry(bushRadius, 6, 6);
+            const bushGeometry = new THREE.SphereGeometry(bushRadius, 8, 8);
             const bushMaterial = new THREE.MeshStandardMaterial({
                 color: 0x2a5a1a,
                 roughness: 0.9,
                 metalness: 0.0
             });
             const bush = new THREE.Mesh(bushGeometry, bushMaterial);
-            bush.position.set(px * cellSize, bushRadius * 0.6, pz * cellSize); // Position at ground level
-            bush.scale.y = 0.6; // Flatten it
+            bush.position.set(px * cellSize, bushRadius * 0.6, pz * cellSize);
+            bush.scale.y = 0.6;
             bush.castShadow = true;
             scene.add(bush);
             pillars.push(bush);
             
+            // Add extra leaf clusters to bush
+            for (let j = 0; j < 3; j++) {
+                const extraLeaf = new THREE.Mesh(
+                    new THREE.SphereGeometry(bushRadius * 0.5, 6, 6),
+                    bushMaterial
+                );
+                const angle = (j / 3) * Math.PI * 2;
+                extraLeaf.position.set(
+                    px * cellSize + Math.cos(angle) * bushRadius * 0.5,
+                    bushRadius * 0.5,
+                    pz * cellSize + Math.sin(angle) * bushRadius * 0.5
+                );
+                extraLeaf.scale.y = 0.7;
+                extraLeaf.castShadow = true;
+                scene.add(extraLeaf);
+            }
+            
         } else if (treeType < 0.6) {
-            // CONE/PINE TREE - tall and narrow
+            // CONE/PINE TREE - tall and narrow with layered foliage
             const coneHeight = 5 + Math.random() * 8;
             const coneRadius = 0.8 + Math.random() * 0.6;
-            const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 8);
             const coneMaterial = new THREE.MeshStandardMaterial({
                 color: 0x1a4d0d,
                 roughness: 0.9,
                 metalness: 0.0
             });
+            
+            // Main cone
+            const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 8);
             const cone = new THREE.Mesh(coneGeometry, coneMaterial);
             cone.position.set(px * cellSize, coneHeight / 2, pz * cellSize);
             cone.castShadow = true;
             scene.add(cone);
             pillars.push(cone);
+            
+            // Add 3-4 additional cone layers for fuller foliage
+            const numLayers = 3 + Math.floor(Math.random() * 2);
+            for (let layer = 0; layer < numLayers; layer++) {
+                const layerHeight = coneHeight * (0.3 + layer * 0.2);
+                const layerRadius = coneRadius * (1.2 - layer * 0.15);
+                const layerCone = new THREE.Mesh(
+                    new THREE.ConeGeometry(layerRadius, coneHeight * 0.4, 8),
+                    coneMaterial
+                );
+                layerCone.position.set(px * cellSize, layerHeight, pz * cellSize);
+                layerCone.castShadow = true;
+                scene.add(layerCone);
+            }
             
             // Small trunk
             const smallTrunkGeometry = new THREE.CylinderGeometry(0.15, 0.2, coneHeight * 0.4, 6);
@@ -3607,22 +3763,42 @@ function buildLevel2Maze() {
             scene.add(trunk);
             pillars.push(trunk);
             
-            // Foliage - vary between sphere and elongated shapes
+            // Foliage - multiple layers for fuller appearance
             const foliageRadius = 1.2 + Math.random() * 1.5;
-            const foliageGeometry = new THREE.SphereGeometry(foliageRadius, 8, 8);
             const foliageMaterial = new THREE.MeshStandardMaterial({
                 color: 0x1a4d0d,
                 roughness: 0.8,
                 metalness: 0.0
             });
+            
+            // Main foliage sphere
+            const foliageGeometry = new THREE.SphereGeometry(foliageRadius, 10, 10);
             const foliage = new THREE.Mesh(foliageGeometry, foliageMaterial);
             foliage.position.set(px * cellSize, trunkHeight + foliageRadius - 0.5, pz * cellSize);
-            // Randomly elongate some foliage
             if (Math.random() > 0.5) {
                 foliage.scale.y = 1.2 + Math.random() * 0.5;
             }
             foliage.castShadow = true;
             scene.add(foliage);
+            
+            // Add 4-6 smaller leaf clusters around the main foliage
+            const numClusters = 4 + Math.floor(Math.random() * 3);
+            for (let c = 0; c < numClusters; c++) {
+                const clusterSize = foliageRadius * (0.4 + Math.random() * 0.3);
+                const angle = (c / numClusters) * Math.PI * 2;
+                const clusterDist = foliageRadius * 0.7;
+                const cluster = new THREE.Mesh(
+                    new THREE.SphereGeometry(clusterSize, 6, 6),
+                    foliageMaterial
+                );
+                cluster.position.set(
+                    px * cellSize + Math.cos(angle) * clusterDist,
+                    trunkHeight + foliageRadius * (0.6 + Math.random() * 0.4),
+                    pz * cellSize + Math.sin(angle) * clusterDist
+                );
+                cluster.castShadow = true;
+                scene.add(cluster);
+            }
         }
     }
     
@@ -3716,6 +3892,247 @@ function buildLevel2Maze() {
             scene.add(top);
         }
     }
+    
+    // Add MARBLE PILLARS throughout the forest
+    const numPillars = 25 + Math.floor(Math.random() * 15);
+    for (let i = 0; i < numPillars; i++) {
+        let px, pz, attempts = 0;
+        let validPosition = false;
+        
+        do {
+            px = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            pz = 2 + Math.floor(Math.random() * (mazeSize - 4));
+            
+            const notInWall = mazeData[px][pz] !== 1;
+            const notAtSpawn = !(px <= 1 && pz <= 1);
+            const notAtExit = !(Math.abs(px - exitCell.x) < 2 && Math.abs(pz - exitCell.z) < 2);
+            
+            let tooClose = false;
+            for (const pos of objectPositions) {
+                const dist = Math.sqrt((px - pos.x) ** 2 + (pz - pos.z) ** 2);
+                if (dist < 1.5) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            
+            validPosition = notInWall && notAtSpawn && notAtExit && !tooClose;
+            attempts++;
+        } while (!validPosition && attempts < 100);
+        
+        if (attempts >= 100) continue;
+        objectPositions.push({ x: px, z: pz });
+        
+        // Create marble pillar
+        const pillarHeight = 3 + Math.random() * 5;
+        const pillarRadius = 0.3 + Math.random() * 0.2;
+        const pillarGeometry = new THREE.CylinderGeometry(pillarRadius, pillarRadius, pillarHeight, 12);
+        const marbleMaterial = new THREE.MeshStandardMaterial({
+            color: 0xdddddd,
+            roughness: 0.3,
+            metalness: 0.1
+        });
+        const pillar = new THREE.Mesh(pillarGeometry, marbleMaterial);
+        pillar.position.set(px * cellSize, pillarHeight / 2, pz * cellSize);
+        pillar.castShadow = true;
+        scene.add(pillar);
+        pillars.push(pillar);
+        
+        // Add capital (top)
+        const capitalGeometry = new THREE.CylinderGeometry(pillarRadius * 1.5, pillarRadius * 1.2, 0.4, 12);
+        const capital = new THREE.Mesh(capitalGeometry, marbleMaterial);
+        capital.position.set(px * cellSize, pillarHeight + 0.2, pz * cellSize);
+        capital.castShadow = true;
+        scene.add(capital);
+        
+        // Add base
+        const baseGeometry = new THREE.CylinderGeometry(pillarRadius * 1.2, pillarRadius * 1.5, 0.3, 12);
+        const base = new THREE.Mesh(baseGeometry, marbleMaterial);
+        base.position.set(px * cellSize, 0.15, pz * cellSize);
+        scene.add(base);
+    }
+    
+    // Add ANGEL STATUES
+    const numStatues = 12 + Math.floor(Math.random() * 8);
+    for (let i = 0; i < numStatues; i++) {
+        let px, pz, attempts = 0;
+        let validPosition = false;
+        
+        do {
+            px = 3 + Math.floor(Math.random() * (mazeSize - 6));
+            pz = 3 + Math.floor(Math.random() * (mazeSize - 6));
+            
+            const notInWall = mazeData[px][pz] !== 1;
+            const notAtSpawn = !(px <= 2 && pz <= 2);
+            const notAtExit = !(Math.abs(px - exitCell.x) < 3 && Math.abs(pz - exitCell.z) < 3);
+            
+            let tooClose = false;
+            for (const pos of objectPositions) {
+                const dist = Math.sqrt((px - pos.x) ** 2 + (pz - pos.z) ** 2);
+                if (dist < 2) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            
+            validPosition = notInWall && notAtSpawn && notAtExit && !tooClose;
+            attempts++;
+        } while (!validPosition && attempts < 100);
+        
+        if (attempts >= 100) continue;
+        objectPositions.push({ x: px, z: pz });
+        
+        // Create angel statue
+        const statueGroup = new THREE.Group();
+        const statueMaterial = new THREE.MeshStandardMaterial({
+            color: 0xcccccc,
+            roughness: 0.4,
+            metalness: 0.1
+        });
+        
+        // Body/robe
+        const bodyGeometry = new THREE.CylinderGeometry(0.4, 0.6, 2, 8);
+        const body = new THREE.Mesh(bodyGeometry, statueMaterial);
+        body.position.y = 1;
+        statueGroup.add(body);
+        
+        // Head
+        const headGeometry = new THREE.SphereGeometry(0.3, 12, 12);
+        const head = new THREE.Mesh(headGeometry, statueMaterial);
+        head.position.y = 2.3;
+        statueGroup.add(head);
+        
+        // Wings
+        const wingGeometry = new THREE.BoxGeometry(1.2, 1.5, 0.2);
+        const leftWing = new THREE.Mesh(wingGeometry, statueMaterial);
+        leftWing.position.set(-0.5, 1.5, 0);
+        leftWing.rotation.y = -Math.PI / 6;
+        statueGroup.add(leftWing);
+        
+        const rightWing = new THREE.Mesh(wingGeometry, statueMaterial);
+        rightWing.position.set(0.5, 1.5, 0);
+        rightWing.rotation.y = Math.PI / 6;
+        statueGroup.add(rightWing);
+        
+        // Position statue
+        statueGroup.position.set(px * cellSize, 0, pz * cellSize);
+        statueGroup.rotation.y = Math.random() * Math.PI * 2;
+        statueGroup.castShadow = true;
+        scene.add(statueGroup);
+        pillars.push(statueGroup);
+    }
+    
+    // Add RUINED STRUCTURES (broken walls, arches)
+    const numRuins = 15 + Math.floor(Math.random() * 10);
+    for (let i = 0; i < numRuins; i++) {
+        let px, pz, attempts = 0;
+        let validPosition = false;
+        
+        do {
+            px = 3 + Math.floor(Math.random() * (mazeSize - 6));
+            pz = 3 + Math.floor(Math.random() * (mazeSize - 6));
+            
+            const notInWall = mazeData[px][pz] !== 1;
+            const notAtSpawn = !(px <= 2 && pz <= 2);
+            const notAtExit = !(Math.abs(px - exitCell.x) < 3 && Math.abs(pz - exitCell.z) < 3);
+            
+            let tooClose = false;
+            for (const pos of objectPositions) {
+                const dist = Math.sqrt((px - pos.x) ** 2 + (pz - pos.z) ** 2);
+                if (dist < 2.5) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            
+            validPosition = notInWall && notAtSpawn && notAtExit && !tooClose;
+            attempts++;
+        } while (!validPosition && attempts < 100);
+        
+        if (attempts >= 100) continue;
+        objectPositions.push({ x: px, z: pz });
+        
+        const ruinType = Math.random();
+        const ruinMaterial = new THREE.MeshStandardMaterial({
+            color: 0xaaaaaa,
+            roughness: 0.8,
+            metalness: 0.0
+        });
+        
+        if (ruinType < 0.4) {
+            // Broken wall
+            const wallHeight = 2 + Math.random() * 3;
+            const wallLength = 3 + Math.random() * 2;
+            const wallGeometry = new THREE.BoxGeometry(wallLength, wallHeight, 0.4);
+            const wall = new THREE.Mesh(wallGeometry, ruinMaterial);
+            wall.position.set(px * cellSize, wallHeight / 2, pz * cellSize);
+            wall.rotation.y = Math.random() * Math.PI;
+            // Make it look broken
+            wall.rotation.x = (Math.random() - 0.5) * 0.3;
+            wall.castShadow = true;
+            scene.add(wall);
+            pillars.push(wall);
+            
+        } else if (ruinType < 0.7) {
+            // Broken arch
+            const archHeight = 3 + Math.random() * 2;
+            const archWidth = 2 + Math.random() * 1;
+            
+            // Left pillar
+            const leftPillar = new THREE.Mesh(
+                new THREE.BoxGeometry(0.3, archHeight, 0.3),
+                ruinMaterial
+            );
+            leftPillar.position.set(px * cellSize - archWidth / 2, archHeight / 2, pz * cellSize);
+            leftPillar.castShadow = true;
+            scene.add(leftPillar);
+            pillars.push(leftPillar);
+            
+            // Right pillar
+            const rightPillar = new THREE.Mesh(
+                new THREE.BoxGeometry(0.3, archHeight, 0.3),
+                ruinMaterial
+            );
+            rightPillar.position.set(px * cellSize + archWidth / 2, archHeight / 2, pz * cellSize);
+            rightPillar.castShadow = true;
+            scene.add(rightPillar);
+            pillars.push(rightPillar);
+            
+            // Broken arch top
+            const archTop = new THREE.Mesh(
+                new THREE.BoxGeometry(archWidth, 0.4, 0.3),
+                ruinMaterial
+            );
+            archTop.position.set(px * cellSize, archHeight - 0.2, pz * cellSize);
+            archTop.rotation.z = (Math.random() - 0.5) * 0.5;
+            archTop.castShadow = true;
+            scene.add(archTop);
+            
+        } else {
+            // Rubble pile
+            const numRocks = 4 + Math.floor(Math.random() * 4);
+            for (let r = 0; r < numRocks; r++) {
+                const rockSize = 0.3 + Math.random() * 0.4;
+                const rockGeometry = new THREE.DodecahedronGeometry(rockSize, 0);
+                const rock = new THREE.Mesh(rockGeometry, ruinMaterial);
+                rock.position.set(
+                    px * cellSize + (Math.random() - 0.5) * 1.5,
+                    rockSize * 0.5,
+                    pz * cellSize + (Math.random() - 0.5) * 1.5
+                );
+                rock.rotation.set(
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI
+                );
+                rock.castShadow = true;
+                scene.add(rock);
+            }
+        }
+    }
+    
+    // Return tree positions for note placement
+    return treePositions;
 }
 
 // Create Angels - Level 2 monsters
