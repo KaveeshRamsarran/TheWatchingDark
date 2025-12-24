@@ -1,87 +1,181 @@
-THE WATCHING DARK
------------------
-Navigate dark corridors in first-person while humanoid shadow creatures hunt you.
-Your sanity drains in darkness. Light is survival.
+╔════════════════════════════════════════════════════════════════╗
+║                    THE WATCHING DARK                            ║
+║              A Psychological Horror Maze Adventure               ║
+╚════════════════════════════════════════════════════════════════╝
 
-How to Run
-----------
-Option A (Recommended): Local Web Server
-- Python 3:   python -m http.server 8000
-- Then open:  http://localhost:8000/index.html
+Navigate pitch-black corridors haunted by grotesque creatures. Your sanity 
+crumbles in darkness. Your only salvation: light, speed, and survival instinct.
 
-Option B: Open Directly
-- Open index.html in your browser
-- Some browsers restrict pointer lock/audio autoplay without a server
-- If issues occur, use Option A
+Two nightmarish levels await. Can you escape?
 
-Controls
---------
-WASD        - Move through the darkness
-Mouse       - Look around for threats
-SHIFT       - Sprint (drains stamina and sanity, monsters can hear you)
-F           - Toggle flashlight (limited battery)
-SPACE       - Light a match (restores sanity, scares monsters away!)
-Click       - Lock cursor to begin
 
-Game Mechanics
---------------
-SANITY      - Drains in darkness, restored by light sources and matches
-              Death occurs at 0% sanity
-STAMINA     - Depletes while sprinting, regenerates while walking/standing
-              Cannot sprint when depleted
-FLASHLIGHT  - Limited battery that drains while active
-              Find battery pickups throughout the maze
-MATCHES     - Start with 10 matches
-              Light to scare nearby monsters away temporarily
-              Creates bright light and restores sanity quickly
-MONSTERS    - Humanoid shadow creatures with glowing red eyes
-              Only move when not being looked at (Weeping Angel behavior)
-              Flee in terror when you light a match nearby
-              Will kill you on contact
+═══════════════════════════════════════════════════════════════════
+  GETTING STARTED
+═══════════════════════════════════════════════════════════════════
 
-Survival Tips
--------------
-- Conserve your flashlight battery - darkness is deadly
-- Use matches strategically when surrounded
-- Sprint only when necessary - you'll make noise and drain stamina
-- Light sources scattered in the maze restore sanity
-- Keep moving toward the green exit door
-- Don't let them catch you
+RECOMMENDED: Local Web Server
+  Python 3:  python -m http.server 8000
+  Then:      Open http://localhost:8000/index.html in your browser
 
-Features
---------
-- Procedurally generated maze with organic textures
-- Humanoid shadow monsters with realistic anatomy
-- Dynamic lighting and shadow system
-- Weeping Angel AI - monsters freeze when observed
-- Match mechanic - scare monsters away with fire
-- Stamina system for realistic movement
-- Sanity system with visual/audio distortion
-- VHS-style post-processing effects
-- Atmospheric audio (footsteps, ambience, jumpscares)
-- Minimap navigation
-- Main menu music and in-game soundtrack
+ALTERNATIVE: Direct File Access
+  Open index.html directly in your browser
+  (Some features may not work without a server)
 
-Audio Files Required
---------------------
-- main menu.mp3        - Main menu background music
-- OST.mp3              - In-game soundtrack
-- footsteps.mp3        - Footstep sound effects
-- lighting a match.mp3 - Match lighting sound
-- jumpscare.mp3        - Death sound effect
-- ambience2.mp3        - Random ambient sounds
 
-Technical Details
------------------
-- Built with Three.js (r128)
-- Procedural texture generation
-- Web Audio API for sound
-- Pointer Lock API for mouse control
-- Real-time lighting and shadows
+═══════════════════════════════════════════════════════════════════
+  CONTROLS
+═══════════════════════════════════════════════════════════════════
 
-Credits
--------
-Created with Three.js
-All textures procedurally generated
-Web Audio API for sound synthesis
-Silent Hill 2 Soundtrack for Main Menu and BG Audio
+Movement
+  WASD          Navigate through the darkness
+  SHIFT         Sprint faster (costs stamina, monsters hear you!)
+
+Interaction
+  Mouse         Look around for threats
+  F             Toggle flashlight (limited battery power)
+  SPACE         Light a match (scares creatures away!)
+
+Camera
+  Click         Lock cursor to begin
+
+
+═══════════════════════════════════════════════════════════════════
+  GAME MECHANICS
+═══════════════════════════════════════════════════════════════════
+
+SANITY SYSTEM
+  • Rapidly drains in complete darkness
+  • Restored by matches and light sources
+  • Game Over at 0% sanity
+  • Low sanity causes visual/audio distortions
+
+STAMINA SYSTEM
+  • Depletes during sprint (SHIFT)
+  • Regenerates while walking or standing
+  • Must recover to sprint again
+
+FLASHLIGHT
+  • Limited battery power (drains while active)
+  • Essential for navigation
+  • Find battery pickups scattered throughout each level
+
+MATCHES
+  • Start with 5 matches per level
+  • Bright emergency light source
+  • Terrifies creatures - forces them to flee temporarily
+  • Instantly restores sanity when lit
+
+MONSTERS
+
+  Level 1: SHADOW CREATURES
+    - Humanoid entities with glowing red eyes
+    - Only move when you're not looking at them
+    - Flee in terror from lit matches
+    - Death on contact
+
+  Level 2: THE ANGELS
+    - Tall, skeletal, tattered creatures of nightmare
+    - Emerge from the dense fog around you
+    - Incredibly dangerous and aggressive
+    - Impossible to see through the oppressive mist
+
+
+═══════════════════════════════════════════════════════════════════
+  LEVEL DETAILS
+═══════════════════════════════════════════════════════════════════
+
+LEVEL 1: THE MAZE
+  Indoor labyrinth of dark corridors
+  Shadow creatures hunt you relentlessly
+  Your sanity is your greatest enemy
+  Find the green exit to progress
+
+LEVEL 2: THE LOST FOREST
+  Dense, suffocating fog obscures your vision
+  Can only see ~10 units in any direction
+  Angels lurk just beyond the fog's edge
+  Navigate by flashlight alone
+  Escape through the darkness to survive
+
+
+═══════════════════════════════════════════════════════════════════
+  SURVIVAL STRATEGIES
+═══════════════════════════════════════════════════════════════════
+
+✓ Keep your flashlight on - darkness kills you
+✓ Use matches strategically when surrounded
+✓ Sprint sparingly to conserve stamina
+✓ Keep moving - standing still attracts creatures
+✓ The green door is your goal - find it
+✓ In Level 2, listen for breathing and footsteps
+✓ Don't look away from threats for long
+✓ Matches are your last resort - use wisely
+
+
+═══════════════════════════════════════════════════════════════════
+  FEATURES
+═══════════════════════════════════════════════════════════════════
+
+Graphics & Atmosphere
+  ✓ Procedurally generated mazes
+  ✓ Dynamic lighting with shadows
+  ✓ Oppressive fog system (Level 2)
+  ✓ Terrifyingly detailed monster models
+  ✓ VHS-style post-processing effects
+  ✓ Minimap for navigation
+
+Gameplay
+  ✓ Weeping Angel AI - creatures freeze when observed
+  ✓ Two distinct monster types with unique behavior
+  ✓ Sanity and stamina systems
+  ✓ Resource management (matches, battery)
+  ✓ Multiple difficulty levels
+
+Audio
+  ✓ Spatial sound design
+  ✓ Footstep audio cues
+  ✓ Creature vocalizations
+  ✓ Atmospheric ambience
+  ✓ Menacing soundtrack
+
+
+═══════════════════════════════════════════════════════════════════
+  REQUIRED AUDIO FILES
+═══════════════════════════════════════════════════════════════════
+
+Place these files in the audio/ folder:
+  • main menu.mp3       - Main menu theme
+  • OST.mp3             - In-game background music
+  • footsteps.mp3       - Player footstep sounds
+  • lighting a match.mp3 - Match ignition sound
+  • jumpscare.mp3       - Death scream
+  • ambience2.mp3       - Environmental ambience
+
+
+═══════════════════════════════════════════════════════════════════
+  TECHNICAL INFORMATION
+═══════════════════════════════════════════════════════════════════
+
+Engine:        Three.js r128 (WebGL)
+Textures:      Procedurally generated (Canvas API)
+Audio:         Web Audio API + MP3 files
+Controls:      Pointer Lock API
+Performance:   Optimized for 60 FPS
+
+Browser Requirements:
+  • Modern browser with WebGL support
+  • Hardware accelerated graphics recommended
+  • 4GB+ RAM
+  • 50MB+ free disk space
+
+
+═══════════════════════════════════════════════════════════════════
+  CREDITS
+═══════════════════════════════════════════════════════════════════
+
+Engine:       Three.js (threejs.org)
+Graphics:     Procedural texture generation
+Sound:        Web Audio API
+Inspiration:  Silent Hill, Weeping Angels (Doctor Who)
+
+Created as a psychological horror experience.
