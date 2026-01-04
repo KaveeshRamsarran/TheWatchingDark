@@ -1,6 +1,6 @@
 ╔════════════════════════════════════════════════════════════════╗
-║                    THE WATCHING DARK                            ║
-║              A Psychological Horror Maze Adventure               ║
+║                    THE WATCHING DARK                           ║
+║              A Psychological Horror Maze Adventure             ║
 ╚════════════════════════════════════════════════════════════════╝
 
 Navigate pitch-black corridors haunted by grotesque creatures. Your sanity 
@@ -67,7 +67,7 @@ MATCHES
 
 MONSTERS
 
-  Level 1: SHADOW CREATURES
+  Level 1: WATCHERS
     - Humanoid entities with glowing red eyes
     - Only move when you're not looking at them
     - Flee in terror from lit matches
