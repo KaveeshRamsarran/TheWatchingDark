@@ -450,9 +450,9 @@ function isValidSpawnPosition(x, z) {
 // Initialize Three.js
 function initThree() {
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0a0a0a);
-    // Volumetric exponential fog - denser and more atmospheric
-    scene.fog = new THREE.FogExp2(0x0a0a0a, 0.055);
+    scene.background = new THREE.Color(0x030303);
+    // Volumetric exponential fog - very dense and dark
+    scene.fog = new THREE.FogExp2(0x030303, 0.065);
     
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
     
@@ -483,8 +483,8 @@ function initThree() {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(renderer.domElement);
     
-    // Lighting - base ambient light (increased for natural visibility)
-    ambientLight = new THREE.AmbientLight(0x404050, 0.6);
+    // Lighting - very dim ambient for oppressive atmosphere
+    ambientLight = new THREE.AmbientLight(0x252530, 0.35);
     scene.add(ambientLight);
     
     // Match light - yellow flickering
@@ -753,60 +753,91 @@ function carvePathToExit() {
 function buildMaze() {
     walls = [];
     
-    // Create textured wall material
+    // Create textured wall material - procedural concrete texture
     const wallCanvas = document.createElement('canvas');
-    wallCanvas.width = 256;
-    wallCanvas.height = 256;
+    wallCanvas.width = 512;
+    wallCanvas.height = 512;
     const wallCtx = wallCanvas.getContext('2d');
     
-    // Base dark grey flesh-like texture
-    wallCtx.fillStyle = '#1a1a1a';
-    wallCtx.fillRect(0, 0, 256, 256);
+    // Base grey concrete color
+    wallCtx.fillStyle = '#4a4a4a';
+    wallCtx.fillRect(0, 0, 512, 512);
     
-    // Create organic flesh-like texture with veins and irregular patterns
-    for (let i = 0; i < 300; i++) {
-        const x = Math.random() * 256;
-        const y = Math.random() * 256;
-        const size = 5 + Math.random() * 15;
-        
-        // Random grey tones for flesh
-        const grey = 20 + Math.random() * 30;
-        wallCtx.fillStyle = `rgba(${grey}, ${grey}, ${grey}, ${0.3 + Math.random() * 0.4})`;
-        
-        // Irregular organic shapes
+    // Add concrete grain/aggregate texture
+    for (let i = 0; i < 3000; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 1 + Math.random() * 4;
+        const shade = 60 + Math.random() * 50;
+        wallCtx.fillStyle = `rgb(${shade}, ${shade}, ${shade})`;
         wallCtx.beginPath();
         wallCtx.arc(x, y, size, 0, Math.PI * 2);
         wallCtx.fill();
     }
     
-    // Add vein-like structures
-    for (let i = 0; i < 50; i++) {
-        const startX = Math.random() * 256;
-        const startY = Math.random() * 256;
-        const endX = startX + (Math.random() - 0.5) * 100;
-        const endY = startY + (Math.random() - 0.5) * 100;
-        
-        // Darker grey veins
-        const veinGrey = 10 + Math.random() * 15;
-        wallCtx.strokeStyle = `rgba(${veinGrey}, ${veinGrey}, ${veinGrey}, 0.6)`;
+    // Larger aggregate stones
+    for (let i = 0; i < 200; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 3 + Math.random() * 8;
+        const shade = 50 + Math.random() * 60;
+        wallCtx.fillStyle = `rgba(${shade}, ${shade}, ${shade}, 0.7)`;
+        wallCtx.beginPath();
+        wallCtx.arc(x, y, size, 0, Math.PI * 2);
+        wallCtx.fill();
+    }
+    
+    // Dark cracks
+    for (let i = 0; i < 15; i++) {
+        let x = Math.random() * 512;
+        let y = Math.random() * 512;
+        wallCtx.strokeStyle = `rgba(30, 30, 30, ${0.5 + Math.random() * 0.5})`;
         wallCtx.lineWidth = 1 + Math.random() * 2;
         wallCtx.beginPath();
-        wallCtx.moveTo(startX, startY);
-        wallCtx.lineTo(endX, endY);
+        wallCtx.moveTo(x, y);
+        const segments = 4 + Math.floor(Math.random() * 6);
+        for (let s = 0; s < segments; s++) {
+            x += (Math.random() - 0.5) * 50;
+            y += 20 + Math.random() * 40;
+            wallCtx.lineTo(x, y);
+        }
         wallCtx.stroke();
     }
     
-    // Add darker blotches for depth
-    for (let i = 0; i < 100; i++) {
-        const x = Math.random() * 256;
-        const y = Math.random() * 256;
-        const size = 3 + Math.random() * 8;
-        
-        const darkGrey = Math.random() * 15;
-        wallCtx.fillStyle = `rgba(${darkGrey}, ${darkGrey}, ${darkGrey}, 0.5)`;
+    // Water stains / discoloration
+    for (let i = 0; i < 25; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 200;
+        const length = 80 + Math.random() * 200;
+        const gradient = wallCtx.createLinearGradient(x, y, x, y + length);
+        gradient.addColorStop(0, 'rgba(60, 60, 55, 0.4)');
+        gradient.addColorStop(0.5, 'rgba(55, 55, 50, 0.3)');
+        gradient.addColorStop(1, 'rgba(50, 50, 48, 0)');
+        wallCtx.fillStyle = gradient;
+        wallCtx.fillRect(x - 5, y, 10 + Math.random() * 15, length);
+    }
+    
+    // Dirt patches
+    for (let i = 0; i < 40; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 10 + Math.random() * 30;
+        const gradient = wallCtx.createRadialGradient(x, y, 0, x, y, size);
+        gradient.addColorStop(0, 'rgba(45, 42, 38, 0.5)');
+        gradient.addColorStop(1, 'rgba(50, 48, 45, 0)');
+        wallCtx.fillStyle = gradient;
         wallCtx.beginPath();
         wallCtx.arc(x, y, size, 0, Math.PI * 2);
         wallCtx.fill();
+    }
+    
+    // Fine noise for realism
+    for (let i = 0; i < 1500; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const shade = 40 + Math.random() * 80;
+        wallCtx.fillStyle = `rgba(${shade}, ${shade}, ${shade}, 0.3)`;
+        wallCtx.fillRect(x, y, 1, 1);
     }
     
     const wallTexture = new THREE.CanvasTexture(wallCanvas);
@@ -816,10 +847,8 @@ function buildMaze() {
     
     wallMaterial = new THREE.MeshStandardMaterial({ 
         map: wallTexture,
-        roughness: 0.7,
-        metalness: 0.1,
-        emissive: 0x0a0a0a,
-        emissiveIntensity: 0.2
+        roughness: 0.9,
+        metalness: 0.0
     });
     
     const wallHeight = 12;
@@ -932,191 +961,120 @@ function buildMaze() {
         }
     }
     
-    // Floor - bloody, fleshy organic texture
+    // Floor texture - procedural wood plank texture
     const floorCanvas = document.createElement('canvas');
     floorCanvas.width = 512;
     floorCanvas.height = 512;
     const floorCtx = floorCanvas.getContext('2d');
     
-    // Base dark blood red color
-    floorCtx.fillStyle = '#1a0808';
+    // Base wood color
+    floorCtx.fillStyle = '#5c4033';
     floorCtx.fillRect(0, 0, 512, 512);
     
-    // Fleshy tissue layers - gradient patches (darker tones)
-    for (let i = 0; i < 40; i++) {
-        const x = Math.random() * 512;
-        const y = Math.random() * 512;
-        const size = 60 + Math.random() * 120;
+    // Draw wood planks
+    const plankWidth = 85;
+    for (let px = 0; px < 512; px += plankWidth) {
+        // Vary plank color slightly
+        const baseR = 75 + Math.random() * 25;
+        const baseG = 50 + Math.random() * 20;
+        const baseB = 35 + Math.random() * 15;
         
-        const gradient = floorCtx.createRadialGradient(x, y, 0, x, y, size);
-        const fleshTone = Math.random();
-        if (fleshTone < 0.33) {
-            // Dark bloody flesh
-            gradient.addColorStop(0, 'rgba(70, 20, 25, 0.7)');
-            gradient.addColorStop(0.5, 'rgba(45, 12, 15, 0.5)');
-            gradient.addColorStop(1, 'rgba(25, 8, 8, 0)');
-        } else if (fleshTone < 0.66) {
-            // Very dark muscle tissue
-            gradient.addColorStop(0, 'rgba(55, 12, 15, 0.8)');
-            gradient.addColorStop(0.5, 'rgba(35, 8, 10, 0.5)');
-            gradient.addColorStop(1, 'rgba(20, 5, 5, 0)');
-        } else {
-            // Darker exposed tissue
-            gradient.addColorStop(0, 'rgba(80, 30, 35, 0.6)');
-            gradient.addColorStop(0.5, 'rgba(50, 18, 22, 0.4)');
-            gradient.addColorStop(1, 'rgba(30, 10, 10, 0)');
-        }
-        floorCtx.fillStyle = gradient;
-        floorCtx.beginPath();
-        floorCtx.arc(x, y, size, 0, Math.PI * 2);
-        floorCtx.fill();
-    }
-    
-    // Veins and capillaries network
-    for (let i = 0; i < 80; i++) {
-        let x = Math.random() * 512;
-        let y = Math.random() * 512;
-        const veinColor = Math.random() < 0.5 ? 
-            `rgba(${100 + Math.random() * 50}, ${10 + Math.random() * 20}, ${20 + Math.random() * 15}, ${0.6 + Math.random() * 0.3})` :
-            `rgba(${60 + Math.random() * 30}, ${5 + Math.random() * 10}, ${15 + Math.random() * 10}, ${0.5 + Math.random() * 0.4})`;
+        floorCtx.fillStyle = `rgb(${baseR}, ${baseG}, ${baseB})`;
+        floorCtx.fillRect(px + 2, 0, plankWidth - 4, 512);
         
-        floorCtx.strokeStyle = veinColor;
-        floorCtx.lineWidth = 1 + Math.random() * 3;
-        floorCtx.beginPath();
-        floorCtx.moveTo(x, y);
+        // Plank gap/groove (dark line between planks)
+        floorCtx.fillStyle = '#1a1209';
+        floorCtx.fillRect(px, 0, 2, 512);
+        floorCtx.fillRect(px + plankWidth - 2, 0, 2, 512);
         
-        // Branching vein pattern
-        const segments = 5 + Math.floor(Math.random() * 8);
-        for (let s = 0; s < segments; s++) {
-            const nextX = x + (Math.random() - 0.5) * 60;
-            const nextY = y + (Math.random() - 0.5) * 60;
-            floorCtx.quadraticCurveTo(
-                x + (Math.random() - 0.5) * 30,
-                y + (Math.random() - 0.5) * 30,
-                nextX, nextY
-            );
-            x = nextX;
-            y = nextY;
-        }
-        floorCtx.stroke();
-        
-        // Small capillary branches
-        for (let b = 0; b < 3; b++) {
-            const branchX = x + (Math.random() - 0.5) * 40;
-            const branchY = y + (Math.random() - 0.5) * 40;
-            floorCtx.lineWidth = 0.5 + Math.random() * 1;
+        // Wood grain lines along the plank
+        for (let g = 0; g < 25; g++) {
+            const grainX = px + 5 + Math.random() * (plankWidth - 10);
+            const grainShade = baseR - 15 + Math.random() * 30;
+            floorCtx.strokeStyle = `rgba(${grainShade}, ${grainShade * 0.7}, ${grainShade * 0.5}, 0.4)`;
+            floorCtx.lineWidth = 0.5 + Math.random() * 1.5;
             floorCtx.beginPath();
-            floorCtx.moveTo(x, y);
-            floorCtx.lineTo(branchX, branchY);
+            floorCtx.moveTo(grainX, 0);
+            // Wavy grain line
+            for (let y = 0; y < 512; y += 20) {
+                floorCtx.lineTo(grainX + (Math.random() - 0.5) * 8, y);
+            }
             floorCtx.stroke();
         }
-    }
-    
-    // Large blood pools with coagulated edges
-    for (let i = 0; i < 25; i++) {
-        const x = Math.random() * 512;
-        const y = Math.random() * 512;
-        const size = 40 + Math.random() * 80;
         
-        // Fresh blood pool
-        const bloodGradient = floorCtx.createRadialGradient(x, y, 0, x, y, size);
-        bloodGradient.addColorStop(0, 'rgba(130, 10, 15, 0.9)');
-        bloodGradient.addColorStop(0.6, 'rgba(80, 5, 10, 0.7)');
-        bloodGradient.addColorStop(1, 'rgba(40, 0, 5, 0.3)');
-        
-        floorCtx.fillStyle = bloodGradient;
-        floorCtx.beginPath();
-        // Irregular blob shape
-        for (let a = 0; a < Math.PI * 2; a += 0.3) {
-            const radius = size * (0.7 + Math.random() * 0.4);
-            const px = x + Math.cos(a) * radius;
-            const py = y + Math.sin(a) * radius;
-            if (a === 0) floorCtx.moveTo(px, py);
-            else floorCtx.lineTo(px, py);
-        }
-        floorCtx.closePath();
-        floorCtx.fill();
-        
-        // Splatter around pool
-        for (let j = 0; j < 15; j++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = size + Math.random() * 40;
-            const splatterX = x + Math.cos(angle) * dist;
-            const splatterY = y + Math.sin(angle) * dist;
-            const splatterSize = 2 + Math.random() * 6;
+        // Knots in wood
+        const numKnots = Math.floor(Math.random() * 3);
+        for (let k = 0; k < numKnots; k++) {
+            const knotX = px + 15 + Math.random() * (plankWidth - 30);
+            const knotY = 50 + Math.random() * 400;
+            const knotSize = 8 + Math.random() * 15;
             
-            floorCtx.fillStyle = `rgba(${100 + Math.random() * 30}, 5, 10, ${0.5 + Math.random() * 0.4})`;
+            // Dark knot center
+            const knotGradient = floorCtx.createRadialGradient(knotX, knotY, 0, knotX, knotY, knotSize);
+            knotGradient.addColorStop(0, '#2a1a0a');
+            knotGradient.addColorStop(0.5, '#3d2815');
+            knotGradient.addColorStop(1, `rgba(${baseR}, ${baseG}, ${baseB}, 0)`);
+            floorCtx.fillStyle = knotGradient;
             floorCtx.beginPath();
-            floorCtx.arc(splatterX, splatterY, splatterSize, 0, Math.PI * 2);
+            floorCtx.ellipse(knotX, knotY, knotSize, knotSize * 1.3, 0, 0, Math.PI * 2);
             floorCtx.fill();
+            
+            // Ring pattern around knot
+            for (let ring = 1; ring < 4; ring++) {
+                floorCtx.strokeStyle = `rgba(40, 25, 15, ${0.3 - ring * 0.08})`;
+                floorCtx.lineWidth = 1;
+                floorCtx.beginPath();
+                floorCtx.ellipse(knotX, knotY, knotSize + ring * 5, (knotSize + ring * 5) * 1.2, 0, 0, Math.PI * 2);
+                floorCtx.stroke();
+            }
         }
     }
     
-    // Fleshy bumps and nodules
-    for (let i = 0; i < 100; i++) {
-        const x = Math.random() * 512;
-        const y = Math.random() * 512;
-        const size = 3 + Math.random() * 12;
-        
-        const bumpGradient = floorCtx.createRadialGradient(x - size*0.3, y - size*0.3, 0, x, y, size);
-        bumpGradient.addColorStop(0, 'rgba(160, 80, 85, 0.8)');
-        bumpGradient.addColorStop(0.5, 'rgba(100, 40, 45, 0.6)');
-        bumpGradient.addColorStop(1, 'rgba(60, 20, 25, 0.3)');
-        
-        floorCtx.fillStyle = bumpGradient;
-        floorCtx.beginPath();
-        floorCtx.arc(x, y, size, 0, Math.PI * 2);
-        floorCtx.fill();
+    // Add horizontal plank end joints at random intervals
+    for (let px = 0; px < 512; px += plankWidth) {
+        const numJoints = 1 + Math.floor(Math.random() * 2);
+        for (let j = 0; j < numJoints; j++) {
+            const jointY = 100 + Math.random() * 350;
+            floorCtx.fillStyle = '#1a1209';
+            floorCtx.fillRect(px + 2, jointY, plankWidth - 4, 3);
+        }
     }
     
-    // Torn flesh and wounds
-    for (let i = 0; i < 30; i++) {
+    // Scratches and wear
+    for (let i = 0; i < 50; i++) {
         const x = Math.random() * 512;
         const y = Math.random() * 512;
-        const length = 20 + Math.random() * 50;
+        const length = 20 + Math.random() * 60;
         const angle = Math.random() * Math.PI;
-        
-        // Dark wound opening
-        floorCtx.strokeStyle = 'rgba(20, 0, 5, 0.9)';
-        floorCtx.lineWidth = 3 + Math.random() * 5;
+        floorCtx.strokeStyle = `rgba(30, 20, 10, ${0.3 + Math.random() * 0.4})`;
+        floorCtx.lineWidth = 0.5 + Math.random() * 1;
         floorCtx.beginPath();
         floorCtx.moveTo(x, y);
         floorCtx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
         floorCtx.stroke();
-        
-        // Pink flesh edges
-        floorCtx.strokeStyle = 'rgba(150, 60, 70, 0.7)';
-        floorCtx.lineWidth = 1 + Math.random() * 2;
-        floorCtx.beginPath();
-        floorCtx.moveTo(x + 2, y + 2);
-        floorCtx.lineTo(x + Math.cos(angle) * length + 2, y + Math.sin(angle) * length + 2);
-        floorCtx.stroke();
     }
     
-    // Glistening wet highlights
-    for (let i = 0; i < 60; i++) {
+    // Dust and dirt spots
+    for (let i = 0; i < 100; i++) {
         const x = Math.random() * 512;
         const y = Math.random() * 512;
-        const size = 1 + Math.random() * 4;
-        
-        floorCtx.fillStyle = `rgba(200, 150, 155, ${0.2 + Math.random() * 0.3})`;
+        const size = 2 + Math.random() * 8;
+        floorCtx.fillStyle = `rgba(40, 35, 25, ${0.2 + Math.random() * 0.3})`;
         floorCtx.beginPath();
         floorCtx.arc(x, y, size, 0, Math.PI * 2);
         floorCtx.fill();
     }
     
-    // Load floor texture
     const floorTexture = new THREE.CanvasTexture(floorCanvas);
     floorTexture.wrapS = THREE.RepeatWrapping;
     floorTexture.wrapT = THREE.RepeatWrapping;
-    floorTexture.repeat.set(mazeSize * 2, mazeSize * 2);
+    floorTexture.repeat.set(mazeSize, mazeSize);
     
     const floorGeometry = new THREE.PlaneGeometry(mazeSize * cellSize * 1.5, mazeSize * cellSize * 1.5);
     const floorMaterial = new THREE.MeshStandardMaterial({ 
         map: floorTexture,
-        roughness: 0.7,
-        emissive: 0x0a0a0a,
-        emissiveIntensity: 0.2
+        roughness: 0.95,
+        metalness: 0.0
     });
     floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
@@ -1124,102 +1082,132 @@ function buildMaze() {
     floor.receiveShadow = true;
     scene.add(floor);
     
-    // Ceiling - bloody, dripping, nasty texture
+    // Ceiling - gritty concrete texture matching walls
     const ceilingCanvas = document.createElement('canvas');
     ceilingCanvas.width = 512;
     ceilingCanvas.height = 512;
     const ceilingCtx = ceilingCanvas.getContext('2d');
     
-    // Base pitch black
-    ceilingCtx.fillStyle = '#0a0000';
+    // Base dark grey concrete color
+    ceilingCtx.fillStyle = '#3a3a3a';
     ceilingCtx.fillRect(0, 0, 512, 512);
     
-    // Large blood stains dripping from above
-    for (let i = 0; i < 80; i++) {
+    // Add concrete grain/aggregate texture
+    for (let i = 0; i < 3000; i++) {
         const x = Math.random() * 512;
         const y = Math.random() * 512;
-        const size = 40 + Math.random() * 100;
-        
-        // Dark blood stains
-        const redVal = 30 + Math.random() * 40;
-        ceilingCtx.fillStyle = `rgba(${redVal}, ${Math.random() * 5}, 0, ${0.6 + Math.random() * 0.3})`;
-        
+        const size = 1 + Math.random() * 4;
+        const shade = 45 + Math.random() * 45;
+        ceilingCtx.fillStyle = `rgb(${shade}, ${shade}, ${shade})`;
         ceilingCtx.beginPath();
         ceilingCtx.arc(x, y, size, 0, Math.PI * 2);
         ceilingCtx.fill();
-        
-        // Drip trails downward
-        for (let j = 0; j < 8; j++) {
-            const dripX = x + (Math.random() - 0.5) * size;
-            const dripLength = 20 + Math.random() * 80;
-            
-            ceilingCtx.strokeStyle = `rgba(${redVal + 20}, 0, 0, ${0.5 + Math.random() * 0.4})`;
-            ceilingCtx.lineWidth = 2 + Math.random() * 5;
-            ceilingCtx.beginPath();
-            ceilingCtx.moveTo(dripX, y + size/2);
-            ceilingCtx.lineTo(dripX + (Math.random() - 0.5) * 10, y + size/2 + dripLength);
-            ceilingCtx.stroke();
-            
-            // Drip droplet at end
-            ceilingCtx.fillStyle = `rgba(${80 + Math.random() * 50}, 0, 0, 0.8)`;
-            ceilingCtx.beginPath();
-            ceilingCtx.arc(dripX, y + size/2 + dripLength, 3 + Math.random() * 4, 0, Math.PI * 2);
-            ceilingCtx.fill();
-        }
     }
     
-    // Streaks and smears
-    for (let i = 0; i < 120; i++) {
-        const startX = Math.random() * 512;
-        const startY = Math.random() * 512;
-        const length = 30 + Math.random() * 100;
-        const angle = Math.random() * Math.PI * 2;
-        
-        ceilingCtx.strokeStyle = `rgba(${40 + Math.random() * 30}, ${Math.random() * 8}, 0, ${0.3 + Math.random() * 0.4})`;
-        ceilingCtx.lineWidth = 3 + Math.random() * 8;
+    // Larger aggregate stones
+    for (let i = 0; i < 200; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 3 + Math.random() * 8;
+        const shade = 40 + Math.random() * 55;
+        ceilingCtx.fillStyle = `rgba(${shade}, ${shade}, ${shade}, 0.7)`;
         ceilingCtx.beginPath();
-        ceilingCtx.moveTo(startX, startY);
-        ceilingCtx.lineTo(startX + Math.cos(angle) * length, startY + Math.sin(angle) * length);
+        ceilingCtx.arc(x, y, size, 0, Math.PI * 2);
+        ceilingCtx.fill();
+    }
+    
+    // Dark cracks
+    for (let i = 0; i < 20; i++) {
+        let x = Math.random() * 512;
+        let y = Math.random() * 512;
+        ceilingCtx.strokeStyle = `rgba(20, 20, 20, ${0.5 + Math.random() * 0.5})`;
+        ceilingCtx.lineWidth = 1 + Math.random() * 3;
+        ceilingCtx.beginPath();
+        ceilingCtx.moveTo(x, y);
+        const segments = 4 + Math.floor(Math.random() * 8);
+        for (let s = 0; s < segments; s++) {
+            x += (Math.random() - 0.5) * 60;
+            y += (Math.random() - 0.5) * 60;
+            ceilingCtx.lineTo(x, y);
+        }
         ceilingCtx.stroke();
     }
     
-    // Decay patches and mold
-    for (let i = 0; i < 150; i++) {
+    // Water damage / moisture stains
+    for (let i = 0; i < 30; i++) {
         const x = Math.random() * 512;
         const y = Math.random() * 512;
-        const size = 10 + Math.random() * 40;
-        
-        // Greenish-brown decay
-        const decayVal = Math.random() * 15;
-        ceilingCtx.fillStyle = `rgba(${decayVal}, ${decayVal + 5}, 0, ${0.3 + Math.random() * 0.3})`;
+        const size = 40 + Math.random() * 100;
+        const gradient = ceilingCtx.createRadialGradient(x, y, 0, x, y, size);
+        gradient.addColorStop(0, 'rgba(35, 35, 32, 0.5)');
+        gradient.addColorStop(0.5, 'rgba(40, 38, 35, 0.3)');
+        gradient.addColorStop(1, 'rgba(45, 43, 40, 0)');
+        ceilingCtx.fillStyle = gradient;
         ceilingCtx.beginPath();
         ceilingCtx.arc(x, y, size, 0, Math.PI * 2);
         ceilingCtx.fill();
     }
     
-    // Fresh blood splatters
-    for (let i = 0; i < 100; i++) {
+    // Darker dirt/grime patches
+    for (let i = 0; i < 50; i++) {
         const x = Math.random() * 512;
         const y = Math.random() * 512;
-        
-        // Central splatter
-        ceilingCtx.fillStyle = `rgba(${100 + Math.random() * 50}, 0, 0, ${0.5 + Math.random() * 0.4})`;
+        const size = 15 + Math.random() * 40;
+        const gradient = ceilingCtx.createRadialGradient(x, y, 0, x, y, size);
+        gradient.addColorStop(0, 'rgba(30, 28, 25, 0.6)');
+        gradient.addColorStop(1, 'rgba(35, 33, 30, 0)');
+        ceilingCtx.fillStyle = gradient;
         ceilingCtx.beginPath();
-        ceilingCtx.arc(x, y, 3 + Math.random() * 6, 0, Math.PI * 2);
+        ceilingCtx.arc(x, y, size, 0, Math.PI * 2);
         ceilingCtx.fill();
+    }
+    
+    // Exposed rebar / rust stains
+    for (let i = 0; i < 15; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const length = 30 + Math.random() * 80;
+        const angle = Math.random() * Math.PI;
         
-        // Spray pattern
-        for (let j = 0; j < 6; j++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 5 + Math.random() * 20;
-            const splatterX = x + Math.cos(angle) * dist;
-            const splatterY = y + Math.sin(angle) * dist;
-            
-            ceilingCtx.fillStyle = `rgba(${80 + Math.random() * 40}, 0, 0, ${Math.random() * 0.5})`;
-            ceilingCtx.beginPath();
-            ceilingCtx.arc(splatterX, splatterY, 1 + Math.random() * 3, 0, Math.PI * 2);
-            ceilingCtx.fill();
+        // Rust streak
+        const rustGradient = ceilingCtx.createLinearGradient(x, y, x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+        rustGradient.addColorStop(0, 'rgba(70, 40, 25, 0.6)');
+        rustGradient.addColorStop(0.5, 'rgba(55, 35, 20, 0.4)');
+        rustGradient.addColorStop(1, 'rgba(45, 30, 20, 0)');
+        ceilingCtx.strokeStyle = rustGradient;
+        ceilingCtx.lineWidth = 8 + Math.random() * 15;
+        ceilingCtx.beginPath();
+        ceilingCtx.moveTo(x, y);
+        ceilingCtx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+        ceilingCtx.stroke();
+    }
+    
+    // Chipped/damaged areas
+    for (let i = 0; i < 25; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 10 + Math.random() * 25;
+        
+        // Dark chipped area
+        ceilingCtx.fillStyle = `rgba(25, 25, 25, ${0.5 + Math.random() * 0.4})`;
+        ceilingCtx.beginPath();
+        // Irregular shape
+        ceilingCtx.moveTo(x, y);
+        for (let a = 0; a < Math.PI * 2; a += 0.5) {
+            const radius = size * (0.6 + Math.random() * 0.5);
+            ceilingCtx.lineTo(x + Math.cos(a) * radius, y + Math.sin(a) * radius);
         }
+        ceilingCtx.closePath();
+        ceilingCtx.fill();
+    }
+    
+    // Fine noise for realism
+    for (let i = 0; i < 2000; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const shade = 30 + Math.random() * 70;
+        ceilingCtx.fillStyle = `rgba(${shade}, ${shade}, ${shade}, 0.25)`;
+        ceilingCtx.fillRect(x, y, 1, 1);
     }
     
     const ceilingTexture = new THREE.CanvasTexture(ceilingCanvas);
@@ -1382,7 +1370,7 @@ function addLightSources() {
         
         // Add visible bulb at ceiling - LARGER AND BRIGHTER
         const bulbGeometry = new THREE.SphereGeometry(0.35, 12, 12);
-        const bulbMaterial = new THREE.MeshBasicMaterial({
+        const bulbMaterial = new THREE.MeshStandardMaterial({
             color: 0xffcc66,
             emissive: 0xffcc66,
             emissiveIntensity: 8
@@ -1648,8 +1636,16 @@ function createShadows() {
         // Create humanoid shadow monster with distinct body parts
         const bodyGroup = new THREE.Group();
         
+        // Void-black material - absorbs all light
         const monsterMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x050505,
+            color: 0x020202,
+            transparent: true,
+            opacity: 0.98
+        });
+        
+        // Secondary darker material for depth
+        const voidMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x000000,
             transparent: true,
             opacity: 0.95
         });
@@ -1783,26 +1779,39 @@ function createShadows() {
         rightShoulder.position.set(0.24, 2.0, 0);
         bodyGroup.add(rightShoulder);
         
-        // Eyes - glowing red, sunken into head
-        const eyeGeometry = new THREE.SphereGeometry(0.05, 8, 8);
-        const eyeMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xff0000,
-            emissive: 0xff0000,
-            emissiveIntensity: 1.5
+        // Dark eye socket voids - sunken into skull
+        const socketGeo = new THREE.SphereGeometry(0.075, 8, 8);
+        const socketMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const leftSocket = new THREE.Mesh(socketGeo, socketMaterial);
+        leftSocket.position.set(-0.08, 2.50, 0.12);
+        leftSocket.scale.z = 0.4;
+        bodyGroup.add(leftSocket);
+        
+        const rightSocket = new THREE.Mesh(socketGeo, socketMaterial);
+        rightSocket.position.set(0.08, 2.50, 0.12);
+        rightSocket.scale.z = 0.4;
+        bodyGroup.add(rightSocket);
+        
+        // Eyes - intensely glowing red within sockets
+        const eyeGeometry = new THREE.SphereGeometry(0.045, 8, 8);
+        const eyeMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x880000,
+            emissive: 0xaa0000,
+            emissiveIntensity: 3.0
         });
         const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-        leftEye.position.set(-0.08, 2.50, 0.15);
+        leftEye.position.set(-0.08, 2.50, 0.14);
         bodyGroup.add(leftEye);
         
         const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-        rightEye.position.set(0.08, 2.50, 0.15);
+        rightEye.position.set(0.08, 2.50, 0.14);
         bodyGroup.add(rightEye);
         
-        // Mouth - dark gash
-        const mouthGeo = new THREE.BoxGeometry(0.12, 0.02, 0.05);
-        const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0x200000 });
+        // Gaping mouth - dark void
+        const mouthGeo = new THREE.BoxGeometry(0.14, 0.04, 0.06);
+        const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
         const mouth = new THREE.Mesh(mouthGeo, mouthMaterial);
-        mouth.position.set(0, 2.32, 0.18);
+        mouth.position.set(0, 2.30, 0.17);
         bodyGroup.add(mouth);
         
         const mesh = bodyGroup;
@@ -3651,48 +3660,55 @@ function initLevel2() {
     camera.position.set(cellSize / 2, player.height, cellSize / 2);
 }
 
-// Build Level 2 maze - white and bright
+// Build Level 2 maze - dark and ominous forest
 function buildLevel2Maze() {
     const wallHeight = 6;
     
-    // Create marble wall material with procedural texture
+    // Create dark bark texture
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 512;
     const ctx = canvas.getContext('2d');
     
-    // Base marble color
-    ctx.fillStyle = '#f5f5f5';
+    // Base - very dark bark color
+    ctx.fillStyle = '#0f0a08';
     ctx.fillRect(0, 0, 512, 512);
     
-    // Add marble veins
-    ctx.strokeStyle = 'rgba(180, 180, 180, 0.3)';
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 30; i++) {
+    // Bark texture - rough and weathered
+    for (let i = 0; i < 300; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const w = 3 + Math.random() * 20;
+        const h = 10 + Math.random() * 50;
+        
+        const barkVal = 15 + Math.random() * 25;
+        ctx.fillStyle = `rgba(${barkVal + 5}, ${barkVal}, ${barkVal - 5}, ${0.4 + Math.random() * 0.4})`;
+        ctx.fillRect(x, y, w, h);
+    }
+    
+    // Deep bark grooves
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+    for (let i = 0; i < 40; i++) {
+        ctx.lineWidth = 2 + Math.random() * 4;
         ctx.beginPath();
-        ctx.moveTo(Math.random() * 512, Math.random() * 512);
-        for (let j = 0; j < 5; j++) {
-            ctx.quadraticCurveTo(
-                Math.random() * 512, Math.random() * 512,
-                Math.random() * 512, Math.random() * 512
-            );
+        let y = Math.random() * 512;
+        ctx.moveTo(0, y);
+        for (let x = 0; x < 512; x += 30) {
+            y += (Math.random() - 0.5) * 20;
+            ctx.lineTo(x, y);
         }
         ctx.stroke();
     }
     
-    // Add darker veins
-    ctx.strokeStyle = 'rgba(140, 140, 140, 0.2)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 20; i++) {
+    // Moss patches
+    for (let i = 0; i < 50; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const size = 10 + Math.random() * 30;
+        ctx.fillStyle = `rgba(${8 + Math.random() * 15}, ${15 + Math.random() * 20}, ${5 + Math.random() * 10}, ${0.3 + Math.random() * 0.3})`;
         ctx.beginPath();
-        ctx.moveTo(Math.random() * 512, Math.random() * 512);
-        for (let j = 0; j < 3; j++) {
-            ctx.quadraticCurveTo(
-                Math.random() * 512, Math.random() * 512,
-                Math.random() * 512, Math.random() * 512
-            );
-        }
-        ctx.stroke();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
     }
     
     const marbleTexture = new THREE.CanvasTexture(canvas);
@@ -3702,8 +3718,8 @@ function buildLevel2Maze() {
     
     const wallMaterial = new THREE.MeshStandardMaterial({ 
         map: marbleTexture,
-        color: 0x3d2817,  // Dark brown bark color
-        roughness: 0.9,
+        color: 0x1a0f0a,  // Very dark brown bark
+        roughness: 0.95,
         metalness: 0.0,
         emissive: 0x000000,
         emissiveIntensity: 0
@@ -3724,13 +3740,13 @@ function buildLevel2Maze() {
         }
     }
     
-    // Create grass floor
+    // Create dark forest floor - dead leaves and dirt
     const floorSize = mazeSize * cellSize * 2;
     const floorGeometry = new THREE.PlaneGeometry(floorSize, floorSize, 50, 50);
     
     const floorMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x2d5016,  // Dark grass green
-        roughness: 0.9,
+        color: 0x0d1008,  // Very dark earth/dead leaves
+        roughness: 0.95,
         metalness: 0.0,
         side: THREE.DoubleSide
     });
@@ -3741,11 +3757,11 @@ function buildLevel2Maze() {
     floor.receiveShadow = true;
     scene.add(floor);
     
-    // Add 3D grass blades throughout the floor
-    const grassBladeGeometry = new THREE.ConeGeometry(0.03, 0.4, 3); // Thinner and taller for spiky look
+    // Add 3D grass/dead vegetation blades
+    const grassBladeGeometry = new THREE.ConeGeometry(0.03, 0.35, 3);
     const grassMaterial = new THREE.MeshStandardMaterial({
-        color: 0x3d6b1f,
-        roughness: 0.8,
+        color: 0x151a0d,  // Very dark dead grass
+        roughness: 0.9,
         metalness: 0.0
     });
     
@@ -3874,12 +3890,12 @@ function buildLevel2Maze() {
         const treeType = Math.random();
         
         if (treeType < 0.3) {
-            // SHORT BUSH - low, wide foliage with multiple leaf clusters
+            // SHORT BUSH - dark, dead-looking vegetation
             const bushRadius = 0.8 + Math.random() * 0.7;
             const bushGeometry = new THREE.SphereGeometry(bushRadius, 8, 8);
             const bushMaterial = new THREE.MeshStandardMaterial({
-                color: 0x2a5a1a,
-                roughness: 0.9,
+                color: 0x0d1a08,  // Very dark sickly green
+                roughness: 0.95,
                 metalness: 0.0
             });
             const bush = new THREE.Mesh(bushGeometry, bushMaterial);
@@ -3907,12 +3923,12 @@ function buildLevel2Maze() {
             }
             
         } else if (treeType < 0.6) {
-            // CONE/PINE TREE - tall and narrow with layered foliage
+            // CONE/PINE TREE - dark silhouettes in the fog
             const coneHeight = 5 + Math.random() * 8;
             const coneRadius = 0.8 + Math.random() * 0.6;
             const coneMaterial = new THREE.MeshStandardMaterial({
-                color: 0x1a4d0d,
-                roughness: 0.9,
+                color: 0x0a1a05,  // Near-black green
+                roughness: 0.95,
                 metalness: 0.0
             });
             
@@ -3938,11 +3954,11 @@ function buildLevel2Maze() {
                 scene.add(layerCone);
             }
             
-            // Small trunk
+            // Small dark trunk
             const smallTrunkGeometry = new THREE.CylinderGeometry(0.15, 0.2, coneHeight * 0.4, 6);
             const trunkMaterial = new THREE.MeshStandardMaterial({
-                color: 0x3d2817,
-                roughness: 0.9,
+                color: 0x150c08,  // Very dark bark
+                roughness: 0.95,
                 metalness: 0.0
             });
             const smallTrunk = new THREE.Mesh(smallTrunkGeometry, trunkMaterial);
@@ -3950,13 +3966,13 @@ function buildLevel2Maze() {
             scene.add(smallTrunk);
             
         } else {
-            // REGULAR TREE - varied heights with round foliage
-            const trunkHeight = 4 + Math.random() * 12; // 4-16 units tall
+            // REGULAR TREE - dark silhouettes looming in fog
+            const trunkHeight = 4 + Math.random() * 12;
             const trunkRadius = 0.2 + Math.random() * 0.4;
             const trunkGeometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius + 0.1, trunkHeight, 8);
             const trunkMaterial = new THREE.MeshStandardMaterial({
-                color: 0x3d2817,
-                roughness: 0.9,
+                color: 0x120a06,  // Near-black bark
+                roughness: 0.95,
                 metalness: 0.0
             });
             const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
@@ -3966,11 +3982,11 @@ function buildLevel2Maze() {
             scene.add(trunk);
             pillars.push(trunk);
             
-            // Foliage - multiple layers for fuller appearance
+            // Foliage - dark, ominous canopy
             const foliageRadius = 1.2 + Math.random() * 1.5;
             const foliageMaterial = new THREE.MeshStandardMaterial({
-                color: 0x1a4d0d,
-                roughness: 0.8,
+                color: 0x0a1505,  // Near-black foliage
+                roughness: 0.95,
                 metalness: 0.0
             });
             
@@ -4441,7 +4457,7 @@ function createAngels() {
         
         // Glowing eyes inside sockets - piercing
         const eyeGeometry = new THREE.SphereGeometry(0.045, 8, 8);
-        const eyeMaterial = new THREE.MeshBasicMaterial({ 
+        const eyeMaterial = new THREE.MeshStandardMaterial({ 
             color: 0xffdd00,
             emissive: 0xffaa00,
             emissiveIntensity: 4
@@ -4553,7 +4569,7 @@ function createAngels() {
         
         // Broken/cracked halo - corrupted divine
         const haloGeometry = new THREE.TorusGeometry(0.4, 0.03, 6, 24);
-        const haloMaterial = new THREE.MeshBasicMaterial({ 
+        const haloMaterial = new THREE.MeshStandardMaterial({ 
             color: 0xccaa00,
             emissive: 0xaa8800,
             emissiveIntensity: 2

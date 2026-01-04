@@ -18,6 +18,25 @@ body {
     background: #000;
 }
 
+#game-container::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.03) 2px,
+        rgba(0, 0, 0, 0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+    animation: scanlines 10s linear infinite;
+}
+
 /* Glitch effect */
 @keyframes glitch {
     0% { transform: translate(0); }
@@ -404,31 +423,34 @@ body {
 }
 
 .label {
-    color: #888;
+    color: #555;
     font-size: 0.8rem;
     letter-spacing: 0.2rem;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
 }
 
 .sanity-bar {
     width: 250px;
     height: 25px;
-    background-color: #1a0000;
-    border: 2px solid #440000;
+    background-color: #0a0000;
+    border: 2px solid #330000;
     position: relative;
     overflow: hidden;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8);
 }
 
 #sanity-fill {
     height: 100%;
-    background: linear-gradient(90deg, #ff0000 0%, #ff6600 50%, #ffcc00 100%);
+    background: linear-gradient(90deg, #8b0000 0%, #aa2200 50%, #884400 100%);
     transition: width 0.3s, background 0.3s;
-    box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+    box-shadow: 0 0 8px rgba(139, 0, 0, 0.6);
 }
 
 #sanity-text {
-    color: #ff0000;
+    color: #aa0000;
     font-size: 0.9rem;
     text-align: center;
+    text-shadow: 0 0 5px rgba(139, 0, 0, 0.5);
 }
 
 .matches-container {
@@ -452,26 +474,28 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 5px;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.85);
     padding: 10px 20px;
-    border: 2px solid #ff6600;
+    border: 2px solid #663300;
     border-radius: 5px;
+    box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.6);
 }
 
 .battery-bar {
     width: 200px;
     height: 20px;
-    background-color: #1a0a00;
-    border: 2px solid #ff6600;
+    background-color: #0a0500;
+    border: 2px solid #442200;
     position: relative;
     overflow: hidden;
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.7);
 }
 
 #battery-fill {
     height: 100%;
-    background: linear-gradient(90deg, #ff0000 0%, #ff6600 50%, #ffff00 100%);
+    background: linear-gradient(90deg, #662200 0%, #884400 50%, #886600 100%);
     transition: width 0.3s;
-    box-shadow: 0 0 10px rgba(255, 102, 0, 0.8);
+    box-shadow: 0 0 6px rgba(136, 68, 0, 0.5);
 }
 
 .stamina-container {
@@ -479,50 +503,54 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 5px;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.85);
     padding: 10px 20px;
-    border: 2px solid #00ff00;
+    border: 2px solid #225522;
     border-radius: 5px;
     margin-left: 20px;
+    box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.6);
 }
 
 .stamina-bar {
     width: 200px;
     height: 20px;
-    background-color: #001a00;
-    border: 2px solid #00ff00;
+    background-color: #000a00;
+    border: 2px solid #113311;
     position: relative;
     overflow: hidden;
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.7);
 }
 
 #stamina-fill {
     height: 100%;
-    background: linear-gradient(90deg, #00ff00 0%, #88ff00 50%, #ffff00 100%);
+    background: linear-gradient(90deg, #114411 0%, #336633 50%, #445533 100%);
     transition: width 0.3s;
-    box-shadow: 0 0 10px rgba(0, 255, 0, 0.6);
+    box-shadow: 0 0 6px rgba(51, 102, 51, 0.4);
 }
 
 #stamina-text {
-    color: #00ff00;
+    color: #336633;
     font-size: 0.9rem;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
 }
 
 #battery-text {
-    color: #ff6600;
+    color: #884400;
     font-size: 0.9rem;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.5);
 }
 
 .hint {
-    color: #666;
+    color: #444;
     font-size: 0.7rem;
     font-style: italic;
 }
 
 #matches-count {
-    color: #ff6600;
+    color: #884400;
     font-size: 2rem;
     font-weight: bold;
-    text-shadow: 0 0 10px rgba(255, 102, 0, 0.8);
+    text-shadow: 0 0 8px rgba(136, 68, 0, 0.5);
 }
 
 /* Match counter message */
