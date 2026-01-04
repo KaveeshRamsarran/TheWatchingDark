@@ -476,8 +476,13 @@ function initThree() {
     noteGlow.position.copy(noteObject.position);
     scene.add(noteGlow);
     
-    renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    // Pixelated rendering - render at lower resolution
+    const pixelRatio = 0.25; // Render at 25% resolution for chunky pixels
+    renderer = new THREE.WebGLRenderer({ antialias: false }); // No antialiasing for crisp pixels
+    renderer.setSize(window.innerWidth * pixelRatio, window.innerHeight * pixelRatio, false);
+    renderer.domElement.style.width = window.innerWidth + 'px';
+    renderer.domElement.style.height = window.innerHeight + 'px';
+    renderer.domElement.style.imageRendering = 'pixelated';
     renderer.setClearColor(0x0a0a0a);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -841,6 +846,8 @@ function buildMaze() {
     }
     
     const wallTexture = new THREE.CanvasTexture(wallCanvas);
+    wallTexture.magFilter = THREE.NearestFilter;
+    wallTexture.minFilter = THREE.NearestFilter;
     wallTexture.wrapS = THREE.RepeatWrapping;
     wallTexture.wrapT = THREE.RepeatWrapping;
     wallTexture.repeat.set(2, 2);
@@ -1066,6 +1073,8 @@ function buildMaze() {
     }
     
     const floorTexture = new THREE.CanvasTexture(floorCanvas);
+    floorTexture.magFilter = THREE.NearestFilter;
+    floorTexture.minFilter = THREE.NearestFilter;
     floorTexture.wrapS = THREE.RepeatWrapping;
     floorTexture.wrapT = THREE.RepeatWrapping;
     floorTexture.repeat.set(mazeSize, mazeSize);
@@ -1211,6 +1220,8 @@ function buildMaze() {
     }
     
     const ceilingTexture = new THREE.CanvasTexture(ceilingCanvas);
+    ceilingTexture.magFilter = THREE.NearestFilter;
+    ceilingTexture.minFilter = THREE.NearestFilter;
     ceilingTexture.wrapS = THREE.RepeatWrapping;
     ceilingTexture.wrapT = THREE.RepeatWrapping;
     ceilingTexture.repeat.set(mazeSize, mazeSize);
@@ -3433,6 +3444,9 @@ function transitionToLevel2() {
     // Initialize Level 2
     initLevel2();
     
+    // Flash "DON'T LOOK" warning
+    showLevel2Warning();
+    
     // Start Level 2 music
     if (sounds.soundtrack) {
         sounds.soundtrack.pause();
@@ -3444,6 +3458,22 @@ function transitionToLevel2() {
     sounds.soundtrack.play().catch(e => console.log('Level 2 soundtrack error:', e));
     
     console.log('Level 2 initialized');
+}
+
+// Show "DON'T LOOK" warning flash when entering Level 2
+function showLevel2Warning() {
+    const warning = document.getElementById('level2-warning');
+    if (!warning) return;
+    
+    // Show warning
+    warning.style.display = 'flex';
+    warning.style.animation = 'warningFlash 0.8s ease-in-out';
+    
+    // Hide after animation
+    setTimeout(() => {
+        warning.style.display = 'none';
+        warning.style.animation = '';
+    }, 800);
 }
 
 // Initialize Level 2 - Dark forest maze
@@ -4888,11 +4918,14 @@ window.addEventListener('keyup', (e) => {
 });
 
 // Resize handler
+const pixelRatio = 0.25; // Match the pixel ratio from init
 window.addEventListener('resize', () => {
     if (camera && renderer) {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(window.innerWidth * pixelRatio, window.innerHeight * pixelRatio, false);
+        renderer.domElement.style.width = window.innerWidth + 'px';
+        renderer.domElement.style.height = window.innerHeight + 'px';
     }
 });
 // Settings Menu System

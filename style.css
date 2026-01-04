@@ -373,7 +373,7 @@ body {
     }
 }
 
-/* Game Canvas */
+/* Game Canvas - Pixelated Style */
 #game-canvas {
     position: absolute;
     top: 0;
@@ -381,6 +381,12 @@ body {
     width: 100%;
     height: 100%;
     background-color: #000;
+}
+
+#game-canvas canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    -ms-interpolation-mode: nearest-neighbor;
 }
 
 #crosshair {
@@ -759,6 +765,47 @@ body {
     25% { transform: translate(-10px, 5px) scale(1.06); }
     50% { transform: translate(5px, -8px) scale(1.04); }
     75% { transform: translate(-8px, -5px) scale(1.07); }
+}
+
+/* Level 2 Warning Flash */
+#level2-warning {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    z-index: 9999;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    pointer-events: none;
+}
+
+#level2-warning span {
+    font-family: 'Courier New', monospace;
+    font-size: 12vw;
+    font-weight: bold;
+    color: #ff0000;
+    text-shadow: 
+        0 0 20px #ff0000,
+        0 0 40px #ff0000,
+        0 0 60px #ff0000,
+        0 0 80px #990000;
+    letter-spacing: 0.3em;
+    animation: warningFlicker 0.1s ease-in-out infinite;
+}
+
+@keyframes warningFlicker {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.02); }
+}
+
+@keyframes warningFlash {
+    0% { opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { opacity: 0; }
 }
 
 /* Death Screen */
