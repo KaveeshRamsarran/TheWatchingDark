@@ -20,8 +20,8 @@ const Level1 = (() => {
         World.clearColliders();
         const cells = World.cells;
 
-        scene.background = new THREE.Color(0x040405);
-        scene.fog = new THREE.FogExp2(0x040405, 0.058);
+        scene.background = new THREE.Color(0x020203);
+        scene.fog = new THREE.FogExp2(0x020203, 0.068);
 
         progress('Pouring concrete...', 0.2);
         await nextFrame();
@@ -37,7 +37,7 @@ const Level1 = (() => {
 
         const wallMat = new THREE.MeshStandardMaterial({
             map: wallTex.map, normalMap: wallTex.normalMap, roughnessMap: wallTex.roughnessMap,
-            roughness: 1, color: 0xa29c94, normalScale: new THREE.Vector2(1.2, 1.2)
+            roughness: 1, color: 0x8c8780, normalScale: new THREE.Vector2(1.2, 1.2)
         });
         const trimMat = new THREE.MeshStandardMaterial({ color: 0x0d0a08, roughness: 0.85, metalness: 0.0 });
         const pipeMat = new THREE.MeshStandardMaterial({ color: 0x3a2e26, roughness: 0.45, metalness: 0.75 });
@@ -170,7 +170,7 @@ const Level1 = (() => {
         // ---- Lamps -------------------------------------------------------------
         const lamps = [];
         const lampCells = [];
-        const lampCount = randInt(20, 26);
+        const lampCount = randInt(13, 17);
         for (let tries = 0; lamps.length < lampCount && tries < 2000; tries++) {
             const x = randInt(1, S - 2), z = randInt(1, S - 2);
             if (x < 3 && z < 3) continue;
@@ -185,14 +185,14 @@ const Level1 = (() => {
             const pool = new THREE.Mesh(
                 new THREE.PlaneGeometry(9, 9),
                 new THREE.MeshBasicMaterial({
-                    map: Textures.lightPool(), color: 0xff9a50, transparent: true, opacity: 0.14,
+                    map: Textures.lightPool(), color: 0xff9a50, transparent: true, opacity: 0.08,
                     blending: THREE.AdditiveBlending, depthWrite: false
                 })
             );
             pool.rotation.x = -Math.PI / 2;
             pool.position.set(px, 0.02, pz);
             levelRoot.add(pool);
-            const broken = Math.random() < 0.3;
+            const broken = Math.random() < 0.45;
             lamps.push({
                 pos: new THREE.Vector3(px, y, pz), cell: { x, z }, ...lamp, pool,
                 broken, level: 1, phase: Math.random() * 100, swing: Math.random() * TAU
@@ -323,16 +323,16 @@ const Level1 = (() => {
                         level = 0.92 + Math.sin(time * 13 + l.phase) * 0.04 + Math.sin(time * 37 + l.phase) * 0.03;
                     }
                     l.level = level;
-                    l.bulbMat.emissiveIntensity = 7 * level;
-                    l.glow.material.opacity = 0.55 * level;
-                    l.pool.material.opacity = 0.14 * level;
+                    l.bulbMat.emissiveIntensity = 5 * level;
+                    l.glow.material.opacity = 0.4 * level;
+                    l.pool.material.opacity = 0.08 * level;
                     l.group.rotation.z = Math.sin(time * 0.7 + l.swing) * 0.03;
                 }
                 // Real spotlights follow the nearest lamps
                 assignLamps(cam, lamps, lampLights);
                 for (const slot of lampLights) {
                     if (!slot.lamp) { slot.light.intensity = 0; continue; }
-                    slot.light.intensity = 5.5 * slot.lamp.level;
+                    slot.light.intensity = 3.2 * slot.lamp.level;
                 }
                 for (const p of pickups) {
                     if (p.collected) continue;

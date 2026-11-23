@@ -14,18 +14,23 @@ const Models = (() => {
     // ---------------------------------------------------------------------------
     // Shared materials
     // ---------------------------------------------------------------------------
-    function rimMaterial(color, roughness, rimColor, rimPower = 2.5) {
-        const m = new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.05 });
+    // Faint fresnel glow so dark silhouettes still read at the edge of the light
+    function addRim(m, rimColor, rimPower = 2.5) {
         m.onBeforeCompile = (shader) => {
             shader.uniforms.rimColor = { value: new THREE.Color(rimColor) };
-            shader.fragmentShader = 'uniform vec3 rimColor;\n' + shader.fragmentShader.replace(
+            shader.uniforms.rimPower = { value: rimPower };
+            shader.fragmentShader = 'uniform vec3 rimColor;\nuniform float rimPower;\n' + shader.fragmentShader.replace(
                 '#include <emissivemap_fragment>',
                 `#include <emissivemap_fragment>
                 float rimF = 1.0 - max(dot(normal, normalize(vViewPosition)), 0.0);
-                totalEmissiveRadiance += rimColor * pow(rimF, ${rimPower.toFixed(1)});`
+                totalEmissiveRadiance += rimColor * pow(rimF, rimPower);`
             );
         };
-        return markShared(m);
+        return m;
+    }
+
+    function rimMaterial(color, roughness, rimColor, rimPower = 2.5) {
+        return markShared(addRim(new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.05 }), rimColor, rimPower));
     }
 
     function smokeMaterial(color, opacity, size) {
@@ -157,7 +162,149 @@ const Models = (() => {
         return shared.watcher;
     }
 
+    // ---------------------------------------------------------------------------
+    // Rigged Watcher built in Blender (tools/blender/build_models.py)
+    // ---------------------------------------------------------------------------
+    function watcherRigMaterials() {
+        if (shared.watcherRig) return shared.watcherRig;
+        const sk = Textures.skin();
+        shared.watcherRig = {
+            skin: markShared(addRim(new THREE.MeshStandardMaterial({
+                map: sk.map, normalMap: sk.normalMap, roughnessMap: sk.roughnessMap, roughness: 1,
+                color: 0x46424a, normalScale: new THREE.Vector2(1.6, 1.6), skinning: true
+            }), 0x080103, 3.2)),
+            teeth: markShared(new THREE.MeshStandardMaterial({ color: 0x8c7d66, roughness: 0.4, skinning: true })),
+            maw: markShared(new THREE.MeshBasicMaterial({ color: 0x000000, skinning: true })),
+            eye: null
+        };
+        return shared.watcherRig;
+    }
+
+    const AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);
+    const qTmp = new THREE.Quaternion();
+
     function createWatcher(scale = 1) {
+        const model = Assets.ok ? Assets.watcher() : null;
+        if (!model) return createWatcherProcedural(scale);
+        const M = watcherRigMaterials();
+        model.traverse((o) => {
+            if (!o.isMesh) return;
+            const n = o.material.name || '';
+            o.material = /teeth/i.test(n) ? M.teeth : /maw/i.test(n) ? M.maw : M.skin;
+            o.castShadow = true;
+            // Bind-pose bounds, padded so swinging limbs and the crown are never culled early
+            if (!o.geometry.userData.paddedBounds) {
+                o.geometry.computeBoundingSphere();
+                o.geometry.boundingSphere.radius += 0.9;
+                o.geometry.userData.paddedBounds = true;
+            }
+        });
+        const root = new THREE.Group();
+        root.add(model);
+        root.updateMatrixWorld(true);
+
+        // Rest pose of every bone, plus the model's X/Y/Z axes expressed in each bone's frame,
+        // so limbs can be swung about body-relative axes regardless of bone roll.
+        const rig = {};
+        model.traverse((o) => {
+            if (!o.isBone) return;
+            const inv = o.getWorldQuaternion(new THREE.Quaternion()).invert();
+            rig[o.name] = {
+                bone: o, rest: o.quaternion.clone(), restPos: o.position.clone(),
+                ax: AX.clone().applyQuaternion(inv), ay: AY.clone().applyQuaternion(inv), az: AZ.clone().applyQuaternion(inv)
+            };
+        });
+        if (rig.jaw) {
+            const pinv = rig.jaw.bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+            rig.jaw.down = new THREE.Vector3(0, -1, 0).applyQuaternion(pinv);
+        }
+
+        // Burning eyes deep in the sockets
+        const eyeMat = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2a1a, emissiveIntensity: 3, roughness: 0.4 });
+        const eyeGlows = [];
+        const headBone = rig.head ? rig.head.bone : root;
+        if (!shared.watcherEyeGeo) {
+            const ring = new THREE.TorusGeometry(0.024, 0.0055, 6, 16);
+            const core = new THREE.SphereGeometry(0.013, 10, 8);
+            shared.watcherEyeGeo = mergeGeometries([ring, core]);
+            shared.watcherEyeGeo.userData.shared = true;
+        }
+        for (const side of [-1, 1]) {
+            const p = new THREE.Vector3(side * 0.07, 2.27, 0.39);
+            headBone.worldToLocal(p);
+            const eye = new THREE.Mesh(shared.watcherEyeGeo, eyeMat);
+            eye.position.copy(p);
+            eye.quaternion.copy(headBone.getWorldQuaternion(new THREE.Quaternion()).invert());
+            headBone.add(eye);
+            const g = glowSprite(0xff2010, 0.3, 0.9);
+            g.position.copy(p);
+            headBone.add(g);
+            eyeGlows.push(g);
+        }
+
+        const smoke = smokePoints(watcherAssets().smoke, 36, 0.55, 2.3);
+        root.add(smoke);
+        root.scale.setScalar(scale);
+
+        function pose(name, x, y = 0, z = 0) {
+            const r = rig[name];
+            if (!r) return;
+            const q = r.bone.quaternion.copy(r.rest);
+            if (x) q.multiply(qTmp.setFromAxisAngle(r.ax, x));
+            if (y) q.multiply(qTmp.setFromAxisAngle(r.ay, y));
+            if (z) q.multiply(qTmp.setFromAxisAngle(r.az, z));
+        }
+
+        const seed = Math.random() * 100;
+        const tiltSign = Math.random() < 0.5 ? -1 : 1;
+        let phase = Math.random() * TAU, step = 1, twitch = rand(1, 5);
+
+        return {
+            root, eyeMat, eyeGlows, headGroup: headBone, rigged: true,
+            // speed: units/sec; frozen: holds the current pose; hunt: 0..1; near: 0..1 (how close)
+            animate(dt, speed, frozen, time, hunt = 0, near = 0) {
+                if (frozen) {
+                    // Statues don't move... almost. A sudden snap of the head, now and then.
+                    twitch -= dt;
+                    if (twitch <= 0) {
+                        twitch = rand(2.5, 7);
+                        const snap = rand(-0.6, 0.6);
+                        pose('head', -0.2, snap * 0.5, snap);
+                    }
+                    return;
+                }
+                phase += dt * (1.0 + speed * 1.45);
+                step += dt;
+                // Stop-motion: the pose only updates ~13 times a second, which reads as wrong
+                if (step < 1 / 13) return;
+                step = 0;
+                const amp = clamp(speed / 3, 0.2, 1.1);
+                const s = Math.sin(phase), c = Math.cos(phase);
+                const j = () => (Math.random() - 0.5) * 0.14 * (0.4 + hunt);
+                pose('hips', 0, s * 0.12 * amp, s * 0.05 * amp);
+                pose('spine', 0.12 + hunt * 0.12, -s * 0.08 * amp, 0);
+                pose('chest', 0.08 + hunt * 0.16 + j() * 0.3, s * 0.06 * amp, 0);
+                pose('neck', 0.05 + hunt * 0.12, 0, 0);
+                pose('head', -0.12 - hunt * 0.2 + j(), Math.sin(time * 0.4 + seed) * 0.3 + j(),
+                    Math.sin(time * 0.6 + seed) * 0.16 + hunt * 0.28 * tiltSign + j());
+                for (const [side, sw, cw] of [['L', s, c], ['R', -s, -c]]) {
+                    pose('thigh_' + side, -sw * 0.55 * amp - 0.12, 0, 0);
+                    pose('shin_' + side, Math.max(0, cw) * 0.9 * amp + 0.2, 0, 0);
+                    pose('foot_' + side, -0.15, 0, 0);
+                    pose('upperarm_' + side, sw * 0.3 * amp - hunt * 0.6 + j() * 0.6, 0, 0);
+                    pose('forearm_' + side, -0.2 - hunt * 0.7 + j() * 0.6, 0, 0);
+                    pose('hand_' + side, -0.25 - hunt * 0.3, 0, 0);
+                }
+                if (rig.jaw && rig.jaw.down) {
+                    const open = hunt * clamp(near, 0, 1) * (0.75 + Math.random() * 0.25);
+                    rig.jaw.bone.position.copy(rig.jaw.restPos).addScaledVector(rig.jaw.down, open * 0.05);
+                }
+            },
+            pose
+        };
+    }
+
+    function createWatcherProcedural(scale = 1) {
         const A = watcherAssets();
         const root = new THREE.Group();
         const body = new THREE.Group();
@@ -715,7 +862,62 @@ const Models = (() => {
     // ---------------------------------------------------------------------------
     // First-person hands: flashlight (right) and match (left)
     // ---------------------------------------------------------------------------
-    function createViewModels() {
+    function createViewModels(envMap) {
+        const fl = Assets.ok ? Assets.flashlight() : null;
+        if (!fl) return createViewModelsProcedural();
+        const torch = new THREE.Group();
+        const kn = Textures.knurl();
+        const metal = (extra) => new THREE.MeshStandardMaterial(Object.assign({
+            color: 0x2c2d31, metalness: 0.85, roughness: 0.3, envMap, envMapIntensity: 1.6
+        }, extra));
+        const lensMat = new THREE.MeshStandardMaterial({ color: 0xfff6dd, emissive: 0xfff2cc, emissiveIntensity: 4, roughness: 0.1 });
+        const reflMat = metal({ color: 0xe8e8e8, metalness: 1, roughness: 0.08, emissive: 0xfff0d0, emissiveIntensity: 0 });
+        const mats = {
+            body: metal(),
+            grip: metal({ map: kn.map, normalMap: kn.normalMap, roughnessMap: kn.roughnessMap, roughness: 1, color: 0x8a8a90, normalScale: new THREE.Vector2(1.5, 1.5) }),
+            rubber: new THREE.MeshStandardMaterial({ color: 0x0c0c0c, roughness: 0.92 }),
+            reflector: reflMat,
+            lens: lensMat
+        };
+        fl.traverse((o) => {
+            if (!o.isMesh) return;
+            const n = (o.material.name || '').toLowerCase();
+            o.material = mats[n] || mats.body;
+            o.castShadow = false;
+            o.receiveShadow = false;
+        });
+        // Model runs from the tail (z = 0) to the lens (z = -0.222); hold it by the grip
+        fl.position.z = 0.02;
+        torch.add(fl);
+        const basePos = new THREE.Vector3(0.19, -0.19, -0.3);
+        torch.position.copy(basePos);
+        const vm = createViewModelsProcedural();
+        return { torch, basePos, baseYaw: 0.07, lensMat, reflMat, lensZ: -0.2, match: vm.match, flame: vm.flame, mglow: vm.mglow };
+    }
+
+    // Generates a dim, studio-like reflection environment for polished metal
+    function createEnvMap(renderer) {
+        const envScene = new THREE.Scene();
+        envScene.background = new THREE.Color(0x050506);
+        const box = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 10), new THREE.MeshBasicMaterial({ color: 0x0a0a0c, side: THREE.BackSide }));
+        envScene.add(box);
+        const panel = (w, h, color, pos) => {
+            const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }));
+            m.position.copy(pos);
+            m.lookAt(0, 0, 0);
+            envScene.add(m);
+        };
+        panel(3, 1.2, 0x8a8070, new THREE.Vector3(0, 4.5, -1));
+        panel(1.5, 3, 0x40383a, new THREE.Vector3(-4.5, 0.5, 1));
+        panel(1.2, 2, 0x2a2e36, new THREE.Vector3(4.5, -0.5, -2));
+        const pm = new THREE.PMREMGenerator(renderer);
+        const tex = pm.fromScene(envScene, 0.03).texture;
+        pm.dispose();
+        envScene.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+        return tex;
+    }
+
+    function createViewModelsProcedural() {
         const torch = new THREE.Group();
         const body = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, 0.24, 14), new THREE.MeshStandardMaterial({ color: 0x1b1c1e, roughness: 0.35, metalness: 0.85 }));
         body.rotation.x = Math.PI / 2;
@@ -752,12 +954,12 @@ const Models = (() => {
         match.rotation.z = 0.25;
         match.visible = false;
 
-        return { torch, lensMat, match, flame, mglow };
+        return { torch, basePos: torch.position.clone(), baseYaw: 0, lensMat, reflMat: null, lensZ: -0.2, match, flame, mglow };
     }
 
     return {
         pointUniforms, glowSprite, smokeMaterial, smokePoints, stoneMaterials, metalMaterial,
         createWatcher, createAngel, createLamp, createBattery, createRelic, createNoteStand,
-        createExitDoor, createPortal, createViewModels
+        createExitDoor, createPortal, createViewModels, createEnvMap
     };
 })();

@@ -215,7 +215,7 @@ const Monsters = (() => {
             }
             if (!seen) w.yaw = dampAngle(w.yaw, faceYaw, 8, dt);
             w.model.root.rotation.y = w.yaw;
-            w.model.animate(dt, w.speed, seen, time);
+            w.model.animate(dt, w.speed, seen, time, w.aware > 0 && w.flee <= 0 ? 1 : 0, 1 - w.dist / 9);
 
             // Eyes burn brighter when hunting
             const hunting = w.aware > 0 && w.flee <= 0;
@@ -393,7 +393,7 @@ const Monsters = (() => {
             a.model.animate(dt, chargeN, looked || a.drifting, time);
             if (a.model.haloGlow) {
                 // The halo glimmers through the mist - a warning not to look
-                const fade = 1 - smoothstep(26, 46, a.dist);
+                const fade = 1 - smoothstep(24, 37, a.dist);
                 a.model.haloGlow.material.opacity = (0.35 + chargeN * 0.5) * fade;
                 for (const g of a.model.eyeGlows) g.material.opacity = 0.5 + chargeN * 0.5;
             }

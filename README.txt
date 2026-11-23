@@ -34,6 +34,7 @@ ALTERNATIVE: Direct File Access
   SPACE           Light a match (Watchers flee from fire)
   E               Read / close a note
   ESC             Pause menu (settings, resume, quit)
+  ALT+ENTER       Toggle fullscreen (also on the title screen, pause menu & settings)
   Z               God mode (testing: invulnerable, no-clip, fly)
 
 
@@ -62,7 +63,9 @@ MATCHES
 MONSTERS
 
   Level 1: THE WATCHERS
-    - Gaunt figures with wide, flared heads and burning eyes
+    - Emaciated, hunched figures with wide flared crowns, sunken burning
+      eyes, needle-toothed jaws and claws that drag along the floor
+    - They move in a jerky, stop-motion gait, and their jaws open as they close in
     - Only move when you're not looking at them
     - Hunt by sight and by sound - sprinting draws them in
     - Navigate the maze to reach you; more join the hunt over time
@@ -99,7 +102,9 @@ Graphics
   ✓ HDR rendering with bloom, ACES tone mapping and film grain
   ✓ Sanity-driven distortion, chromatic aberration and heartbeat pulse
   ✓ Shadowed flashlight with lag/sway, first-person flashlight & match
-  ✓ Animated monster models, moonlight shadows, drifting ground fog
+  ✓ Rigged, skinned Watcher and gnarled forest trees modelled in Blender
+  ✓ Detailed first-person flashlight with knurled grip and reflector
+  ✓ Moonlight shadows, drifting ground fog
   ✓ Heading-up minimap that reveals only where you've been
 
 Performance
@@ -133,15 +138,31 @@ Settings
   js/menu.js        Title screen background & menu music
   js/lore.js        Note texts
   js/main.js        Game flow, player, input, rendering
+  js/assets.js      Embedded 3D models (GENERATED - see below)
+  js/assetloader.js Loads the embedded models
+  tools/blender/    Blender script that builds the models
+  tools/pack_assets.mjs  Packs exported models into js/assets.js
   audio/            Sound effects and music
   images/           Jumpscare images
+
+
+═══════════════════════════════════════════════════════════════════
+  REBUILDING THE MODELS
+═══════════════════════════════════════════════════════════════════
+
+  blender -b --factory-startup --python tools/blender/build_models.py -- tools/build
+  node tools/pack_assets.mjs tools/build js/assets.js
+
+  Add "preview" after the output folder to also render preview images, and
+  "watcher", "trees" or "flashlight" after that to rebuild just one model.
 
 
 ═══════════════════════════════════════════════════════════════════
   TECHNICAL INFORMATION
 ═══════════════════════════════════════════════════════════════════
 
-Engine:        Three.js r128 (WebGL)
+Engine:        Three.js r128 (WebGL) + GLTFLoader / SkeletonUtils
+Models:        Blender 5.2 (procedural Python build script)
 Textures:      Procedurally generated (Canvas API)
 Audio:         Web Audio API + MP3 files
 Controls:      Pointer Lock API

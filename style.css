@@ -115,6 +115,10 @@ kbd {
 }
 
 .icon-button:hover { color: var(--ink); border-color: var(--red-hot); transform: rotate(90deg); }
+#fullscreen-icon { right: 82px; }
+#fullscreen-icon:hover { transform: scale(1.08); }
+.btn.wide { width: 100%; }
+.fullscreen-toggle.active.btn { border-color: rgba(255, 51, 38, 0.5); }
 .icon-button svg { width: 100%; height: 100%; display: block; }
 
 /* ==========================================================================
@@ -713,30 +717,6 @@ kbd {
     50% { transform: translate(5px, -8px) scale(1.04); }
     75% { transform: translate(-8px, -5px) scale(1.07); }
 }
-
-/* Level 2 "DON'T LOOK" flash */
-#level2-warning {
-    position: fixed;
-    inset: 0;
-    background: #000;
-    z-index: 9999;
-    display: none;
-    justify-content: center;
-    align-items: center;
-    pointer-events: none;
-}
-
-#level2-warning span {
-    font-family: var(--title);
-    font-size: 12vw;
-    color: #ff1a1a;
-    text-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000, 0 0 80px #990000;
-    letter-spacing: 0.2em;
-    animation: warningFlicker 0.1s ease-in-out infinite;
-}
-
-@keyframes warningFlicker { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.02); } }
-@keyframes warningFlash { 0% { opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { opacity: 0; } }
 
 /* ==========================================================================
    Death & victory

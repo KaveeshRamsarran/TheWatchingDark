@@ -657,8 +657,135 @@ const Textures = (() => {
         return cache.feather;
     }
 
+    // Watcher hide: dark, mottled, wet-looking skin stretched over a web of veins
+    function skin() {
+        if (cache.skin) return cache.skin;
+        const size = 512;
+        const maps = buildMaps(size, (u, v, o) => {
+            const base = Noise.fbm(u, v, 6, 4);
+            const w = Noise.worley(u, v, 9);
+            const vein = 1 - smoothstep(0.0, 0.05, w.f2 - w.f1);
+            const w2 = Noise.worley(u + 0.37, v + 0.11, 23);
+            const fine = 1 - smoothstep(0.0, 0.035, w2.f2 - w2.f1);
+            const wrinkle = Noise.fbm(u, v, 40, 2, 0.5, 120);
+            const sore = smoothstep(0.7, 0.82, Noise.fbm(u + 0.6, v, 5, 3));
+            let r = 34 * (0.55 + base * 0.7), g = 31 * (0.55 + base * 0.7), b = 34 * (0.55 + base * 0.7);
+            r = lerp(r, 34, vein * 0.6); g = lerp(g, 9, vein * 0.6); b = lerp(b, 15, vein * 0.6);
+            r = lerp(r, 26, fine * 0.4); g = lerp(g, 12, fine * 0.4); b = lerp(b, 18, fine * 0.4);
+            r = lerp(r, 42, sore * 0.5); g = lerp(g, 14, sore * 0.5); b = lerp(b, 13, sore * 0.5);
+            o.r = clamp(r, 0, 255); o.g = clamp(g, 0, 255); o.b = clamp(b, 0, 255);
+            o.h = base * 0.35 + wrinkle * 0.3 + vein * 0.35 + fine * 0.15 - sore * 0.2;
+            o.ro = 0.38 + (1 - base) * 0.25 - sore * 0.2;
+        }, 4.0);
+        cache.skin = mapsToTextures(maps);
+        return cache.skin;
+    }
+
+    // Leaf-card atlas: left half a broadleaf cluster, right half a pine-needle spray
+    function leafAtlas() {
+        if (cache.leaves) return cache.leaves;
+        const W = 1024, H = 512;
+        const c = makeCanvas(W, H), ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, W, H);
+        const leafColor = () => {
+            const k = Math.random();
+            if (k < 0.12) return `hsl(${30 + Math.random() * 15}, ${30 + Math.random() * 20}%, ${14 + Math.random() * 10}%)`;
+            return `hsl(${85 + Math.random() * 40}, ${20 + Math.random() * 25}%, ${9 + Math.random() * 12}%)`;
+        };
+        // Broadleaf cluster
+        ctx.save();
+        ctx.strokeStyle = 'rgba(30,22,14,0.9)';
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 9; i++) {
+            const a = Math.random() * TAU;
+            ctx.beginPath();
+            ctx.moveTo(256, 256);
+            ctx.quadraticCurveTo(256 + Math.cos(a) * 90, 256 + Math.sin(a) * 90, 256 + Math.cos(a + 0.3) * 200, 256 + Math.sin(a + 0.3) * 200);
+            ctx.stroke();
+        }
+        for (let i = 0; i < 230; i++) {
+            const a = Math.random() * TAU, d = Math.sqrt(Math.random()) * 200;
+            const x = 256 + Math.cos(a) * d, y = 256 + Math.sin(a) * d;
+            const len = 26 + Math.random() * 30, wid = len * (0.32 + Math.random() * 0.15);
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(Math.random() * TAU);
+            ctx.fillStyle = leafColor();
+            ctx.beginPath();
+            ctx.moveTo(0, -len / 2);
+            ctx.bezierCurveTo(wid, -len / 4, wid * 0.8, len / 4, 0, len / 2);
+            ctx.bezierCurveTo(-wid * 0.8, len / 4, -wid, -len / 4, 0, -len / 2);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, -len / 2);
+            ctx.lineTo(0, len / 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+        ctx.restore();
+        // Pine spray
+        ctx.save();
+        ctx.translate(512, 0);
+        const needle = (x, y, a, len) => {
+            ctx.strokeStyle = `hsl(${140 + Math.random() * 30}, ${18 + Math.random() * 18}%, ${8 + Math.random() * 10}%)`;
+            ctx.lineWidth = 1.6 + Math.random();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len);
+            ctx.stroke();
+        };
+        const branch = (x0, y0, x1, y1, depth) => {
+            ctx.strokeStyle = 'rgba(40,30,20,0.95)';
+            ctx.lineWidth = depth ? 4 : 2.5;
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.stroke();
+            const len = Math.hypot(x1 - x0, y1 - y0), ang = Math.atan2(y1 - y0, x1 - x0);
+            for (let t = 0; t < 1; t += 0.018) {
+                const x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t;
+                const nl = (18 + Math.random() * 26) * (1 - t * 0.5);
+                needle(x, y, ang + 0.9 + Math.random() * 0.4, nl);
+                needle(x, y, ang - 0.9 - Math.random() * 0.4, nl);
+            }
+            if (depth) {
+                for (let k = 0; k < 7; k++) {
+                    const t = 0.15 + k * 0.11;
+                    const x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t;
+                    const side = k % 2 ? 1 : -1;
+                    const a2 = ang + side * (0.75 + Math.random() * 0.2);
+                    const l2 = len * (0.42 - t * 0.25);
+                    branch(x, y, x + Math.cos(a2) * l2, y + Math.sin(a2) * l2, 0);
+                }
+            }
+        };
+        branch(256, 500, 256, 20, 1);
+        ctx.restore();
+        const t = toTexture(c, { repeat: false });
+        t.flipY = false;
+        cache.leaves = t;
+        return t;
+    }
+
+    // Diamond knurling for the flashlight grip
+    function knurl() {
+        if (cache.knurl) return cache.knurl;
+        const maps = buildMaps(128, (u, v, o) => {
+            const tri = (x) => Math.abs((((x % 1) + 1) % 1) - 0.5) * 2;
+            const h = Math.min(tri((u + v) * 8), tri((u - v) * 8));
+            const k = 22 + h * 30;
+            o.r = k; o.g = k; o.b = k + 3;
+            o.h = h;
+            o.ro = 0.55 - h * 0.2;
+        }, 6.0);
+        cache.knurl = mapsToTextures(maps);
+        return cache.knurl;
+    }
+
     return {
-        setRenderer, makeCanvas, toTexture,
+        setRenderer, makeCanvas, toTexture, skin, leafAtlas, knurl,
         concreteWall, woodFloor, ceilingTiles,
         hedge, bark, forestFloor, stone,
         glow, lightPool, fogPuff, flame, decal, exitSign, paper, angelFace, feather

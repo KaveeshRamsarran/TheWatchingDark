@@ -38,7 +38,10 @@ const Level2 = (() => {
     // covers just that chunk - letting the camera and shadow frustums skip what you can't see.
     const INST_CHUNK = 40;
     function instanced(geo, mat, _count, shadow = true) {
-        return { geo, mat, shadow, buckets: new Map(), count: 0 };
+        geo.computeBoundingBox();
+        const b = geo.boundingBox;
+        const reach = Math.max(Math.abs(b.min.x), Math.abs(b.max.x), Math.abs(b.min.z), Math.abs(b.max.z));
+        return { geo, mat, shadow, buckets: new Map(), count: 0, reach, top: b.max.y };
     }
 
     const dummy = new THREE.Object3D();
@@ -52,8 +55,8 @@ const Level2 = (() => {
         let b = set.buckets.get(key);
         if (!b) { b = { kx, kz, matrices: [], maxR: 0, maxY: 0 }; set.buckets.set(key, b); }
         b.matrices.push(dummy.matrix.clone());
-        b.maxR = Math.max(b.maxR, Math.max(sx, sz) * 1.5);
-        b.maxY = Math.max(b.maxY, y + sy * 1.5);
+        b.maxR = Math.max(b.maxR, Math.max(sx, sz, sy) * set.reach);
+        b.maxY = Math.max(b.maxY, y + Math.abs(sy) * set.top + Math.max(sx, sz) * set.reach);
         set.count++;
     }
 
@@ -210,9 +213,39 @@ const Level2 = (() => {
             return (x < 2.2 * C && z < 2.2 * C) || ((x - ex.x * C) ** 2 + (z - ex.z * C) ** 2 < 14 * 14);
         };
 
+        // Blender-built trees: 2 gnarled broadleaves, 2 pines, 2 dead trees, each a bark + leaf-card pair
+        const modelTrees = Assets.ok && Assets.has('tree_0');
+        let treeSets = null;
+        if (modelTrees) {
+            const leafMat = new THREE.MeshStandardMaterial({
+                map: Textures.leafAtlas(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85, color: 0x9aa890
+            });
+            const modelBark = new THREE.MeshStandardMaterial({
+                map: barkTex.map, normalMap: barkTex.normalMap, roughnessMap: barkTex.roughnessMap, roughness: 1,
+                color: 0x7a736a, normalScale: new THREE.Vector2(1.4, 1.4)
+            });
+            treeSets = [0, 1, 2, 3, 4, 5].map((i) => {
+                const t = Assets.tree(i);
+                return t && {
+                    trunk: instanced(t.trunk.clone(), modelBark, 0),
+                    leaves: t.leaves ? instanced(t.leaves.clone(), leafMat, 0) : null
+                };
+            });
+        }
+
         const plantTree = (x, z, collide) => {
             const type = Math.random();
             const lean = rand(-0.05, 0.05);
+            if (treeSets && treeSets.every(Boolean)) {
+                const kind = type < 0.4 ? 0 : type < 0.8 ? 2 : 4;
+                const set = treeSets[kind + (Math.random() < 0.5 ? 0 : 1)];
+                const s = kind === 4 ? rand(0.8, 1.2) : rand(0.85, 1.3);
+                const ry = rand(0, TAU), sy = s * rand(0.9, 1.15);
+                pushInstance(set.trunk, x, 0, z, s, sy, s, ry, lean, lean);
+                if (set.leaves) pushInstance(set.leaves, x, 0, z, s, sy, s, ry, lean, lean);
+                if (collide) World.addCircle(x, z, (kind === 2 ? 0.3 : 0.38) * s, kind === 0);
+                return;
+            }
             if (type < 0.42) {
                 // Broad-leaved tree
                 const h = rand(6, 12), r = rand(0.28, 0.5);
@@ -269,6 +302,13 @@ const Level2 = (() => {
             plantTree(x, z, false);
         }
         for (const set of [clusters, pines, branches]) buildInstanced(set, levelRoot);
+        if (treeSets) {
+            for (const t of treeSets) {
+                if (!t) continue;
+                buildInstanced(t.trunk, levelRoot);
+                if (t.leaves) buildInstanced(t.leaves, levelRoot);
+            }
+        }
 
         progress('Raising the ruins...', 0.72);
         await nextFrame();

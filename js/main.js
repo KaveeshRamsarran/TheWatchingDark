@@ -166,6 +166,8 @@
         HUD.showLoading(true, 'Entering the dark...', 0.02);
         await nextFrame();
         teardown();
+        HUD.showLoading(true, 'Waking the creatures...', 0.05);
+        await Assets.load();
 
         scene = new THREE.Scene();
         const q = quality();
@@ -197,7 +199,7 @@
         scene.add(camera);
         camera.fov = settings.fov;
         // Nothing survives the fog past this point, so don't draw it
-        camera.far = id === 1 ? 55 : 50;
+        camera.far = id === 1 ? 55 : 38;
         camera.updateProjectionMatrix();
         updateCamera(0);
 
@@ -237,28 +239,20 @@
         HUD.showLoading(false);
         HUD.showHud(true);
         HUD.levelCard(info.num, info.title, info.sub);
-        if (id === 2) showDontLook();
         state.mode = 'playing';
         clock.getDelta();
         if (!isLocked() && !state.debug) pause();
     }
 
-    // Flash "DON'T LOOK" when entering level 2 (kept from the original)
-    function showDontLook() {
-        const w = $('level2-warning');
-        w.style.display = 'flex';
-        w.style.animation = 'none';
-        void w.offsetWidth;
-        w.style.animation = 'warningFlash 0.8s ease-in-out';
-        setTimeout(() => { w.style.display = 'none'; w.style.animation = ''; }, 800);
-    }
+    let envMap = null;
 
     // Lights, first-person models and ambient particles shared by both levels
     function buildRig(scene, level, q) {
         const r = { disposables: [] };
 
         if (level.id === 1) {
-            r.hemi = new THREE.HemisphereLight(0x2c2e38, 0x0c0907, 0.42);
+            // Barely any ambient light: beyond your flashlight, the maze is black
+            r.hemi = new THREE.HemisphereLight(0x23252e, 0x080605, 0.13);
             scene.add(r.hemi);
         }
 
@@ -279,7 +273,8 @@
         r.match = new THREE.PointLight(0xffa04a, 0, 16, 1.8);
         scene.add(r.match);
 
-        const vm = Models.createViewModels();
+        if (!envMap) envMap = Models.createEnvMap(renderer);
+        const vm = Models.createViewModels(envMap);
         r.vm = vm;
         camera.add(vm.torch);
         camera.add(vm.match);
@@ -548,8 +543,8 @@
         p.swayY = damp(p.swayY, 0, 8, dt);
         if (rig) {
             const vm = rig.vm;
-            vm.torch.position.set(0.17 + p.swayX * 0.6 + bobX * 0.3, -0.17 + p.swayY * 0.6 + bobY * 0.4, -0.34);
-            vm.torch.rotation.set(p.swayY * 0.8, -p.swayX * 0.8, 0);
+            vm.torch.position.set(vm.basePos.x + p.swayX * 0.6 + bobX * 0.3, vm.basePos.y + p.swayY * 0.6 + bobY * 0.4, vm.basePos.z);
+            vm.torch.rotation.set(p.swayY * 0.8, vm.baseYaw - p.swayX * 0.8, 0);
             const raise = player.matchLit ? 1 : 0;
             vm.match.position.y = damp(vm.match.position.y, -0.12 - (1 - raise) * 0.25, 10, dt);
             vm.match.position.x = -0.16 + p.swayX * 0.5;
@@ -585,14 +580,15 @@
         }
         const intensity = on ? (2.6 + 1.4 * (p.battery / 100)) * flicker : 0;
         fl.intensity = intensity;
-        rig.spill.intensity = on ? 0.35 * flicker : 0;
+        rig.spill.intensity = on ? 0.16 * flicker : 0;
 
-        rig.vm.torch.localToWorld(lensPos.set(0, 0, -0.2));
+        rig.vm.torch.localToWorld(lensPos.set(0, 0, rig.vm.lensZ - 0.02));
         fl.position.copy(lensPos);
         fl.target.position.copy(lensPos).addScaledVector(p.aim, 10);
         fl.target.updateMatrixWorld();
         rig.spill.position.copy(camera.position).addScaledVector(camDir, 1.2);
         rig.vm.lensMat.emissiveIntensity = on ? 5 * flicker : 0.05;
+        if (rig.vm.reflMat) rig.vm.reflMat.emissiveIntensity = on ? 1.6 * flicker : 0;
 
         // Match
         if (p.matchLit) {
@@ -600,7 +596,8 @@
             const f = Math.sin(state.time * 30) * 0.5 + Math.random() * 0.9;
             const life = clamp(p.matchTime / 0.6, 0, 1);
             rig.match.intensity = (4.2 + f) * life;
-            rig.match.position.copy(camera.position);
+            rig.vm.flame.getWorldPosition(rig.match.position);
+            rig.match.position.y += 0.05;
             rig.vm.match.visible = true;
             const fs = (0.85 + Math.random() * 0.3) * (0.4 + life * 0.6);
             rig.vm.flame.scale.set(0.035 * fs, 0.07 * fs, 1);
@@ -881,7 +878,7 @@
             if (n < 0.18) blackout = Math.max(blackout, 0.85);
         }
 
-        u.exposure.value = settings.brightness * (level.id === 1 ? 1.2 : 1.05);
+        u.exposure.value = settings.brightness * (level.id === 1 ? 1.0 : 1.05);
         u.vignette.value = 0.5 + fear * 0.4;
         u.grain.value = 0.045 + fear * 0.07;
         u.aberration.value = smoothstep(0.45, 1, fear) * 1.1 + charge * 1.6;
@@ -1056,6 +1053,40 @@
     // =========================================================================
     // Menus & settings UI
     // =========================================================================
+    // ---- Fullscreen -----------------------------------------------------------
+    const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+    function toggleFullscreen() {
+        const root = document.documentElement;
+        if (!fsElement()) {
+            const req = root.requestFullscreen || root.webkitRequestFullscreen;
+            if (req) {
+                const p = req.call(root, { navigationUI: 'hide' });
+                if (p && p.catch) p.catch(() => HUD.toast('Fullscreen not available', 'bad'));
+            }
+        } else {
+            const exit = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exit) exit.call(document);
+        }
+    }
+    function syncFullscreenUi() {
+        const on = !!fsElement();
+        document.querySelectorAll('.fullscreen-toggle').forEach((b) => {
+            b.classList.toggle('active', on);
+            const label = b.querySelector('.fs-label');
+            if (label) label.textContent = on ? 'EXIT FULLSCREEN' : 'FULLSCREEN';
+            b.title = on ? 'Exit fullscreen (Alt+Enter)' : 'Fullscreen (Alt+Enter)';
+        });
+    }
+    document.addEventListener('fullscreenchange', () => { syncFullscreenUi(); applySize(); });
+    document.addEventListener('webkitfullscreenchange', () => { syncFullscreenUi(); applySize(); });
+    document.querySelectorAll('.fullscreen-toggle').forEach((b) => b.addEventListener('click', toggleFullscreen));
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Enter' && e.altKey) {
+            e.preventDefault();
+            toggleFullscreen();
+        }
+    });
+
     $('start-button').addEventListener('click', startRun);
     $('restart-button').addEventListener('click', retry);
     $('death-menu-button').addEventListener('click', toMenu);
@@ -1130,6 +1161,8 @@
     applySize();
     AudioSys.setVolumes(settings.musicVolume, settings.sfxVolume);
     Menu.init(settings.musicVolume);
+    syncFullscreenUi();
+    Assets.load();
     frame();
 
     // Debug hooks for automated testing (harmless in normal play)
