@@ -4,207 +4,230 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Watching Dark</title>
+    <link rel="icon" href="data:,">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=Special+Elite&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="preload" as="image" href="images/monster.png">
+    <link rel="preload" as="image" href="images/angel.jpg">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
     <div id="game-container">
-        <div id="start-screen">
-            <div class="blood-drip" style="left: 15%; animation-delay: 0s;"></div>
-            <div class="blood-drip" style="left: 35%; animation-delay: 1.5s;"></div>
-            <div class="blood-drip" style="left: 65%; animation-delay: 0.8s;"></div>
-            <div class="blood-drip" style="left: 85%; animation-delay: 2s;"></div>
-            <div class="shadow-figure" style="left: 5%; top: 60%; animation-delay: 0s;"></div>
-            <div class="shadow-figure" style="right: 5%; top: 40%; animation-delay: 1s;"></div>
-            <div class="eyes" style="left: 10%; top: 30%;"></div>
-            <div class="eyes" style="right: 15%; top: 70%;"></div>
-            <div id="settings-icon" title="Settings">⚙</div>
-            <h1 class="glitch">THE WATCHING DARK</h1>
-            <p class="subtitle">They sense your fear...</p>
-            <div class="warning">⚠ Headphones recommended ⚠</div>
-            <button id="start-button">ENTER THE VOID</button>
-            <div class="instructions">
-                <h3 style="color: #ff0000; margin-bottom: 1rem; text-shadow: 0 0 10px rgba(255,0,0,0.5);">HOW TO SURVIVE</h3>
-                <p><strong>WASD</strong> - Move through the darkness</p>
-                <p><strong>MOUSE</strong> - Look around for threats</p>
-                <p><strong>SHIFT</strong> - Sprint (drains sanity faster)</p>
-                <p><strong>F</strong> - Toggle flashlight (limited battery)</p>
-                <p><strong>SPACE</strong> - Light a match</p>
-                <p style="margin-top: 1rem; color: #888; font-style: italic;">Click anywhere to lock cursor and begin.</p>
-                <p style="color: #ff6600;">Conserve your resources. Darkness drains your sanity.</p>
-            </div>
-        </div>
-        
         <div id="game-canvas"></div>
-        <div id="crosshair">+</div>
-        
+
+        <!-- ============================ HUD ============================ -->
+        <div id="hud">
+            <div id="objective">
+                <span id="objective-level">LEVEL I</span>
+                <span id="objective-text">Find an exit.</span>
+            </div>
+
+            <div id="minimap-wrap">
+                <canvas id="minimap" width="200" height="200"></canvas>
+                <div class="minimap-ring"><span>N</span></div>
+            </div>
+
+            <div id="vitals">
+                <div class="vital sanity" id="v-sanity">
+                    <div class="v-head"><span class="v-label">SANITY</span><span class="v-val" id="sanity-val">100</span></div>
+                    <div class="v-bar"><div class="v-fill" id="sanity-fill"></div></div>
+                </div>
+                <div class="vital stamina" id="v-stamina">
+                    <div class="v-head"><span class="v-label">STAMINA</span><span class="v-val" id="stamina-val">100</span></div>
+                    <div class="v-bar"><div class="v-fill" id="stamina-fill"></div></div>
+                </div>
+                <div class="vital battery" id="v-battery">
+                    <div class="v-head"><span class="v-label" id="battery-label">BATTERY</span><span class="v-val" id="battery-val">100</span></div>
+                    <div class="v-bar"><div class="v-fill" id="battery-fill"></div></div>
+                </div>
+            </div>
+
+            <div id="inventory">
+                <div class="inv-label">MATCHES <kbd>SPACE</kbd></div>
+                <div id="match-row"><div id="match-slots"></div><span id="match-extra"></span></div>
+                <div class="inv-hint"><kbd>F</kbd> flashlight &nbsp; <kbd>E</kbd> read &nbsp; <kbd>SHIFT</kbd> sprint</div>
+            </div>
+
+            <div id="crosshair"></div>
+            <div id="prompt"></div>
+            <div id="status-text"></div>
+            <div id="toast"></div>
+            <div id="look-warning">
+                <svg viewBox="0 0 48 24" aria-hidden="true"><path d="M2 12 Q24 -6 46 12 Q24 30 2 12 Z" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="24" cy="12" r="6" fill="currentColor"/></svg>
+                <span>DON'T LOOK</span>
+            </div>
+            <div id="godmode-indicator">GOD MODE</div>
+        </div>
+
         <div id="match-counter-message"></div>
-        
-        <div id="note-prompt">Press [E] to read note</div>
-        
+
         <div id="note-screen">
             <div id="note-content">
-                <h2 id="note-title">RESEARCHER'S LOG - FINAL ENTRY</h2>
-                <p class="note-date" id="note-date">Date: [REDACTED]</p>
-                <div class="note-text" id="note-text">
-                    <p>If you're reading this, you're already being watched.</p>
-                    <p>They call them "The Watchers" - entities that exist in darkness. I've studied them for months, and I've learned their nature:</p>
-                    <p><strong>They freeze when observed.</strong> Look directly at them and they become statues. But the moment you blink, the moment you look away... they move. Silent. Swift. Deadly.</p>
-                    <p><strong>They fear the flame.</strong> Light a match near them and they flee in terror. The fire reminds them of something ancient, something that hurt them long ago.</p>
-                    <p><strong>You will hear them coming.</strong> Their footsteps echo through these halls - louder than yours, heavier than yours. When you hear them close, you have seconds to decide: look, or run.</p>
-                    <p>If you want to survive, remember: <em>Don't blink. Don't turn your back. And whatever you do, don't let them get close.</em></p>
-                    <p class="note-signature">- Dr. [ILLEGIBLE] [Walk away to close note]</p>
-                </div>
+                <h2 id="note-title"></h2>
+                <p class="note-date" id="note-date"></p>
+                <div class="note-text" id="note-text"></div>
+                <p class="note-close"><kbd>E</kbd> close &nbsp;·&nbsp; or walk away</p>
             </div>
         </div>
-        
-        <div id="game-ui">
-            <div class="ui-top">
-                <div class="sanity-container">
-                    <span class="label">SANITY</span>
-                    <div class="sanity-bar">
-                        <div id="sanity-fill"></div>
-                    </div>
-                    <span id="sanity-text">100%</span>
+
+        <div id="level-card">
+            <div id="level-card-num">I</div>
+            <div id="level-card-title">THE MAZE</div>
+            <div id="level-card-sub"></div>
+        </div>
+
+        <div id="loading-screen">
+            <div class="loading-eye"><div class="pupil"></div></div>
+            <div id="loading-text">Entering the dark...</div>
+            <div class="loading-bar"><div id="loading-fill"></div></div>
+        </div>
+
+        <!-- ========================= TITLE SCREEN ========================= -->
+        <div id="start-screen">
+            <canvas id="menu-bg"></canvas>
+            <div class="menu-vignette"></div>
+            <button id="settings-icon" class="icon-button" title="Settings" aria-label="Settings">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+            </button>
+            <div class="menu-content">
+                <p class="menu-kicker">A psychological horror</p>
+                <h1 class="title" data-text="THE WATCHING DARK">THE WATCHING DARK</h1>
+                <p class="subtitle">They sense your fear...</p>
+                <div class="menu-buttons">
+                    <button id="start-button" class="btn primary">ENTER THE VOID</button>
+                    <button id="howto-button" class="btn">HOW TO SURVIVE</button>
                 </div>
-                
-                <div class="matches-container">
-                    <span class="label">MATCHES</span>
-                    <div id="matches-count">5</div>
-                </div>
-            </div>
-            
-            <div class="minimap-container">
-                <canvas id="minimap" width="150" height="150"></canvas>
-                <div class="minimap-label">MAP</div>
-            </div>
-            
-            <div class="ui-center">
-                <div class="flashlight-container">
-                    <span class="label">FLASHLIGHT</span>
-                    <div class="battery-bar">
-                        <div id="battery-fill"></div>
-                    </div>
-                    <span id="battery-text">100%</span>
-                    <div class="hint">Press F to toggle</div>
-                </div>
-                
-                <div class="stamina-container">
-                    <span class="label">STAMINA</span>
-                    <div class="stamina-bar">
-                        <div id="stamina-fill"></div>
-                    </div>
-                    <span id="stamina-text">100%</span>
-                </div>
-            </div>
-            
-            <div class="ui-bottom">
-                <div id="heartbeat">♥</div>
-                <div id="status-text"></div>
-                <div id="godmode-indicator" style="display: none; position: fixed; top: 10px; right: 10px; background: rgba(0, 255, 0, 0.2); border: 2px solid #0f0; padding: 10px 20px; border-radius: 5px; color: #0f0; font-weight: bold; font-size: 18px; text-shadow: 0 0 10px #0f0; animation: pulse 1s infinite;">
-                    ⚡ GOD MODE ACTIVE ⚡
-                </div>
+                <p class="warning">Headphones recommended &nbsp;·&nbsp; Best played in the dark</p>
             </div>
         </div>
-        
+
+        <!-- Jumpscare (unchanged: same image, same scream) -->
         <div id="jumpscare-screen">
             <img src="images/angel.jpg" alt="" id="jumpscare-image">
         </div>
-        
-        <div id="level2-warning">
-            <span>DON'T LOOK</span>
-        </div>
-        
-        <div id="death-screen">
-            <h2 class="glitch" id="death-title">CONSUMED BY DARKNESS</h2>
-            <p id="death-message"></p>
-            <div class="death-buttons">
-                <button id="restart-button">RESTART</button>
+
+        <div id="level2-warning"><span>DON'T LOOK</span></div>
+
+        <div id="death-screen" class="end-screen">
+            <h2 class="end-title" id="death-title">CONSUMED BY DARKNESS</h2>
+            <p class="end-message" id="death-message"></p>
+            <div class="end-stats" id="death-stats"></div>
+            <div class="end-buttons">
+                <button id="restart-button" class="btn primary">TRY AGAIN</button>
+                <button id="death-menu-button" class="btn">MAIN MENU</button>
             </div>
         </div>
-        
-        <div id="victory-screen">
-            <h2 class="glitch">YOU SURVIVED</h2>
-            <p>You escaped the watching dark...</p>
+
+        <div id="victory-screen" class="end-screen victory">
+            <h2 class="end-title">YOU SURVIVED</h2>
+            <p class="end-message">You escaped the watching dark...</p>
             <p id="survival-time"></p>
-            <button id="play-again-button">PLAY AGAIN</button>
+            <div class="end-stats" id="victory-stats"></div>
+            <div class="end-buttons">
+                <button id="play-again-button" class="btn primary">PLAY AGAIN</button>
+                <button id="victory-menu-button" class="btn">MAIN MENU</button>
+            </div>
         </div>
-        
+
+        <!-- ============================ PAUSE ============================ -->
         <div id="pause-menu">
-            <div id="pause-content">
-                <h2 class="pause-title">PAUSED</h2>
-                <p class="pause-hint">Press ESC to resume</p>
-                
-                <div class="pause-settings">
-                    <h3 class="settings-subtitle">SETTINGS</h3>
-                    
-                    <div class="setting-group">
-                        <label for="pause-music-volume">Music Volume</label>
-                        <div class="slider-container">
-                            <input type="range" id="pause-music-volume" min="0" max="100" value="30">
-                            <span class="slider-value" id="pause-music-volume-value">30%</span>
-                        </div>
-                    </div>
-                    
-                    <div class="setting-group">
-                        <label for="pause-sfx-volume">Sound Effects Volume</label>
-                        <div class="slider-container">
-                            <input type="range" id="pause-sfx-volume" min="0" max="100" value="75">
-                            <span class="slider-value" id="pause-sfx-volume-value">75%</span>
-                        </div>
-                    </div>
-                    
-                    <div class="setting-group">
-                        <label for="pause-camera-sensitivity">Camera Sensitivity</label>
-                        <div class="slider-container">
-                            <input type="range" id="pause-camera-sensitivity" min="50" max="200" value="100">
-                            <span class="slider-value" id="pause-camera-sensitivity-value">100%</span>
-                        </div>
-                    </div>
-                    
-                    <button id="pause-settings-reset" class="reset-button">Reset to Defaults</button>
+            <div class="panel pause-panel">
+                <h2 class="panel-title">PAUSED</h2>
+                <p class="panel-hint">They are still out there.</p>
+                <div class="stack">
+                    <button id="pause-resume" class="btn primary">RESUME</button>
+                    <button id="pause-settings" class="btn">SETTINGS</button>
+                    <button id="pause-quit" class="btn">QUIT TO MENU</button>
                 </div>
-                
-                <div class="pause-buttons">
-                    <button id="pause-resume" class="pause-button">RESUME GAME</button>
-                    <button id="pause-quit" class="pause-button quit-button">QUIT TO MENU</button>
+                <div class="controls-mini">
+                    <span><kbd>WASD</kbd> move</span><span><kbd>SHIFT</kbd> sprint</span><span><kbd>F</kbd> flashlight</span>
+                    <span><kbd>SPACE</kbd> match</span><span><kbd>E</kbd> read</span><span><kbd>ESC</kbd> pause</span>
                 </div>
             </div>
         </div>
-        
-        <div id="settings-panel">
-            <div id="settings-content">
-                <h2 class="settings-title">SETTINGS</h2>
-                <button id="settings-close">✕</button>
-                
+
+        <!-- =========================== SETTINGS =========================== -->
+        <div id="settings-panel" class="modal">
+            <div class="panel">
+                <button id="settings-close" class="close-btn" aria-label="Close">&times;</button>
+                <h2 class="panel-title">SETTINGS</h2>
+
+                <div class="setting-section">AUDIO</div>
                 <div class="setting-group">
-                    <label for="music-volume">Music Volume</label>
-                    <div class="slider-container">
-                        <input type="range" id="music-volume" min="0" max="100" value="30">
-                        <span class="slider-value" id="music-volume-value">30%</span>
-                    </div>
+                    <label for="music-volume">Music volume</label>
+                    <div class="slider-container"><input type="range" id="music-volume" min="0" max="100" value="30"><span class="slider-value" id="music-volume-value">30%</span></div>
                 </div>
-                
                 <div class="setting-group">
-                    <label for="sfx-volume">Sound Effects Volume</label>
-                    <div class="slider-container">
-                        <input type="range" id="sfx-volume" min="0" max="100" value="75">
-                        <span class="slider-value" id="sfx-volume-value">75%</span>
-                    </div>
+                    <label for="sfx-volume">Sound effects</label>
+                    <div class="slider-container"><input type="range" id="sfx-volume" min="0" max="100" value="75"><span class="slider-value" id="sfx-volume-value">75%</span></div>
                 </div>
-                
+
+                <div class="setting-section">CONTROLS &amp; VIEW</div>
                 <div class="setting-group">
-                    <label for="camera-sensitivity">Camera Sensitivity</label>
-                    <div class="slider-container">
-                        <input type="range" id="camera-sensitivity" min="50" max="200" value="100">
-                        <span class="slider-value" id="camera-sensitivity-value">100%</span>
-                    </div>
+                    <label for="camera-sensitivity">Mouse sensitivity</label>
+                    <div class="slider-container"><input type="range" id="camera-sensitivity" min="25" max="250" value="100"><span class="slider-value" id="camera-sensitivity-value">100%</span></div>
                 </div>
-                
-                <button id="settings-reset" class="reset-button">Reset to Defaults</button>
+                <div class="setting-group">
+                    <label for="fov">Field of view</label>
+                    <div class="slider-container"><input type="range" id="fov" min="60" max="100" value="75"><span class="slider-value" id="fov-value">75°</span></div>
+                </div>
+                <div class="setting-group">
+                    <label for="brightness">Brightness</label>
+                    <div class="slider-container"><input type="range" id="brightness" min="60" max="180" value="100"><span class="slider-value" id="brightness-value">100%</span></div>
+                </div>
+
+                <div class="setting-section">GRAPHICS</div>
+                <div class="quality-row">
+                    <button class="quality-btn" data-quality="low">LOW</button>
+                    <button class="quality-btn" data-quality="medium">MEDIUM</button>
+                    <button class="quality-btn" data-quality="high">HIGH</button>
+                </div>
+                <p class="setting-note">Resolution scales automatically to keep the frame rate smooth.</p>
+
+                <button id="settings-reset" class="btn small">RESET TO DEFAULTS</button>
             </div>
+        </div>
+
+        <!-- =========================== HOW TO =========================== -->
+        <div id="howto-panel" class="modal">
+            <div class="panel howto">
+                <button id="howto-close" class="close-btn" aria-label="Close">&times;</button>
+                <h2 class="panel-title">HOW TO SURVIVE</h2>
+                <div class="howto-grid">
+                    <div><kbd>W A S D</kbd><span>Move through the darkness</span></div>
+                    <div><kbd>MOUSE</kbd><span>Look around for threats</span></div>
+                    <div><kbd>SHIFT</kbd><span>Sprint — drains sanity, and they hear you</span></div>
+                    <div><kbd>F</kbd><span>Flashlight — limited battery</span></div>
+                    <div><kbd>SPACE</kbd><span>Light a match — the Watchers flee from fire</span></div>
+                    <div><kbd>E</kbd><span>Read notes left by those before you</span></div>
+                </div>
+                <div class="howto-rules">
+                    <p><b>Level I — The Watchers</b> move only when you are not looking at them. Keep them in sight. Darkness eats your sanity; lamps, matches and your flashlight hold it back.</p>
+                    <p><b>Level II — The Angels</b> are the opposite: they charge while you look at them. Use the edge of your vision, and never stare.</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="webgl-error">
+            <h2>WebGL unavailable</h2>
+            <p>The Watching Dark needs a browser with WebGL and hardware acceleration enabled.</p>
         </div>
     </div>
-    <script src="game.js"></script>
+
+    <script src="js/util.js"></script>
+    <script src="js/textures.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/postfx.js"></script>
+    <script src="js/world.js"></script>
+    <script src="js/lore.js"></script>
+    <script src="js/models.js"></script>
+    <script src="js/level1.js"></script>
+    <script src="js/level2.js"></script>
+    <script src="js/monsters.js"></script>
+    <script src="js/hud.js"></script>
+    <script src="js/menu.js"></script>
+    <script src="js/main.js"></script>
 </body>
 </html>

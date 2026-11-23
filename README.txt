@@ -3,7 +3,7 @@
 ║              A Psychological Horror Maze Adventure             ║
 ╚════════════════════════════════════════════════════════════════╝
 
-Navigate pitch-black corridors haunted by grotesque creatures. Your sanity 
+Navigate pitch-black corridors haunted by grotesque creatures. Your sanity
 crumbles in darkness. Your only salvation: light, speed, and survival instinct.
 
 Two nightmarish levels await. Can you escape?
@@ -16,68 +16,65 @@ Two nightmarish levels await. Can you escape?
 RECOMMENDED: Local Web Server
   Python 3:  python -m http.server 8000
   Then:      Open http://localhost:8000/index.html in your browser
+  (Served over http, monster footsteps are panned toward where they are.)
 
 ALTERNATIVE: Direct File Access
-  Open index.html directly in your browser
-  (Some features may not work without a server)
+  Open index.html directly in your browser - everything still works,
+  footsteps just aren't directional.
 
 
 ═══════════════════════════════════════════════════════════════════
   CONTROLS
 ═══════════════════════════════════════════════════════════════════
 
-Movement
-  WASD          Navigate through the darkness
-  SHIFT         Sprint faster (costs stamina, monsters hear you!)
-
-Interaction
-  Mouse         Look around for threats
-  F             Toggle flashlight (limited battery power)
-  SPACE         Light a match (scares creatures away!)
-
-Camera
-  Click         Lock cursor to begin
+  WASD / Arrows   Move through the darkness
+  Mouse           Look around for threats
+  SHIFT           Sprint (costs stamina and sanity - and they hear you)
+  F               Toggle flashlight (limited battery, Level 1)
+  SPACE           Light a match (Watchers flee from fire)
+  E               Read / close a note
+  ESC             Pause menu (settings, resume, quit)
+  Z               God mode (testing: invulnerable, no-clip, fly)
 
 
 ═══════════════════════════════════════════════════════════════════
   GAME MECHANICS
 ═══════════════════════════════════════════════════════════════════
 
-SANITY SYSTEM
-  • Rapidly drains in complete darkness
-  • Restored by matches and light sources
-  • Game Over at 0% sanity
-  • Low sanity causes visual/audio distortions
+SANITY
+  • Drains in darkness - faster when a Watcher is close
+  • Restored by matches, lamps and your flashlight
+  • Low sanity warps your vision, fills the halls with phantom
+    footsteps and shows you eyes that aren't there
+  • Game over at 0%
 
-STAMINA SYSTEM
-  • Depletes during sprint (SHIFT)
-  • Regenerates while walking or standing
-  • Must recover to sprint again
+STAMINA
+  • Depletes while sprinting; exhausted until it recovers to 30%
 
 FLASHLIGHT
-  • Limited battery power (drains while active)
-  • Essential for navigation
-  • Find battery pickups scattered throughout each level
+  • Drains battery while on, flickers when nearly dead
+  • Batteries (+50%) are scattered through the maze
 
 MATCHES
-  • Start with 5 matches per level
-  • Bright emergency light source
-  • Terrifies creatures - forces them to flee temporarily
-  • Instantly restores sanity when lit
+  • 5 per level; matchboxes (+2) can be found
+  • Burn for a few seconds, restore sanity, terrify Watchers
 
 MONSTERS
 
-  Level 1: WATCHERS
-    - Humanoid entities with glowing red eyes
+  Level 1: THE WATCHERS
+    - Gaunt figures with wide, flared heads and burning eyes
     - Only move when you're not looking at them
-    - Flee in terror from lit matches
+    - Hunt by sight and by sound - sprinting draws them in
+    - Navigate the maze to reach you; more join the hunt over time
+    - Flee in terror from a lit match
     - Death on contact
 
   Level 2: THE ANGELS
-    - Tall, skeletal, tattered creatures of nightmare
-    - Emerge from the dense fog around you
-    - Incredibly dangerous and aggressive
-    - Impossible to see through the oppressive mist
+    - Towering, robed, with tattered wings and a broken halo
+    - The opposite of the Watchers: they CHARGE while you look at them,
+      faster the longer you stare, and freeze when you look away
+    - Their halos glimmer through the fog - a warning not to look
+    - Sacred relics restore sanity and slow them for 10 seconds
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -85,71 +82,59 @@ MONSTERS
 ═══════════════════════════════════════════════════════════════════
 
 LEVEL 1: THE MAZE
-  Indoor labyrinth of dark corridors
-  Shadow creatures hunt you relentlessly
-  Your sanity is your greatest enemy
-  Find the green exit to progress
+  A procedurally generated labyrinth of stained concrete halls,
+  hanging lamps and scrawled warnings. Find a green EXIT door.
 
 LEVEL 2: THE LOST FOREST
-  Dense, suffocating fog obscures your vision
-  Can only see ~10 units in any direction
-  Angels lurk just beyond the fog's edge
-  Navigate by flashlight alone
-  Escape through the darkness to survive
-
-
-═══════════════════════════════════════════════════════════════════
-  SURVIVAL STRATEGIES
-═══════════════════════════════════════════════════════════════════
-
-✓ Keep your flashlight on - darkness kills you
-✓ Use matches strategically when surrounded
-✓ Sprint sparingly to conserve stamina
-✓ Keep moving - standing still attracts creatures
-✓ The green door is your goal - find it
-✓ In Level 2, listen for breathing and footsteps
-✓ Don't look away from threats for long
-✓ Matches are your last resort - use wisely
+  A moonlit hedge maze drowned in fog, full of ruins and stone angel
+  statues. Reach the pillar of golden light.
 
 
 ═══════════════════════════════════════════════════════════════════
   FEATURES
 ═══════════════════════════════════════════════════════════════════
 
-Graphics & Atmosphere
-  ✓ Procedurally generated mazes
-  ✓ Dynamic lighting with shadows
-  ✓ Oppressive fog system (Level 2)
-  ✓ Terrifyingly detailed monster models
-  ✓ VHS-style post-processing effects
-  ✓ Minimap for navigation
+Graphics
+  ✓ Procedural PBR textures (colour, normal and roughness maps)
+  ✓ HDR rendering with bloom, ACES tone mapping and film grain
+  ✓ Sanity-driven distortion, chromatic aberration and heartbeat pulse
+  ✓ Shadowed flashlight with lag/sway, first-person flashlight & match
+  ✓ Animated monster models, moonlight shadows, drifting ground fog
+  ✓ Heading-up minimap that reveals only where you've been
 
-Gameplay
-  ✓ Weeping Angel AI - creatures freeze when observed
-  ✓ Two distinct monster types with unique behavior
-  ✓ Sanity and stamina systems
-  ✓ Resource management (matches, battery)
-  ✓ Multiple difficulty levels
+Performance
+  ✓ Walls merged into culled chunks; forest drawn with chunked instancing
+  ✓ Fixed light budget (lamps share a pool of real lights)
+  ✓ Grid-based line of sight & collision, shader-animated particles
+  ✓ Dynamic resolution keeps the frame rate smooth
+  ✓ Low / Medium / High quality presets
 
-Audio
-  ✓ Spatial sound design
-  ✓ Footstep audio cues
-  ✓ Creature vocalizations
-  ✓ Atmospheric ambience
-  ✓ Menacing soundtrack
+Settings
+  ✓ Music & effects volume, mouse sensitivity, field of view,
+    brightness and graphics quality (saved between sessions)
 
 
 ═══════════════════════════════════════════════════════════════════
-  REQUIRED AUDIO FILES
+  PROJECT STRUCTURE
 ═══════════════════════════════════════════════════════════════════
 
-Place these files in the audio/ folder:
-  • main menu.mp3       - Main menu theme
-  • OST.mp3             - In-game background music
-  • footsteps.mp3       - Player footstep sounds
-  • lighting a match.mp3 - Match ignition sound
-  • jumpscare.mp3       - Death scream
-  • ambience2.mp3       - Environmental ambience
+  index.html        Page layout: menus, HUD, overlays
+  style.css         All styling
+  js/util.js        Math, tileable noise, geometry helpers
+  js/textures.js    Procedural texture generation
+  js/audio.js       Music, sound effects, positional voices
+  js/postfx.js      Bloom / tone mapping / screen effects
+  js/world.js       Maze generation, collision, line of sight, pathfinding
+  js/models.js      Watcher, Angel, props, first-person models
+  js/level1.js      Level 1 construction
+  js/level2.js      Level 2 construction
+  js/monsters.js    Watcher & Angel behaviour
+  js/hud.js         HUD, minimap, notes, loading screen
+  js/menu.js        Title screen background & menu music
+  js/lore.js        Note texts
+  js/main.js        Game flow, player, input, rendering
+  audio/            Sound effects and music
+  images/           Jumpscare images
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -160,13 +145,9 @@ Engine:        Three.js r128 (WebGL)
 Textures:      Procedurally generated (Canvas API)
 Audio:         Web Audio API + MP3 files
 Controls:      Pointer Lock API
-Performance:   Optimized for 60 FPS
 
 Browser Requirements:
-  • Modern browser with WebGL support
-  • Hardware accelerated graphics recommended
-  • 4GB+ RAM
-  • 50MB+ free disk space
+  • Modern browser with WebGL (hardware acceleration recommended)
 
 
 ═══════════════════════════════════════════════════════════════════
