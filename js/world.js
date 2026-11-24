@@ -123,6 +123,111 @@ const World = (() => {
         flowFrom = -1;
     }
 
+    // The final level is not a maze: one long, winding descent through a string of chambers,
+    // spiralling inward to a great round chamber (the heart) at the centre of the grid.
+    // Cells never reached stay `solid` (sealed flesh) and get no walls of their own.
+    function generateJourney() {
+        cells = [];
+        for (let x = 0; x < SIZE; x++) {
+            cells[x] = [];
+            for (let z = 0; z < SIZE; z++) cells[x][z] = { n: true, s: true, e: true, w: true, visited: false, solid: true };
+        }
+        const dirTo = (ax, az, bx, bz) => DIRS.find((d) => d.dx === bx - ax && d.dz === bz - az);
+        const link = (ax, az, bx, bz) => {
+            const d = dirTo(ax, az, bx, bz);
+            if (!d || !inBounds(bx, bz)) return;
+            cells[ax][az][d.wall] = false;
+            cells[bx][bz][d.opp] = false;
+            cells[ax][az].solid = false;
+            cells[bx][bz].solid = false;
+        };
+        // Open every cell within a radius into one chamber
+        const chamber = (cx, cz, r) => {
+            for (let x = Math.floor(cx - r); x <= cx + r; x++) {
+                for (let z = Math.floor(cz - r); z <= cz + r; z++) {
+                    if (!inBounds(x, z) || Math.hypot(x - cx, z - cz) > r) continue;
+                    cells[x][z].solid = false;
+                    if (inBounds(x + 1, z) && Math.hypot(x + 1 - cx, z - cz) <= r) link(x, z, x + 1, z);
+                    if (inBounds(x, z + 1) && Math.hypot(x - cx, z + 1 - cz) <= r) link(x, z, x, z + 1);
+                }
+            }
+        };
+
+        const H = Math.floor(SIZE / 2);
+        const j = () => randInt(-1, 1);
+        const waypoints = [
+            [8 + j(), 2 + j()], [16 + j(), 3 + j()], [25 + j(), 4 + j()], [26 + j(), 13 + j()],
+            [25 + j(), 24 + j()], [15 + j(), 26 + j()], [5 + j(), 23 + j()], [4 + j(), 13 + j()], [H, H]
+        ];
+        chamber(1, 1, 1.5);
+        let cx = 1, cz = 1, prev = null;
+        for (let wi = 0; wi < waypoints.length; wi++) {
+            const [tx, tz] = waypoints[wi];
+            const last = wi === waypoints.length - 1;
+            const arrive = last ? 3.0 : 0.5;
+            for (let guard = 0; guard < 300 && Math.hypot(cx - tx, cz - tz) > arrive; guard++) {
+                const sx = Math.sign(tx - cx), sz = Math.sign(tz - cz);
+                const opts = [];
+                const add = (dx, dz, w) => {
+                    const nx = cx + dx, nz = cz + dz;
+                    if (!inBounds(nx, nz) || (dx === 0 && dz === 0)) return;
+                    if (prev && prev.x === nx && prev.z === nz) return;
+                    // Avoid wandering into older corridors (that would create shortcuts)
+                    const fresh = cells[nx][nz].solid || Math.hypot(nx - tx, nz - tz) < 3;
+                    opts.push({ dx, dz, w: fresh ? w : w * 0.02 });
+                };
+                const xFirst = Math.abs(tx - cx) >= Math.abs(tz - cz);
+                if (sx) add(sx, 0, xFirst ? 0.55 : 0.25);
+                if (sz) add(0, sz, xFirst ? 0.25 : 0.55);
+                if (xFirst) { add(0, 1, 0.1); add(0, -1, 0.1); } else { add(1, 0, 0.1); add(-1, 0, 0.1); }
+                if (!opts.length) break;
+                let r = Math.random() * opts.reduce((s, o) => s + o.w, 0);
+                let pickd = opts[opts.length - 1];
+                for (const o of opts) { r -= o.w; if (r <= 0) { pickd = o; break; } }
+                prev = { x: cx, z: cz };
+                link(cx, cz, cx + pickd.dx, cz + pickd.dz);
+                cx += pickd.dx;
+                cz += pickd.dz;
+            }
+            if (!last) chamber(cx + rand(-0.4, 0.4), cz + rand(-0.4, 0.4), rand(1.1, 2.1));
+        }
+        chamber(H, H, 3.4);
+        // Link the corridor's final cell into the heart in case it stopped just short
+        while (Math.hypot(cx - H, cz - H) > 3.2) {
+            const nx = cx + Math.sign(H - cx) * (Math.abs(H - cx) >= Math.abs(H - cz) ? 1 : 0);
+            const nz = nx === cx ? cz + Math.sign(H - cz) : cz;
+            link(cx, cz, nx, nz);
+            cx = nx; cz = nz;
+        }
+
+        // A few dead-end alcoves branching off the path
+        const open = [];
+        for (let x = 0; x < SIZE; x++) for (let z = 0; z < SIZE; z++) if (!cells[x][z].solid) open.push({ x, z });
+        for (let i = 0; i < 14; i++) {
+            let { x, z } = pick(open);
+            if (Math.hypot(x - H, z - H) < 5) continue;
+            const d = pick(DIRS);
+            const len = randInt(1, 3);
+            for (let s = 0; s < len; s++) {
+                const nx = x + d.dx, nz = z + d.dz;
+                if (!inBounds(nx, nz) || !cells[nx][nz].solid) break;
+                // Keep alcoves from touching other open cells (no accidental shortcuts)
+                const touches = DIRS.some((e) => {
+                    const ax = nx + e.dx, az = nz + e.dz;
+                    return (ax !== x || az !== z) && inBounds(ax, az) && !cells[ax][az].solid;
+                });
+                if (touches) break;
+                link(x, z, nx, nz);
+                x = nx; z = nz;
+            }
+        }
+
+        exits = [{ x: H, z: H }];
+        flowFrom = -1;
+    }
+
+    const isSolid = (x, z) => !inBounds(x, z) || !!cells[x][z].solid;
+
     function carvePath(target) {
         let x = 0, z = 0;
         while (x !== target.x || z !== target.z) {
@@ -366,6 +471,49 @@ const World = (() => {
         return stepOut;
     }
 
+    // BFS distance field from an arbitrary cell, for monsters heading somewhere other than the player
+    const fieldQueue = new Int16Array(SIZE * SIZE);
+    function fieldFrom(tx, tz, out) {
+        if (!out) out = new Int16Array(SIZE * SIZE);
+        out.fill(-1);
+        if (!inBounds(tx, tz)) return out;
+        let head = 0, tail = 0;
+        const start = tx * SIZE + tz;
+        fieldQueue[tail++] = start;
+        out[start] = 0;
+        while (head < tail) {
+            const idx = fieldQueue[head++];
+            const x = Math.floor(idx / SIZE), z = idx % SIZE;
+            const d = out[idx] + 1;
+            for (const dir of DIRS) {
+                if (!canStep(x, z, dir.dx, dir.dz)) continue;
+                const n = (x + dir.dx) * SIZE + (z + dir.dz);
+                if (out[n] !== -1) continue;
+                out[n] = d;
+                fieldQueue[tail++] = n;
+            }
+        }
+        return out;
+    }
+
+    // Neighbouring cell one step closer to a field's origin
+    const descendOut = { x: 0, z: 0 };
+    function descend(field, x, z) {
+        if (!inBounds(x, z)) return null;
+        const here = field[x * SIZE + z];
+        if (here <= 0) return null;
+        for (const dir of DIRS) {
+            if (!canStep(x, z, dir.dx, dir.dz)) continue;
+            const d = field[(x + dir.dx) * SIZE + (z + dir.dz)];
+            if (d >= 0 && d < here) {
+                descendOut.x = x + dir.dx;
+                descendOut.z = z + dir.dz;
+                return descendOut;
+            }
+        }
+        return null;
+    }
+
     function openNeighbours(x, z) {
         const out = [];
         for (const dir of DIRS) if (canStep(x, z, dir.dx, dir.dz)) out.push({ x: x + dir.dx, z: z + dir.dz });
@@ -380,12 +528,12 @@ const World = (() => {
 
     return {
         SIZE, CELL, HALF, DIRS,
-        generate,
+        generate, generateJourney, isSolid,
         get cells() { return cells; },
         get exits() { return exits; },
         cellX, inBounds, center, canStep, openNeighbours, isOpenCorner,
         clearColliders, addBox, addCircle, resolve, overlaps, query,
-        lineOfSight, updateFlow, pathDist, flowStep,
+        lineOfSight, updateFlow, pathDist, flowStep, fieldFrom, descend,
         get circles() { return circles; }
     };
 })();

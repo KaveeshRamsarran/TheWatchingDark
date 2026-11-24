@@ -6,7 +6,7 @@
 Navigate pitch-black corridors haunted by grotesque creatures. Your sanity
 crumbles in darkness. Your only salvation: light, speed, and survival instinct.
 
-Two nightmarish levels await. Can you escape?
+Five nightmarish levels await. Can you escape?
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -30,12 +30,16 @@ ALTERNATIVE: Direct File Access
   WASD / Arrows   Move through the darkness
   Mouse           Look around for threats
   SHIFT           Sprint (costs stamina and sanity - and they hear you)
-  F               Toggle flashlight (limited battery, Level 1)
+  F               Toggle flashlight (limited battery)
+  C               Crouch (slow, but almost silent)
+  RMB (hold) / Q  Raise the camcorder (Level IV)
   SPACE           Light a match (Watchers flee from fire)
-  E               Read / close a note
+  E               Read / close a note (the game pauses while you read)
   ESC             Pause menu (settings, resume, quit)
   ALT+ENTER       Toggle fullscreen (also on the title screen, pause menu & settings)
   Z               God mode (testing: invulnerable, no-clip, fly)
+  `  (backquote)  Debug console: jump to any level, god mode, refills
+                  (also in the pause menu; type help for commands)
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -63,8 +67,9 @@ MATCHES
 MONSTERS
 
   Level 1: THE WATCHERS
-    - Emaciated, hunched figures with wide flared crowns, sunken burning
-      eyes, needle-toothed jaws and claws that drag along the floor
+    - Nearly three metres tall: starved, stretched bodies, a craning neck,
+      a long swept-back skull with burning eyes in empty sockets, a slit of
+      needle teeth, and arms so long the claws hang past their knees
     - They move in a jerky, stop-motion gait, and their jaws open as they close in
     - Only move when you're not looking at them
     - Hunt by sight and by sound - sprinting draws them in
@@ -79,6 +84,37 @@ MONSTERS
     - Their halos glimmer through the fog - a warning not to look
     - Sacred relics restore sanity and slow them for 10 seconds
 
+  Level 3: THE DROWNED
+    - Pale, eyeless and waterlogged - completely blind
+    - Hunt by SOUND alone: walking carries ~2 rooms, sprinting the whole
+      level, crouching only reaches something right beside you
+    - Deep pools (dark water, blue on the minimap) slow you down and
+      make every step louder; striking a match is loud too
+    - When they hear you they go to where the sound came from - move
+      away quietly and they'll find nothing. Listen for their clicking.
+
+  Level 4: THE UNSEEN
+    - Exist only on camera: invisible to the naked eye
+    - Through the night-vision camcorder they freeze in frame; lower it
+      and they move. Static (and a tearing picture) means one is close
+    - The camera drains its battery while raised; spare cells are
+      scattered around (+35%)
+
+  Level 5: THE WATCHING DARK
+    - Almost nothing hunts here any more - a couple of Watchers and
+      Angels linger. The rest climbed out; that's why you met them above.
+    - The walls are alive, and they breathe - harder with every heartbeat.
+      Eyes grow in them: they stare at you, and roll back white when you
+      look at them. Being watched wears you down.
+    - Arms reach out of the walls and up out of the floor. If one gets
+      hold of you, you can barely drag yourself free - and it hurts your
+      mind. Faces and whole bodies strain out through the skin as you
+      pass, crying out.
+    - A woman in a stained dress stands in the corridors, back turned.
+      Sometimes she is behind you.
+    - An eye hangs in the void above. Staring at it shreds your sanity.
+      When it blinks, the world goes dark - and changes.
+
 
 ═══════════════════════════════════════════════════════════════════
   LEVEL DETAILS
@@ -89,8 +125,28 @@ LEVEL 1: THE MAZE
   hanging lamps and scrawled warnings. Find a green EXIT door.
 
 LEVEL 2: THE LOST FOREST
-  A moonlit hedge maze drowned in fog, full of ruins and stone angel
-  statues. Reach the pillar of golden light.
+  A moonlit hedge maze drowned in fog so thick you can barely see a few
+  metres - only the Angels' halos glimmer through it. Reach the pillar
+  of golden light.
+
+LEVEL 3: THE FLOODED BASEMENT
+  Sub-level B3: black water over concrete, rusted pipes and dripping
+  ceilings. Find the stairs up (green EXIT doors) without being heard.
+
+LEVEL 4: THE OBSERVATION WING
+  Offices lit by red emergency lamps and CRTs full of static. No
+  flashlight - only a night-vision camcorder. Find a green EXIT door.
+
+LEVEL 5: THE WATCHING DARK
+  Not a maze: one long descent through breathing flesh, spiralling in
+  toward the heart beneath the eye. A heartbeat shakes the walls, faster
+  the deeper you go. At the heart there is no door - only the eye,
+  waiting for you to look back.
+
+NOTES
+  30 notes are scattered through the five levels, telling the story of
+  Dr. Shaw, Helena Marsh and her daughter Ellie. Your total is shown
+  on the death and victory screens.
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -115,7 +171,7 @@ Performance
   ✓ Low / Medium / High quality presets
 
 Settings
-  ✓ Music & effects volume, mouse sensitivity, field of view,
+  ✓ Music & effects volume, mouse sensitivity,
     brightness and graphics quality (saved between sessions)
 
 
@@ -130,17 +186,26 @@ Settings
   js/audio.js       Music, sound effects, positional voices
   js/postfx.js      Bloom / tone mapping / screen effects
   js/world.js       Maze generation, collision, line of sight, pathfinding
-  js/models.js      Watcher, Angel, props, first-person models
+  js/models.js      Watcher (and its Drowned/Unseen variants), Angel,
+                    eye, props, first-person models
+  js/facility.js    Shared builder for the indoor maze levels (walls,
+                    lamps, decals, pickups, notes, exit doors)
   js/level1.js      Level 1 construction
   js/level2.js      Level 2 construction
-  js/monsters.js    Watcher & Angel behaviour
+  js/level3.js      Level 3 construction (water, deep pools)
+  js/level4.js      Level 4 construction (monitors, emergency lights)
+  js/level5.js      Level 5: living walls, wall eyes, arms, the woman,
+                    the great blink and the final gaze
+  js/monsters.js    Watcher, Angel, Drowned & Unseen behaviour
   js/hud.js         HUD, minimap, notes, loading screen
   js/menu.js        Title screen background & menu music
   js/lore.js        Note texts
   js/main.js        Game flow, player, input, rendering
   js/assets.js      Embedded 3D models (GENERATED - see below)
   js/assetloader.js Loads the embedded models
-  tools/blender/    Blender script that builds the models
+  tools/blender/    Blender script that builds the models (Watcher, Angel,
+                    the woman, the things in the walls, trees, flashlight)
+                    and renders the Watcher jumpscare image
   tools/pack_assets.mjs  Packs exported models into js/assets.js
   audio/            Sound effects and music
   images/           Jumpscare images
@@ -154,7 +219,12 @@ Settings
   node tools/pack_assets.mjs tools/build js/assets.js
 
   Add "preview" after the output folder to also render preview images, and
-  "watcher", "trees" or "flashlight" after that to rebuild just one model.
+  "watcher", "trees", "flashlight", "angel", "figure", "flesh" or
+  "creatures" (angel + figure + flesh) after that to rebuild just those.
+
+  The jumpscare image is rendered from the Watcher model into the build
+  folder; copy it to images/watcher_jumpscare.png:
+  blender -b --factory-startup --python tools/blender/build_models.py -- tools/build nopreview jumpscare
 
 
 ═══════════════════════════════════════════════════════════════════

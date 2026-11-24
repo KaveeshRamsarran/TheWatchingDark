@@ -9,7 +9,8 @@
     // =========================================================================
     // Settings
     // =========================================================================
-    const DEFAULTS = { musicVolume: 0.3, sfxVolume: 0.75, cameraSensitivity: 0.002, brightness: 1.0, fov: 75, quality: 'medium' };
+    const DEFAULTS = { musicVolume: 0.3, sfxVolume: 0.75, cameraSensitivity: 0.002, brightness: 1.0, quality: 'medium' };
+    const FOV = 60; // fixed field of view (degrees)
     const settings = Object.assign({}, DEFAULTS);
     try {
         const saved = JSON.parse(localStorage.getItem('gameSettings') || 'null');
@@ -48,7 +49,7 @@
     Textures.setRenderer(renderer);
     PostFX.init(renderer);
 
-    const camera = new THREE.PerspectiveCamera(settings.fov, window.innerWidth / window.innerHeight, 0.05, 90);
+    const camera = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, 0.05, 90);
     camera.rotation.order = 'YXZ';
     const clock = new THREE.Clock();
     const frustum = new THREE.Frustum();
@@ -96,7 +97,11 @@
         bobPhase: 0,
         aim: new THREE.Vector3(0, 0, -1),
         swayX: 0, swayY: 0,
-        lowBatteryFlicker: 1
+        lowBatteryFlicker: 1,
+        crouch: false, crouchAmt: 0,          // C toggles a slow, near-silent crouch
+        lens: 0, lensHeld: false, lensToggle: false, // camcorder (level IV): 0 = lowered, 1 = raised
+        wade: 0,                              // 0 = shallows, 1 = deep water (level III)
+        stepPhase: 0
     };
 
     const keys = {};
@@ -138,13 +143,59 @@
     // =========================================================================
     // Level loading
     // =========================================================================
+    const HINT_DEFAULT = '<kbd>F</kbd> flashlight &nbsp; <kbd>C</kbd> crouch &nbsp; <kbd>E</kbd> read &nbsp; <kbd>SHIFT</kbd> sprint';
+    const HINT_FOREST = '<kbd>C</kbd> crouch &nbsp; <kbd>E</kbd> read &nbsp; <kbd>SHIFT</kbd> sprint';
+    const HINT_CAMERA = '<kbd>RMB</kbd>/<kbd>Q</kbd> camera &nbsp; <kbd>C</kbd> crouch &nbsp; <kbd>E</kbd> read &nbsp; <kbd>SHIFT</kbd> sprint';
+
+    // Per-level presentation and rules.
+    //  dark:  sanity drains in darkness (lamps, matches and light restore it)
+    //  meter: what the third HUD bar shows
     const LEVEL_INFO = {
-        1: { num: 'I', title: 'THE MAZE', sub: 'They move when you look away.', objective: 'Find an exit. Follow the green light.' },
-        2: { num: 'II', title: 'THE LOST FOREST', sub: 'They move when you look at them.', objective: "Reach the golden light. Don't stare." }
+        1: {
+            num: 'I', title: 'THE MAZE', sub: 'They move when you look away.', objective: 'Find an exit. Follow the green light.',
+            builder: () => Level1, spawn: () => Monsters.spawnWatchers(randInt(14, 17)),
+            music: ['ost', 0.05 / 0.3], steps: 'concrete', far: 55, dark: true, meter: 'battery', hint: HINT_DEFAULT,
+            ambient: [0x23252e, 0x080605, 0.13], tint: new THREE.Color(1.03, 0.97, 0.9), exitFlash: [0.6, 1, 0.7],
+            reverb: 0.45, deathTitle: 'CONSUMED BY DARKNESS'
+        },
+        2: {
+            num: 'II', title: 'THE LOST FOREST', sub: 'They move when you look at them.', objective: "Reach the golden light. Don't stare.",
+            builder: () => Level2, spawn: () => Monsters.spawnAngels(randInt(14, 17), player.pos),
+            music: ['level2', 0.9 / 0.3], steps: 'grass', far: 34, dark: false, meter: 'relic', hint: HINT_FOREST,
+            ambient: null, tint: new THREE.Color(0.9, 0.97, 1.06), exitFlash: [1, 0.85, 0.5], exposure: 1.05, saturation: 0.62,
+            // The fog is thick: Angels only notice your gaze once you could actually see them
+            angelSight: 15, haloFar: 32, reverb: 0.25, deathTitle: 'CONSUMED BY LIGHT'
+        },
+        3: {
+            num: 'III', title: 'THE FLOODED BASEMENT', sub: 'They cannot see you. They can hear you.', objective: 'Find the stairs up. Move quietly.',
+            builder: () => Level3, spawn: () => Monsters.spawnDrowned(randInt(16, 18)),
+            music: null, bed: 'water', steps: null, far: 52, dark: true, meter: 'battery', hint: HINT_DEFAULT,
+            ambient: [0x1a2624, 0x050807, 0.12], tint: new THREE.Color(0.92, 1.0, 0.98), exitFlash: [0.6, 1, 0.7],
+            matchNoise: true, reverb: 1.0, deathTitle: 'DRAGGED UNDER'
+        },
+        4: {
+            num: 'IV', title: 'THE OBSERVATION WING', sub: 'They only exist on camera.', objective: 'Find an exit. Keep recording.',
+            builder: () => Level4, spawn: () => Monsters.spawnWatchers(randInt(11, 13), 'unseen'),
+            music: ['ost', 0.035 / 0.3], steps: 'concrete', far: 50, dark: true, meter: 'camera', hint: HINT_CAMERA,
+            ambient: [0x7a4a4a, 0x1a1010, 0.6], tint: new THREE.Color(1.02, 0.95, 0.95), exitFlash: [0.6, 1, 0.7],
+            batteryAmount: 35, maxHunters: 5, reverb: 0.4, deathTitle: 'LOST IN THE STATIC'
+        },
+        5: {
+            num: 'V', title: 'THE WATCHING DARK', sub: 'You are inside it now.', objective: 'Go deeper. Find the heart.',
+            builder: () => Level5,
+            // Almost everything that lived down here has already climbed out
+            spawn: () => { Monsters.spawnWatchers(2); Monsters.spawnAngels(2, player.pos); },
+            music: null, steps: null, far: 55, dark: true, meter: 'battery', hint: HINT_DEFAULT,
+            ambient: [0x3a1012, 0x080203, 0.06], tint: new THREE.Color(1.08, 0.9, 0.88), exitFlash: [1, 0.2, 0.15],
+            maxHunters: 1, angelCollide: true, reverb: 0.9, subliminal: true, deathTitle: 'THE DARK SAW YOU'
+        }
     };
+    const LAST_LEVEL = 5;
+    const cfg = () => LEVEL_INFO[state.levelId];
 
     function teardown() {
         Monsters.clear();
+        AudioSys.stopBeds();
         AudioSys.destroyAllVoices();
         if (scene) {
             disposeObject(scene);
@@ -174,8 +225,8 @@
         renderer.shadowMap.enabled = q.shadows;
         Monsters.init(scene);
 
-        const builder = id === 1 ? Level1 : Level2;
-        level = await builder.build(scene, q, (text, pct) => HUD.showLoading(true, text, pct));
+        const info = LEVEL_INFO[id];
+        level = await info.builder().build(scene, q, (text, pct) => HUD.showLoading(true, text, pct));
 
         // Reset the player for this level
         player.pos.copy(level.spawn);
@@ -192,27 +243,39 @@
         player.relicTime = 0;
         player.noise = 0;
         player.exhausted = false;
+        player.crouch = false;
+        player.crouchAmt = 0;
+        player.lens = 0;
+        player.lensHeld = false;
+        player.lensToggle = false;
+        player.wade = 0;
         player.aim.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
         for (const n of level.notes) n.read = state.stats.notes.has(n.title);
+        state.recordTime = 0;
+        state.angelState.closest = Infinity;
+        state.angelState.charge = 0;
+        state.angelState.looked = 0;
 
         rig = buildRig(scene, level, q);
         scene.add(camera);
-        camera.fov = settings.fov;
+        camera.fov = FOV;
         // Nothing survives the fog past this point, so don't draw it
-        camera.far = id === 1 ? 55 : 38;
+        camera.far = info.far;
         camera.updateProjectionMatrix();
         updateCamera(0);
 
-        if (id === 1) Monsters.spawnWatchers(randInt(14, 17));
-        else Monsters.spawnAngels(randInt(14, 17), player.pos);
+        info.spawn();
 
         // Audio for the level
         AudioSys.ensureContext();
         AudioSys.startDrone();
-        if (id === 1) AudioSys.playMusic('ost', 0.05 / 0.3);
-        else AudioSys.playMusic('level2', 0.9 / 0.3);
-        rig.footsteps = AudioSys.createVoice(id === 1 ? 'footsteps' : 'grass');
-        rig.phantoms = id === 1 ? [0, 1, 2, 3].map(() => AudioSys.createVoice('footsteps')) : [];
+        AudioSys.setReverb(info.reverb || 0.4);
+        if (info.music) AudioSys.playMusic(info.music[0], info.music[1]);
+        else AudioSys.stopMusic();
+        if (info.bed) rig.bed = AudioSys.startBed(info.bed);
+        // The concrete recording is about twice as loud as the others
+        rig.footsteps = info.steps ? AudioSys.createVoice(info.steps, { base: info.steps === 'concrete' ? 0.55 : 1 }) : null;
+        rig.phantoms = info.dark ? [0, 1, 2, 3].map(() => AudioSys.createVoice('footsteps')) : [];
         rig.ambience = AudioSys.createVoice('ambience2', { loop: false, base: 0.15 });
 
         HUD.showLoading(true, 'Compiling shaders...', 0.98);
@@ -222,8 +285,11 @@
 
         HUD.resetMap();
         HUD.reveal(World.cellX(player.pos.x), World.cellX(player.pos.z));
-        const info = LEVEL_INFO[id];
         HUD.setObjective('LEVEL ' + info.num, info.objective);
+        state.objective = info.objective;
+        HUD.setGaze(0);
+        HUD.setHint(info.hint);
+        HUD.setCamcorder(false);
         HUD.setGodMode(player.godMode);
         state.levelTime = 0;
         state.flash = 0;
@@ -246,18 +312,21 @@
 
     let envMap = null;
 
-    // Lights, first-person models and ambient particles shared by both levels
+    // Lights, first-person models and ambient particles shared by every level
     function buildRig(scene, level, q) {
         const r = { disposables: [] };
+        const info = LEVEL_INFO[level.id];
 
-        if (level.id === 1) {
+        if (info.ambient) {
             // Barely any ambient light: beyond your flashlight, the maze is black
-            r.hemi = new THREE.HemisphereLight(0x23252e, 0x080605, 0.13);
+            r.hemi = new THREE.HemisphereLight(info.ambient[0], info.ambient[1], info.ambient[2]);
+            r.hemiBase = info.ambient[2];
             scene.add(r.hemi);
         }
 
-        r.flashlight = new THREE.SpotLight(0xfff0d8, 0, 40, 0.52, 0.72, 1.5);
-        r.flashlight.castShadow = q.shadows && level.flashlightAllowed;
+        // The flashlight; on the camcorder level the same light is the lens's infrared lamp
+        r.flashlight = new THREE.SpotLight(0xfff0d8, 0, 40, level.camcorder ? 0.78 : 0.52, 0.72, 1.5);
+        r.flashlight.castShadow = q.shadows && (level.flashlightAllowed || level.camcorder);
         r.flashlight.shadow.mapSize.set(q.shadowSize, q.shadowSize);
         r.flashlight.shadow.camera.near = 0.2;
         r.flashlight.shadow.camera.far = 40;
@@ -281,7 +350,8 @@
         vm.torch.visible = level.flashlightAllowed;
 
         // Ambient motes drifting around the camera (shader-animated, no CPU cost)
-        r.motes = createMotes(level.id === 1 ? 380 : 260, level.id === 1);
+        const indoor = level.id !== 2;
+        r.motes = createMotes(indoor ? 380 : 260, indoor);
         scene.add(r.motes);
 
         // Hallucinated eyes in the dark
@@ -414,7 +484,8 @@
         if (!scene || !level) return;
 
         if (state.mode === 'playing') {
-            update(dt);
+            // Reading a note stops the world: nothing moves, nothing drains, until you close it
+            if (!state.note) update(dt);
             adaptQuality(rawDt);
         } else if (state.mode === 'dying' || state.mode === 'transition') {
             updateCamera(dt);
@@ -439,15 +510,30 @@
         projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
         frustum.setFromProjectionMatrix(projScreen);
 
+        const info = cfg();
         const ctx = {
             cam: camera, frustum, player, time: state.time, levelTime: state.levelTime,
-            angelState: state.angelState, onKill: die
+            angelState: state.angelState, onKill: die,
+            lens: player.lens, maxHunters: info.maxHunters, angelCollide: !!info.angelCollide,
+            angelSight: info.angelSight, haloFar: info.haloFar, waterDepth: level.waterDepth
         };
-        if (level.id === 1) Monsters.updateWatchers(dt, ctx);
-        else Monsters.updateAngels(dt, ctx);
+        if (Monsters.watchers.length) Monsters.updateWatchers(dt, ctx);
+        if (state.mode !== 'playing') return;
+        if (Monsters.angels.length) Monsters.updateAngels(dt, ctx);
+        if (state.mode !== 'playing') return;
+        if (Monsters.drowned.length) Monsters.updateDrowned(dt, ctx);
         if (state.mode !== 'playing') return;
 
-        level.update(dt, state.time, camera);
+        level.update(dt, state.time, camera, player);
+        if (level.objective && level.objective !== state.objective) {
+            state.objective = level.objective;
+            HUD.setObjective('LEVEL ' + info.num, level.objective);
+        }
+        if (level.flash) {
+            state.flash = Math.max(state.flash, level.flash);
+            state.flashColor.setRGB(0.7, 0.04, 0.03);
+            level.flash = 0;
+        }
         updateInteractions();
         if (state.mode !== 'playing') return;
         updateAudio(dt);
@@ -474,22 +560,40 @@
         if (p.exhausted && p.stamina > 30) p.exhausted = false;
         const wantsSprint = keys.ShiftLeft || keys.ShiftRight;
         p.sprinting = wantsSprint && moving && !p.exhausted && p.sanity > 20 && !p.godMode && !reading;
+        if (p.sprinting) p.crouch = false;
+        p.crouchAmt = damp(p.crouchAmt, p.crouch ? 1 : 0, 10, dt);
+
+        // Deep water (level III): wading is slow and loud
+        const depth = level.waterDepth && !p.godMode ? level.waterDepth(p.pos.x, p.pos.z) : 0;
+        p.wade = damp(p.wade, depth, 4, dt);
+
+        // Level V: a hand from the wall or floor has hold of you - you can barely drag yourself free
+        const held = !!level.grabbed && !p.godMode;
+        if (held) p.sprinting = false;
 
         let speed = p.sprinting ? 8.2 : 4.2;
         if (reading) speed *= 0.5;
         if (p.exhausted && moving) speed *= 0.72;
+        if (p.crouch) speed *= 0.45;
+        speed *= 1 - p.wade * 0.38;
+        if (p.lens > 0.5) speed *= 0.85;
+        if (held) speed *= 0.2;
         if (p.godMode) speed *= 3;
 
+        // Noise: what the creatures can hear. Crouching is near-silent; deep water is not.
+        const walkNoise = (p.crouch ? 3.4 : 25) * (1 + p.wade * 0.8);
         if (p.sprinting) {
             p.stamina = Math.max(0, p.stamina - 7.2 * dt);
             p.noise = Math.min(100, p.noise + 80 * dt);
             p.noisePos.copy(p.pos);
         } else {
             p.stamina = Math.min(100, p.stamina + (moving ? 10.5 : 21) * dt);
-            if (moving && p.noise < 25) p.noise = Math.min(25, p.noise + 12 * dt);
+            if (moving && p.noise < walkNoise) p.noise = Math.min(walkNoise, p.noise + 12 * dt);
             if (moving) p.noisePos.copy(p.pos);
         }
-        p.noise = Math.max(0, p.noise - 20 * dt);
+        // Noise fades fast once you stop: standing still really is silent
+        p.noise = Math.max(0, p.noise - (moving ? 20 : 45) * dt);
+        if (p.godMode) p.noise = 0;
 
         fwd.set(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
         right.set(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
@@ -511,21 +615,60 @@
 
         const hs = Math.sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z);
         p.bobPhase += hs * dt * 1.45;
-        p.roll = damp(p.roll, -mx * 0.012 - p.swayX * 0.4, 6, dt);
+        // Being held: the view jerks as you strain against the grip
+        const struggle = held ? Math.sin(state.time * 9) * 0.025 + Math.sin(state.time * 23.7) * 0.012 : 0;
+        p.roll = damp(p.roll, -mx * 0.012 - p.swayX * 0.4 + struggle, held ? 14 : 6, dt);
 
-        const targetFov = settings.fov + (p.sprinting ? 6 : 0) - (state.angelState.charge * 6);
+        const targetFov = FOV + (p.sprinting ? 6 : 0) - (state.angelState.charge * 6) - p.lens * 14;
         camera.fov = damp(camera.fov, targetFov, 6, dt);
         camera.updateProjectionMatrix();
 
-        // Footsteps (looping file, sped up while sprinting)
+        // Footsteps (looping file, sped up while sprinting, hushed while crouching)
         if (rig.footsteps) {
             if (hs > 1 && !p.godMode) {
-                rig.footsteps.el.playbackRate = p.sprinting ? 1.5 : 1.0;
-                rig.footsteps.set(1);
+                const r = cfg().stepRate || 1;
+                rig.footsteps.el.playbackRate = (p.sprinting ? 1.5 : p.crouch ? 0.8 : 1.0) * r;
+                rig.footsteps.set(p.crouch ? 0.3 : 1);
             } else {
                 rig.footsteps.set(0);
             }
         }
+        // Level III: every step is a splash.  Level V: every step sticks to the floor.
+        if ((level.water || level.flesh) && hs > 0.6 && !p.godMode) {
+            const before = Math.floor(p.stepPhase);
+            p.stepPhase += hs * dt * 0.46;
+            if (Math.floor(p.stepPhase) !== before) {
+                if (level.water) {
+                    const vol = (p.sprinting ? 0.9 : p.crouch ? 0.16 : 0.45) * (1 + p.wade * 0.6);
+                    AudioSys.splash(Math.min(1, vol), p.wade);
+                } else {
+                    AudioSys.fleshStep(p.sprinting ? 0.9 : p.crouch ? 0.2 : 0.55);
+                }
+            }
+        }
+
+        updateCamcorder(dt);
+    }
+
+    // Level IV: raising the camcorder (hold right mouse, or Q to toggle)
+    function updateCamcorder(dt) {
+        const p = player;
+        if (!level.camcorder) { p.lens = 0; return; }
+        const want = (p.lensHeld || p.lensToggle) && p.battery > 0 && !state.note;
+        const was = p.lens > 0.5;
+        p.lens = damp(p.lens, want ? 1 : 0, 14, dt);
+        const now = p.lens > 0.5;
+        if (now !== was) AudioSys.camBeep(now);
+        if (now) {
+            p.battery = Math.max(0, p.battery - 1.05 * dt);
+            state.recordTime += dt;
+            if (p.battery <= 0) {
+                p.lensToggle = false;
+                AudioSys.batteryDead();
+                HUD.toast('CAMERA BATTERY DEAD', 'bad');
+            }
+        }
+        HUD.setCamcorder(now, state.recordTime, p.battery);
     }
 
     function updateCamera(dt) {
@@ -534,7 +677,7 @@
         const bobAmt = Math.min(1, hs / 4.2) * (p.sprinting ? 0.075 : 0.05);
         const bobY = Math.sin(p.bobPhase * 2) * bobAmt;
         const bobX = Math.cos(p.bobPhase) * bobAmt * 0.6;
-        const baseY = p.godMode ? p.pos.y + p.height : p.height;
+        const baseY = p.godMode ? p.pos.y + p.height : p.height - p.crouchAmt * 0.62 - p.wade * 0.32;
         camera.position.set(p.pos.x + right.x * bobX, baseY + bobY, p.pos.z + right.z * bobX);
         camera.rotation.set(p.pitch, p.yaw, p.roll);
 
@@ -581,6 +724,12 @@
         const intensity = on ? (2.6 + 1.4 * (p.battery / 100)) * flicker : 0;
         fl.intensity = intensity;
         rig.spill.intensity = on ? 0.16 * flicker : 0;
+        if (level.camcorder) {
+            // The camcorder's infrared lamp: invisible to the eye, bright through the lens
+            fl.intensity = p.lens * 2.2;
+            rig.spill.intensity = p.lens * 0.3;
+            if (rig.hemi) rig.hemi.intensity = rig.hemiBase + p.lens * 0.22;
+        }
 
         rig.vm.torch.localToWorld(lensPos.set(0, 0, rig.vm.lensZ - 0.02));
         fl.position.copy(lensPos);
@@ -618,6 +767,11 @@
         p.matchTime = 4;
         p.matches--;
         state.stats.matchesUsed++;
+        if (cfg().matchNoise) {
+            // The strike carries a long way through the water
+            p.noise = Math.max(p.noise, 60);
+            p.noisePos.copy(p.pos);
+        }
         AudioSys.playMatch();
         HUD.matchFlash(p.matches);
         state.flash = 0.22;
@@ -628,7 +782,7 @@
 
     function toggleFlashlight() {
         if (!level || !level.flashlightAllowed) {
-            HUD.toast('The light here belongs to them...', '');
+            HUD.toast(level && level.camcorder ? 'NO FLASHLIGHT - RAISE THE CAMERA' : 'The light here belongs to them...', '');
             return;
         }
         if (player.battery <= 0 && !player.flashlightOn) {
@@ -638,6 +792,15 @@
         }
         player.flashlightOn = !player.flashlightOn;
         AudioSys.click();
+        if (cfg().matchNoise) {
+            player.noise = Math.max(player.noise, 8);
+            player.noisePos.copy(player.pos);
+        }
+    }
+
+    function toggleCrouch() {
+        player.crouch = !player.crouch;
+        if (player.crouch) player.sprinting = false;
     }
 
     // -------------------------------------------------------------------------
@@ -645,14 +808,19 @@
     // -------------------------------------------------------------------------
     function updateSanity(dt) {
         const p = player;
-        if (level.id === 1) {
-            const nearest = Monsters.nearestWatcherDistance();
+        if (cfg().dark) {
+            const nearest = Monsters.nearestDistance();
             if (p.matchLit) p.sanity += 12 * dt;
-            else if (p.flashlightOn && p.battery > 0) p.sanity += 3 * dt;
+            else if (level.flashlightAllowed && p.flashlightOn && p.battery > 0) p.sanity += 3 * dt;
+            else if (p.lens > 0.5) p.sanity += 3.5 * dt;   // seeing through the lens steadies you
             else if (level.nearLight(p.pos)) p.sanity += 9 * dt;
             else if (nearest < 4) p.sanity -= 30 * dt;
             else if (nearest < 8) p.sanity -= 18 * dt;
             else p.sanity -= 7.2 * dt;
+            // Level V: staring into the eye, being stared at by the walls, being held
+            if (level.stare) p.sanity -= level.stare * (level.stareDrain || 24) * dt;
+            if (level.watched) p.sanity -= level.watched * 3 * dt;
+            if (level.grabbed) p.sanity -= 7 * dt;
         } else {
             p.sanity += 4.8 * dt;
             const c = state.angelState.closest;
@@ -676,8 +844,9 @@
             it.collected = true;
             it.group.visible = false;
             if (it.type === 'battery') {
-                p.battery = Math.min(100, p.battery + 50);
-                HUD.toast('+50% BATTERY', 'good');
+                const amt = cfg().batteryAmount || 50;
+                p.battery = Math.min(100, p.battery + amt);
+                HUD.toast(`+${amt}% ${level.camcorder ? 'CAMERA ' : ''}BATTERY`, 'good');
                 AudioSys.pickup(false);
             } else if (it.type === 'relic') {
                 p.sanity = Math.min(100, p.sanity + 30);
@@ -711,10 +880,15 @@
         }
         state.nearNote = nd < 2.4 ? nearestNote : null;
 
-        // Exits
+        // Exits (the final level ends on its own terms)
+        if (level.completed) {
+            completeLevel();
+            return;
+        }
+        if (level.manualExit) return;
         for (const ex of level.exits) {
             const d = Math.hypot(ex.pos.x - p.pos.x, ex.pos.z - p.pos.z);
-            if (d < (level.id === 1 ? 2.0 : 2.6)) {
+            if (d < (level.id === 2 || level.exitStyle === 'portal' ? 2.6 : 2.0)) {
                 completeLevel();
                 return;
             }
@@ -726,6 +900,11 @@
         n.read = true;
         state.stats.notes.add(n.title);
         HUD.openNote(n);
+        HUD.setPrompt('');
+        // The world is paused while you read: hush every looping sound
+        Monsters.silence();
+        AudioSys.stopAllVoices();
+        player.vel.set(0, 0, 0);
     }
 
     function closeNote() {
@@ -742,10 +921,11 @@
 
         // Rhythmic heartbeat
         let intensity = 0;
-        if (level.id === 1) {
-            const dark = !p.matchLit && !(p.flashlightOn && p.battery > 0);
-            const near = Monsters.nearestWatcherDistance();
-            intensity = Math.max(dark ? 0.35 + fear * 0.65 : 0, p.sanity < 40 ? fear : 0, near < 12 ? 1 - near / 12 : 0);
+        if (cfg().dark) {
+            const lit = p.matchLit || (level.flashlightAllowed && p.flashlightOn && p.battery > 0) || p.lens > 0.5;
+            const near = Monsters.nearestDistance();
+            intensity = Math.max(!lit ? 0.35 + fear * 0.65 : 0, p.sanity < 40 ? fear : 0, near < 12 ? 1 - near / 12 : 0,
+                state.angelState.charge || 0, level.stare || 0);
         } else {
             const c = state.angelState.closest;
             intensity = Math.max(p.sanity < 40 ? fear : 0, c < 16 ? 1 - c / 16 : 0, state.angelState.charge);
@@ -792,7 +972,7 @@
 
     // Red eyes that appear in the dark when your mind starts to go
     function updateHallucinations(dt) {
-        if (level.id !== 1) return;
+        if (!cfg().dark) return;
         const p = player;
         const eyes = rig.halluEyes;
         const h = state.hallucination;
@@ -830,8 +1010,18 @@
     // -------------------------------------------------------------------------
     function updateHud(dt) {
         const p = player;
-        HUD.update(p, level.id);
-        HUD.setLookWarning(level.id === 2 && state.angelState.looked > 0 ? 0.45 + state.angelState.charge * 0.55 : 0);
+        const info = cfg();
+
+        // Level V: when your mind is going, something flickers across your eyes for a frame
+        if (info.subliminal && p.sanity < 45) {
+            state.subliminalTimer = (state.subliminalTimer || rand(8, 16)) - dt;
+            if (state.subliminalTimer <= 0) {
+                state.subliminalTimer = rand(10, 24) * (0.4 + p.sanity / 75);
+                HUD.subliminal(Math.random() < 0.5 ? 'images/watcher_jumpscare.png' : 'images/angel.jpg');
+            }
+        }
+        HUD.update(p, info.meter);
+        HUD.setLookWarning(state.angelState.looked > 0 ? 0.45 + state.angelState.charge * 0.55 : 0);
 
         state.revealTimer -= dt;
         if (state.revealTimer <= 0) {
@@ -847,48 +1037,73 @@
         state.hudTimer -= dt;
         if (state.hudTimer > 0) return;
         state.hudTimer = 0.25;
+        const id = level.id;
+        const hunter = Monsters.nearestHunter;
+        HUD.setGaze(level.gaze || 0, level.objective === 'Look at it.');
         let status = '';
-        if (p.matchLit) status = 'The warm light protects you...';
-        else if (level.id === 2 && p.relicTime > 0) status = 'The relic slows the Angels...';
-        else if (level.id === 2 && state.angelState.looked > 0) status = 'Look away. LOOK AWAY.';
-        else if (level.id === 1 && !p.flashlightOn && p.battery <= 0) status = 'Battery depleted...';
+        if (level.gaze !== undefined && level.objective === 'Look at it.') {
+            status = level.stare > 0.6 ? 'Keep looking. Do not look away.' : 'It is waiting for you to look back.';
+        } else if (level.stare > 0.3) status = "DON'T LOOK UP.";
+        else if (level.grabbed) status = 'Something is holding on to you...';
+        else if (level.watched > 0.5) status = 'So many of them are looking at you...';
+        else if (state.angelState.looked > 0) status = 'Look away. LOOK AWAY.';
+        else if (id === 4 && p.lens < 0.5 && hunter < 11) status = 'Static... RAISE THE CAMERA.';
+        else if (p.matchLit && id === 3) status = 'The strike echoes across the water...';
+        else if (p.matchLit) status = 'The warm light protects you...';
+        else if (p.relicTime > 0) status = 'The relic slows the Angels...';
+        else if (id === 4 && p.battery <= 0) status = 'The camera is dead. Find a battery...';
+        else if (id === 4 && p.lens > 0.5 && p.battery < 20) status = 'Camera battery low...';
+        else if (level.flashlightAllowed && !p.flashlightOn && p.battery <= 0) status = 'Battery depleted...';
         else if (p.sanity < 30) status = 'You feel them watching...';
+        else if (id === 3 && p.sprinting) status = 'Every splash carries through the dark...';
         else if (p.sprinting) status = 'They can hear you running...';
-        else if (level.id === 1 && Monsters.nearestWatcherDistance() < 16) status = 'Something is near...';
-        else if (level.id === 2 && state.angelState.closest < 18) status = 'You hear chimes in the mist...';
+        else if (id === 3 && p.wade > 0.5 && !p.crouch) status = 'The water is deep here. Every step echoes.';
+        else if (id === 3 && Monsters.nearestDistance() < 14) status = p.crouch ? 'Hold still. It is listening...' : 'Something is listening... crouch.';
+        else if (p.crouch) status = 'Moving quietly...';
+        else if (id === 4 && p.lens > 0.5) status = 'Recording...';
+        else if (id === 2 && state.angelState.closest < 18) status = 'You hear chimes in the mist...';
+        else if (id === 5 && state.angelState.closest < 14) status = 'A halo glimmers in the dark. Keep it at the edge of your eye...';
+        else if (Monsters.nearestWatcherDistance() < 16) status = 'Something is near...';
         HUD.setStatus(status);
     }
 
     // =========================================================================
     // Rendering & screen effects
     // =========================================================================
-    const TINT1 = new THREE.Color(1.03, 0.97, 0.9), TINT2 = new THREE.Color(0.9, 0.97, 1.06);
     function render(dt) {
         const u = PostFX.uniforms;
         const p = player;
+        const info = LEVEL_INFO[level.id];
         const fear = 1 - p.sanity / 100;
         const charge = state.angelState.charge || 0;
+        const lens = p.lens;
+        // Signal tearing in the viewfinder when one of the Unseen is close
+        const hunter = Monsters.nearestHunter;
+        const tear = lens > 0.01 && hunter < 12 ? (1 - hunter / 12) * lens : 0;
 
         state.fade = damp(state.fade, state.fadeTarget, 3.5, dt);
         state.flash = Math.max(0, state.flash - dt * 1.6);
 
-        let blackout = state.fade;
+        let blackout = Math.max(state.fade, level.blackout || 0);
         if (p.sanity < 18 && state.mode === 'playing') {
             const n = Noise.value2(state.time * 3, 7.7, 256, 256);
             if (n < 0.18) blackout = Math.max(blackout, 0.85);
         }
 
-        u.exposure.value = settings.brightness * (level.id === 1 ? 1.0 : 1.05);
-        u.vignette.value = 0.5 + fear * 0.4;
-        u.grain.value = 0.045 + fear * 0.07;
-        u.aberration.value = smoothstep(0.45, 1, fear) * 1.1 + charge * 1.6;
-        u.warp.value = smoothstep(0.6, 1, fear) * (0.7 + 0.3 * Math.sin(state.time * 1.3)) + charge * 0.25;
+        const stare = level.stare || 0;
+        u.exposure.value = settings.brightness * (info.exposure || 1.0) * (1 + lens * 1.7);
+        u.vignette.value = 0.5 + fear * 0.4 + lens * 0.25;
+        u.grain.value = 0.045 + fear * 0.07 + lens * 0.05;
+        u.aberration.value = smoothstep(0.45, 1, fear) * 1.1 + charge * 1.6 + tear * 1.5 + stare * 1.2;
+        u.warp.value = smoothstep(0.6, 1, fear) * (0.7 + 0.3 * Math.sin(state.time * 1.3)) + charge * 0.25 + stare * 0.5;
         u.pulse.value = state.beat * Math.max(smoothstep(0.5, 1, fear), (state.beatIntensity || 0) > 0.7 ? 0.5 : 0);
         u.flash.value = state.flash;
         u.flashColor.value.copy(state.flashColor);
         u.blackout.value = blackout;
-        u.saturation.value = level.id === 1 ? 0.8 - fear * 0.25 : 0.62;
-        u.tint.value.copy(level.id === 1 ? TINT1 : TINT2);
+        u.saturation.value = info.saturation !== undefined ? info.saturation : 0.8 - fear * 0.25;
+        u.tint.value.copy(info.tint);
+        u.nightVision.value = lens;
+        u.interference.value = tear;
 
         PostFX.render(scene, camera, state.time);
     }
@@ -899,6 +1114,8 @@
     const DEATH_TEXT = {
         watcher: 'The darkness consumed you...',
         angel: "The Angel's cold embrace took you...",
+        drowned: 'Cold hands pulled you under the black water...',
+        unseen: "It was there all along. You just weren't recording.",
         sanity: 'Your mind shattered in the darkness...'
     };
 
@@ -909,26 +1126,29 @@
         closeNote();
         Monsters.silence();
         AudioSys.stopAllVoices();
+        AudioSys.stopBeds();
         HUD.showHud(false);
         if (isLocked()) document.exitPointerLock();
 
         // Same jumpscare as always: image + scream, two seconds
         const js = $('jumpscare-screen');
-        $('jumpscare-image').src = level.id === 1 ? 'images/monster.png' : 'images/angel.jpg';
+        const angelic = cause === 'angel' || (cause === 'sanity' && level.id === 2);
+        $('jumpscare-image').src = angelic ? 'images/angel.jpg' : 'images/watcher_jumpscare.png';
         js.style.display = 'flex';
         AudioSys.playJumpscare();
         state.fadeTarget = 1;
+        HUD.setCamcorder(false);
 
         setTimeout(() => {
             js.style.display = 'none';
             state.mode = 'dead';
             AudioSys.stopMusic();
-            $('death-title').textContent = level.id === 1 ? 'CONSUMED BY DARKNESS' : 'CONSUMED BY LIGHT';
+            $('death-title').textContent = LEVEL_INFO[level.id].deathTitle;
             $('death-message').textContent = cause === 'sanity' && level.id === 2 ? 'Your mind shattered in the light...' : DEATH_TEXT[cause];
             $('death-stats').innerHTML =
                 `<span>Level <b>${LEVEL_INFO[level.id].num}</b></span>` +
                 `<span>Survived <b>${formatTime(state.levelTime)}</b></span>` +
-                `<span>Notes <b>${state.stats.notes.size}/${Lore.level1.length + Lore.level2.length}</b></span>`;
+                `<span>Notes <b>${state.stats.notes.size}/${Lore.total()}</b></span>`;
             $('death-screen').classList.add('show');
         }, 2000);
     }
@@ -936,20 +1156,35 @@
     function completeLevel() {
         if (state.mode !== 'playing') return;
         closeNote();
-        if (level.id === 1) {
+        if (level.id < LAST_LEVEL) {
+            const next = level.id + 1;
+            const c = LEVEL_INFO[level.id].exitFlash;
             state.mode = 'transition';
             state.fadeTarget = 1;
             state.flash = 0.5;
-            state.flashColor.setRGB(0.6, 1, 0.7);
+            state.flashColor.setRGB(c[0], c[1], c[2]);
             Monsters.silence();
             AudioSys.stopAllVoices();
-            setTimeout(() => loadLevel(2, { fresh: false }), 1200);
+            HUD.setCamcorder(false);
+            setTimeout(() => loadLevel(next, { fresh: false }), 1200);
         } else {
-            victory();
+            // You looked back. Everything goes white.
+            state.mode = 'transition';
+            state.flash = 1.4;
+            state.flashColor.setRGB(1, 0.97, 0.94);
+            Monsters.silence();
+            AudioSys.stopAllVoices();
+            AudioSys.stopBeds();
+            AudioSys.sting(1);
+            HUD.setGaze(0);
+            setTimeout(() => { state.fadeTarget = 1; }, 900);
+            setTimeout(victory, 2600);
         }
     }
 
     function victory() {
+        $('victory-title').textContent = 'YOU LOOKED BACK';
+        $('victory-message').textContent = 'The eye closed. For the first time since you came down here, nothing is watching you.';
         state.mode = 'victory';
         Monsters.silence();
         AudioSys.stopAllVoices();
@@ -961,7 +1196,7 @@
         $('survival-time').textContent = `Time survived: ${formatTime(total)}`;
         $('victory-stats').innerHTML =
             `<span>Matches used <b>${state.stats.matchesUsed}</b></span>` +
-            `<span>Notes found <b>${state.stats.notes.size}/${Lore.level1.length + Lore.level2.length}</b></span>` +
+            `<span>Notes found <b>${state.stats.notes.size}/${Lore.total()}</b></span>` +
             `<span>Deaths <b>${state.stats.deaths}</b></span>`;
         $('victory-screen').classList.add('show');
     }
@@ -1002,10 +1237,151 @@
     }
 
     // =========================================================================
+    // Debug console: jump to any level, god mode, refills. Press ` to toggle.
+    // =========================================================================
+    const debugOpen = () => $('debug-console').classList.contains('active');
+    let debugResume = false;
+
+    function setGodMode(on) {
+        player.godMode = on;
+        HUD.setGodMode(on);
+        if (!on) player.pos.y = 0;
+        if (state.mode === 'playing' || state.mode === 'paused') HUD.toast('GOD MODE: ' + (on ? 'ON' : 'OFF'), on ? 'good' : 'bad');
+        syncDebug();
+    }
+
+    function syncDebug() {
+        const g = $('debug-god');
+        g.classList.toggle('on', player.godMode);
+        g.querySelector('span').textContent = player.godMode ? 'ON' : 'OFF';
+        const inGame = !!level && state.mode !== 'menu';
+        document.querySelectorAll('.debug-level').forEach((b) => {
+            b.classList.toggle('current', inGame && Number(b.dataset.level) === state.levelId);
+        });
+    }
+
+    function debugLog(text, kind = '') {
+        const log = $('debug-log');
+        const line = document.createElement('div');
+        if (kind) line.className = kind;
+        line.textContent = text;
+        log.appendChild(line);
+        while (log.children.length > 30) log.removeChild(log.firstChild);
+        log.scrollTop = log.scrollHeight;
+    }
+
+    function openDebug() {
+        debugResume = state.mode === 'playing';
+        $('debug-console').classList.add('active');
+        if (isLocked()) document.exitPointerLock();
+        for (const k in keys) keys[k] = false;
+        syncDebug();
+        setTimeout(() => $('debug-input').focus(), 30);
+    }
+
+    function closeDebug() {
+        $('debug-console').classList.remove('active');
+        $('debug-input').blur();
+        // Drop straight back into the game if that's where we came from
+        if (debugResume && state.mode === 'paused') requestLock();
+        debugResume = false;
+    }
+
+    function toggleDebug() {
+        if (debugOpen()) closeDebug();
+        else openDebug();
+    }
+
+    function jumpToLevel(n) {
+        if (!LEVEL_INFO[n]) { debugLog(`No level ${n}. Levels are 1-${LAST_LEVEL}.`, 'err'); return; }
+        if (state.mode === 'loading' || state.mode === 'transition' || state.mode === 'dying') {
+            debugLog('Busy - try again in a moment.', 'err');
+            return;
+        }
+        debugResume = false;
+        $('debug-console').classList.remove('active');
+        ['death-screen', 'victory-screen'].forEach((id) => $(id).classList.remove('show'));
+        $('pause-menu').classList.remove('active');
+        $('settings-panel').classList.remove('active');
+        $('jumpscare-screen').style.display = 'none';
+        AudioSys.ensureContext();
+        AudioSys.suspendAll(false);
+        if (state.mode === 'menu' || !state.stats.runStart) {
+            Menu.stop();
+            state.stats = { runStart: performance.now(), deaths: 0, matchesUsed: 0, notes: new Set() };
+        }
+        $('start-screen').classList.add('hidden');
+        debugLog(`Loading level ${LEVEL_INFO[n].num}: ${LEVEL_INFO[n].title}`, 'ok');
+        requestLock();
+        loadLevel(n);
+    }
+
+    function refillAll() {
+        if (!level || state.mode === 'menu') { debugLog('Not in a level.', 'err'); return; }
+        player.sanity = 100;
+        player.stamina = 100;
+        player.battery = 100;
+        player.exhausted = false;
+        player.matches = Math.max(player.matches, 5);
+        debugLog('Sanity, stamina, battery and matches refilled.', 'ok');
+    }
+
+    const DEBUG_HELP = [
+        'level <1-5>   jump to a level (also: l 3, or just 3)',
+        'god [on|off]  toggle invulnerable no-clip flying (also the Z key)',
+        'heal          refill sanity, stamina, battery and matches',
+        'menu          quit to the title screen',
+        'clear         clear this log'
+    ];
+
+    function runCommand(raw) {
+        const text = raw.trim().toLowerCase();
+        if (!text) return;
+        debugLog('> ' + raw.trim());
+        const [cmd, arg] = text.split(/\s+/);
+        if (/^\d+$/.test(cmd)) return jumpToLevel(Number(cmd));
+        switch (cmd) {
+            case 'level': case 'lvl': case 'l': case 'goto':
+                return jumpToLevel(Number(arg));
+            case 'god':
+                setGodMode(arg === 'on' ? true : arg === 'off' ? false : !player.godMode);
+                return debugLog('God mode ' + (player.godMode ? 'ON' : 'OFF'), 'ok');
+            case 'heal': case 'refill':
+                return refillAll();
+            case 'menu':
+                $('debug-console').classList.remove('active');
+                debugResume = false;
+                return toMenu();
+            case 'clear':
+                $('debug-log').textContent = '';
+                return;
+            case 'help': case '?':
+                DEBUG_HELP.forEach((l) => debugLog(l));
+                return;
+            default:
+                debugLog(`Unknown command "${cmd}". Type help.`, 'err');
+        }
+    }
+
+    document.querySelectorAll('.debug-level').forEach((b) => {
+        b.addEventListener('click', () => jumpToLevel(Number(b.dataset.level)));
+    });
+    $('debug-god').addEventListener('click', () => setGodMode(!player.godMode));
+    $('debug-heal').addEventListener('click', refillAll);
+    $('debug-close').addEventListener('click', closeDebug);
+    $('pause-debug').addEventListener('click', openDebug);
+    $('debug-console').addEventListener('click', (e) => { if (e.target.id === 'debug-console') closeDebug(); });
+    $('debug-input').addEventListener('keydown', (e) => {
+        if (e.code !== 'Enter') return;
+        runCommand(e.target.value);
+        e.target.value = '';
+    });
+
+    // =========================================================================
     // Input
     // =========================================================================
     document.addEventListener('mousemove', (e) => {
-        if (state.mode !== 'playing' || (!isLocked() && !state.debug)) return;
+        if (state.mode !== 'playing' || state.note || debugOpen() || (!isLocked() && !state.debug)) return;
         const s = settings.cameraSensitivity;
         player.yaw -= e.movementX * s;
         player.pitch = clamp(player.pitch - e.movementY * s, -1.45, 1.45);
@@ -1014,6 +1390,16 @@
     });
 
     window.addEventListener('keydown', (e) => {
+        // The debug console gets first look at every key
+        if (e.code === 'Backquote') {
+            e.preventDefault();
+            if (!e.repeat) toggleDebug();
+            return;
+        }
+        if (debugOpen()) {
+            if (e.code === 'Escape') { e.preventDefault(); closeDebug(); }
+            return; // typing in the console never moves the player
+        }
         keys[e.code] = true;
         if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
         if (state.mode === 'paused' && e.code === 'Escape') {
@@ -1028,15 +1414,18 @@
             case 'KeyF':
                 toggleFlashlight();
                 break;
+            case 'KeyC':
+                toggleCrouch();
+                break;
+            case 'KeyQ':
+                if (level && level.camcorder) player.lensToggle = !player.lensToggle;
+                break;
             case 'KeyE':
                 if (state.note) closeNote();
                 else if (state.nearNote) openNote(state.nearNote);
                 break;
             case 'KeyZ':
-                player.godMode = !player.godMode;
-                HUD.setGodMode(player.godMode);
-                HUD.toast('GOD MODE: ' + (player.godMode ? 'ON' : 'OFF'), player.godMode ? 'good' : 'bad');
-                if (!player.godMode) player.pos.y = 0;
+                setGodMode(!player.godMode);
                 break;
             case 'Escape':
                 if (state.note) closeNote();
@@ -1048,6 +1437,18 @@
 
     renderer.domElement.addEventListener('click', () => {
         if (state.mode === 'playing' && !isLocked()) requestLock();
+    });
+
+    // Right mouse raises the camcorder while held
+    document.addEventListener('mousedown', (e) => {
+        if (e.button === 2 && state.mode === 'playing') player.lensHeld = true;
+    });
+    document.addEventListener('mouseup', (e) => {
+        if (e.button === 2) player.lensHeld = false;
+    });
+    window.addEventListener('blur', () => { player.lensHeld = false; });
+    document.addEventListener('contextmenu', (e) => {
+        if (state.mode === 'playing' || isLocked()) e.preventDefault();
     });
 
     // =========================================================================
@@ -1107,8 +1508,7 @@
         { id: 'music-volume', key: 'musicVolume', toUi: (v) => v * 100, fromUi: (v) => v / 100, label: (v) => Math.round(v * 100) + '%' },
         { id: 'sfx-volume', key: 'sfxVolume', toUi: (v) => v * 100, fromUi: (v) => v / 100, label: (v) => Math.round(v * 100) + '%' },
         { id: 'camera-sensitivity', key: 'cameraSensitivity', toUi: (v) => (v / 0.002) * 100, fromUi: (v) => (v / 100) * 0.002, label: (v) => Math.round((v / 0.002) * 100) + '%' },
-        { id: 'brightness', key: 'brightness', toUi: (v) => v * 100, fromUi: (v) => v / 100, label: (v) => Math.round(v * 100) + '%' },
-        { id: 'fov', key: 'fov', toUi: (v) => v, fromUi: (v) => Number(v), label: (v) => Math.round(v) + '°' }
+        { id: 'brightness', key: 'brightness', toUi: (v) => v * 100, fromUi: (v) => v / 100, label: (v) => Math.round(v * 100) + '%' }
     ];
 
     function applySettings() {

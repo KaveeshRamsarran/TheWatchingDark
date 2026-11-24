@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=Special+Elite&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="preload" as="image" href="images/monster.png">
+    <link rel="preload" as="image" href="images/watcher_jumpscare.png">
     <link rel="preload" as="image" href="images/angel.jpg">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -49,8 +49,20 @@
             <div id="inventory">
                 <div class="inv-label">MATCHES <kbd>SPACE</kbd></div>
                 <div id="match-row"><div id="match-slots"></div><span id="match-extra"></span></div>
-                <div class="inv-hint"><kbd>F</kbd> flashlight &nbsp; <kbd>E</kbd> read &nbsp; <kbd>SHIFT</kbd> sprint</div>
+                <div class="inv-hint" id="inv-hint"><kbd>F</kbd> flashlight &nbsp; <kbd>C</kbd> crouch &nbsp; <kbd>E</kbd> read &nbsp; <kbd>SHIFT</kbd> sprint</div>
             </div>
+
+            <div id="camcorder" aria-hidden="true">
+                <div class="cam-corner tl"></div><div class="cam-corner tr"></div>
+                <div class="cam-corner bl"></div><div class="cam-corner br"></div>
+                <div class="cam-rec"><span class="cam-dot"></span>REC</div>
+                <div class="cam-time" id="cam-time">00:00:00:00</div>
+                <div class="cam-mode">NIGHTSHOT &nbsp;IR</div>
+                <div class="cam-batt"><div class="cam-batt-bar"><div id="cam-batt-fill"></div></div><span id="cam-batt-pct">100%</span></div>
+                <div class="cam-cross"></div>
+            </div>
+            <div id="crouch-indicator">CROUCHING</div>
+            <div id="gaze-ring"></div>
 
             <div id="crosshair"></div>
             <div id="prompt"></div>
@@ -64,13 +76,14 @@
         </div>
 
         <div id="match-counter-message"></div>
+        <div id="subliminal"><img alt="" id="subliminal-image"></div>
 
         <div id="note-screen">
             <div id="note-content">
                 <h2 id="note-title"></h2>
                 <p class="note-date" id="note-date"></p>
                 <div class="note-text" id="note-text"></div>
-                <p class="note-close"><kbd>E</kbd> close &nbsp;·&nbsp; or walk away</p>
+                <p class="note-close"><kbd>E</kbd> close &nbsp;·&nbsp; time stands still while you read</p>
             </div>
         </div>
 
@@ -124,8 +137,8 @@
         </div>
 
         <div id="victory-screen" class="end-screen victory">
-            <h2 class="end-title">YOU SURVIVED</h2>
-            <p class="end-message">You escaped the watching dark...</p>
+            <h2 class="end-title" id="victory-title">YOU SURVIVED</h2>
+            <p class="end-message" id="victory-message">You escaped the watching dark...</p>
             <p id="survival-time"></p>
             <div class="end-stats" id="victory-stats"></div>
             <div class="end-buttons">
@@ -143,11 +156,13 @@
                     <button id="pause-resume" class="btn primary">RESUME</button>
                     <button id="pause-settings" class="btn">SETTINGS</button>
                     <button class="btn fullscreen-toggle"><span class="fs-label">FULLSCREEN</span></button>
+                    <button id="pause-debug" class="btn">DEBUG CONSOLE</button>
                     <button id="pause-quit" class="btn">QUIT TO MENU</button>
                 </div>
                 <div class="controls-mini">
                     <span><kbd>WASD</kbd> move</span><span><kbd>SHIFT</kbd> sprint</span><span><kbd>F</kbd> flashlight</span>
-                    <span><kbd>SPACE</kbd> match</span><span><kbd>E</kbd> read</span><span><kbd>ESC</kbd> pause</span>
+                    <span><kbd>SPACE</kbd> match</span><span><kbd>C</kbd> crouch</span><span><kbd>RMB</kbd> camera</span>
+                    <span><kbd>E</kbd> read</span><span><kbd>ESC</kbd> pause</span><span><kbd>`</kbd> debug</span>
                 </div>
             </div>
         </div>
@@ -172,10 +187,6 @@
                 <div class="setting-group">
                     <label for="camera-sensitivity">Mouse sensitivity</label>
                     <div class="slider-container"><input type="range" id="camera-sensitivity" min="25" max="250" value="100"><span class="slider-value" id="camera-sensitivity-value">100%</span></div>
-                </div>
-                <div class="setting-group">
-                    <label for="fov">Field of view</label>
-                    <div class="slider-container"><input type="range" id="fov" min="60" max="100" value="75"><span class="slider-value" id="fov-value">75°</span></div>
                 </div>
                 <div class="setting-group">
                     <label for="brightness">Brightness</label>
@@ -208,12 +219,45 @@
                     <div><kbd>SHIFT</kbd><span>Sprint — drains sanity, and they hear you</span></div>
                     <div><kbd>F</kbd><span>Flashlight — limited battery</span></div>
                     <div><kbd>SPACE</kbd><span>Light a match — the Watchers flee from fire</span></div>
+                    <div><kbd>C</kbd><span>Crouch — slow, but almost silent</span></div>
+                    <div><kbd>RMB</kbd> / <kbd>Q</kbd><span>Raise the camcorder (Level IV)</span></div>
                     <div><kbd>E</kbd><span>Read notes left by those before you</span></div>
                 </div>
                 <div class="howto-rules">
                     <p><b>Level I — The Watchers</b> move only when you are not looking at them. Keep them in sight. Darkness eats your sanity; lamps, matches and your flashlight hold it back.</p>
                     <p><b>Level II — The Angels</b> are the opposite: they charge while you look at them. Use the edge of your vision, and never stare.</p>
+                    <p><b>Level III — The Drowned</b> are blind and hunt by sound. Crouch, stay out of the deep pools, and freeze when you hear clicking. Even a match strike is loud.</p>
+                    <p><b>Level IV — The Unseen</b> only exist on camera. While they are in the viewfinder they cannot move. Static means one is close; the camera battery is precious.</p>
+                    <p><b>Level V — The Watching Dark.</b> You are inside it. Few creatures remain — the rest climbed out long ago. Keep your light on, keep moving down, and don't look up... until it asks you to.</p>
                 </div>
+            </div>
+        </div>
+
+        <!-- ========================= DEBUG CONSOLE ========================= -->
+        <div id="debug-console" class="modal">
+            <div class="panel debug-panel">
+                <button id="debug-close" class="close-btn" aria-label="Close">&times;</button>
+                <h2 class="panel-title">DEBUG</h2>
+                <p class="panel-hint">Press <kbd>`</kbd> anywhere to open or close</p>
+
+                <div class="setting-section">JUMP TO LEVEL</div>
+                <div class="debug-levels">
+                    <button class="btn small debug-level" data-level="1"><b>I</b> The Maze</button>
+                    <button class="btn small debug-level" data-level="2"><b>II</b> The Lost Forest</button>
+                    <button class="btn small debug-level" data-level="3"><b>III</b> The Flooded Basement</button>
+                    <button class="btn small debug-level" data-level="4"><b>IV</b> The Observation Wing</button>
+                    <button class="btn small debug-level" data-level="5"><b>V</b> The Watching Dark</button>
+                </div>
+
+                <div class="setting-section">CHEATS</div>
+                <div class="debug-row">
+                    <button id="debug-god" class="btn small debug-toggle">GOD MODE <span>OFF</span></button>
+                    <button id="debug-heal" class="btn small">REFILL ALL</button>
+                </div>
+
+                <div class="setting-section">COMMAND</div>
+                <input id="debug-input" type="text" placeholder="type help and press Enter" autocomplete="off" spellcheck="false">
+                <div id="debug-log"></div>
             </div>
         </div>
 
@@ -232,8 +276,12 @@
     <script src="js/assets.js"></script>
     <script src="js/assetloader.js"></script>
     <script src="js/models.js"></script>
+    <script src="js/facility.js"></script>
     <script src="js/level1.js"></script>
     <script src="js/level2.js"></script>
+    <script src="js/level3.js"></script>
+    <script src="js/level4.js"></script>
+    <script src="js/level5.js"></script>
     <script src="js/monsters.js"></script>
     <script src="js/hud.js"></script>
     <script src="js/menu.js"></script>

@@ -101,13 +101,16 @@ const PostFX = (() => {
                 blackout: { value: 0.0 },
                 saturation: { value: 0.85 },
                 tint: { value: new THREE.Color(1, 1, 1) },
-                lift: { value: new THREE.Color(0.0, 0.004, 0.01) }
+                lift: { value: new THREE.Color(0.0, 0.004, 0.01) },
+                nightVision: { value: 0.0 },
+                interference: { value: 0.0 }
             },
             vertexShader: vertex,
             fragmentShader: /* glsl */`
                 uniform sampler2D tScene;
                 uniform sampler2D tBloom;
                 uniform float time, exposure, bloomStrength, grain, vignette, aberration, warp, pulse, flash, blackout, saturation;
+                uniform float nightVision, interference;
                 uniform vec2 resolution;
                 uniform vec3 flashColor, tint, lift;
                 varying vec2 vUv;
@@ -136,6 +139,14 @@ const PostFX = (() => {
                         uv += warp * 0.004 * vec2(sin(uv.y * 23.0 + time * 2.1), cos(uv.x * 17.0 + time * 1.6));
                     }
 
+                    // Camcorder signal tearing: horizontal bands jump sideways
+                    if (interference > 0.0) {
+                        float band = floor(uv.y * 48.0);
+                        float tear = hash(vec2(band, floor(time * 24.0))) - 0.5;
+                        float on = step(1.0 - interference * 0.6, hash(vec2(band * 1.7, floor(time * 12.0))));
+                        uv.x += tear * on * interference * 0.08;
+                    }
+
                     vec2 dir = centered * aberration * 0.012;
                     vec3 col;
                     col.r = texture2D(tScene, uv + dir).r;
@@ -148,6 +159,16 @@ const PostFX = (() => {
 
                     float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
                     col = mix(vec3(l), col, saturation) * tint + lift * (1.0 - l);
+
+                    // Night-vision viewfinder: green phosphor, scanlines and a slow rolling bar
+                    if (nightVision > 0.001) {
+                        float nl = clamp(pow(l, 0.8) * 1.3, 0.0, 1.0);
+                        float scan = 0.84 + 0.16 * sin(gl_FragCoord.y * 1.6);
+                        float roll = 0.92 + 0.08 * sin(vUv.y * 5.0 - time * 2.4);
+                        vec3 nv = vec3(0.34, 1.0, 0.45) * nl * scan * roll + vec3(0.0, 0.03, 0.008);
+                        nv += (hash(floor(uv * resolution * 0.5) + fract(time * 13.7) * 37.0) - 0.5) * 0.08 * (0.5 + interference);
+                        col = mix(col, nv, nightVision);
+                    }
 
                     float vig = smoothstep(0.95, 0.25, length(centered * vec2(1.0, 0.9)));
                     col *= mix(1.0, vig, vignette);

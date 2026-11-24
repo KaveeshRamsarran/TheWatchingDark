@@ -19,7 +19,12 @@ const HUD = (() => {
         noteScreen: $('note-screen'), noteTitle: $('note-title'), noteDate: $('note-date'), noteText: $('note-text'),
         levelCard: $('level-card'), levelCardTitle: $('level-card-title'), levelCardSub: $('level-card-sub'), levelCardNum: $('level-card-num'),
         loading: $('loading-screen'), loadingText: $('loading-text'), loadingFill: $('loading-fill'),
-        crosshair: $('crosshair')
+        crosshair: $('crosshair'),
+        hint: $('inv-hint'),
+        cam: $('camcorder'), camTime: $('cam-time'), camBatt: $('cam-batt-fill'), camBattPct: $('cam-batt-pct'),
+        crouch: $('crouch-indicator'),
+        gaze: $('gaze-ring'),
+        sub: $('subliminal'), subImg: $('subliminal-image')
     };
     const last = {};
     const mctx = el.minimap.getContext('2d');
@@ -54,19 +59,22 @@ const HUD = (() => {
         node.classList.toggle(cls, on);
     }
 
-    function update(p, levelId) {
+    // meter: 'battery' (flashlight), 'camera' (camcorder) or 'relic' (relic timer)
+    function update(p, meter) {
         setWidth(el.sanityFill, 'san', p.sanity);
         setText(el.sanityVal, 'sanv', Math.ceil(p.sanity));
         setClass(el.sanityRow, 'sanrow', 'critical', p.sanity < 30);
         setWidth(el.staminaFill, 'sta', p.stamina);
         setText(el.staminaVal, 'stav', Math.ceil(p.stamina));
         setClass(el.staminaFill, 'stafill', 'exhausted', p.exhausted);
-        if (levelId === 1) {
-            setText(el.batteryLabel, 'blabel', 'BATTERY');
+        setClass(el.crouch, 'crouch', 'show', p.crouch);
+        if (meter === 'battery' || meter === 'camera') {
+            const camera = meter === 'camera';
+            setText(el.batteryLabel, 'blabel', camera ? 'CAMERA' : 'BATTERY');
             setWidth(el.batteryFill, 'bat', p.battery);
             setText(el.batteryVal, 'batv', Math.ceil(p.battery));
             setClass(el.batteryRow, 'batrow', 'critical', p.battery < 20);
-            setClass(el.batteryRow, 'batrow', 'off', !p.flashlightOn);
+            setClass(el.batteryRow, 'batrow', 'off', camera ? p.lens < 0.5 : !p.flashlightOn);
             setClass(el.batteryRow, 'batrow', 'relic', false);
         } else {
             setText(el.batteryLabel, 'blabel', 'RELIC');
@@ -124,6 +132,47 @@ const HUD = (() => {
     }
 
     function setGodMode(on) { el.god.style.display = on ? 'block' : 'none'; }
+
+    // A ring around the crosshair that fills while you hold the great eye's gaze
+    function setGaze(p, show = p > 0) {
+        setClass(el.gaze, 'gaze', 'show', !!show);
+        const v = Math.round(clamp(p, 0, 1) * 200) / 2;
+        if (last.gazeV === v) return;
+        last.gazeV = v;
+        el.gaze.style.setProperty('--p', v + '%');
+    }
+
+    // Two frames of something you shouldn't have seen
+    let subTimer = null;
+    function subliminal(src) {
+        el.subImg.src = src;
+        el.sub.classList.add('show');
+        clearTimeout(subTimer);
+        subTimer = setTimeout(() => el.sub.classList.remove('show'), 60);
+    }
+
+    function setHint(html) {
+        if (last.hint === html) return;
+        last.hint = html;
+        el.hint.innerHTML = html;
+    }
+
+    // Camcorder viewfinder overlay: timecode counts up while recording
+    function setCamcorder(on, seconds = 0, battery = 100) {
+        setClass(el.cam, 'cam', 'show', on);
+        if (!on) return;
+        const s = Math.floor(seconds);
+        const frames = Math.floor((seconds % 1) * 30);
+        const pad = (n) => String(n).padStart(2, '0');
+        setText(el.camTime, 'camt', `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}:${pad(frames)}`);
+        const b = Math.ceil(battery);
+        if (last.camb !== b) {
+            last.camb = b;
+            el.camBatt.style.transform = `scaleX(${clamp(b / 100, 0, 1)})`;
+            el.camBattPct.textContent = b + '%';
+            el.cam.classList.toggle('low', b < 20);
+        }
+    }
 
     function setCrosshair(mode) { setClass(el.crosshair, 'cross', 'interact', mode === 'interact'); }
 
@@ -191,8 +240,9 @@ const HUD = (() => {
         ctx.beginPath();
         ctx.arc(R, R, R - 2, 0, TAU);
         ctx.clip();
+        const indoor = level.id !== 2;
         const bg = ctx.createRadialGradient(R, R, 0, R, R, R);
-        bg.addColorStop(0, level.id === 1 ? 'rgba(30,14,12,0.85)' : 'rgba(14,20,24,0.85)');
+        bg.addColorStop(0, indoor ? 'rgba(30,14,12,0.85)' : 'rgba(14,20,24,0.85)');
         bg.addColorStop(1, 'rgba(0,0,0,0.92)');
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, W, W);
@@ -203,14 +253,24 @@ const HUD = (() => {
 
         const range = 8;
         const cells = World.cells;
-        ctx.fillStyle = level.id === 1 ? 'rgba(120,90,70,0.16)' : 'rgba(90,120,110,0.14)';
+        ctx.fillStyle = indoor ? 'rgba(120,90,70,0.16)' : 'rgba(90,120,110,0.14)';
         for (let x = pcx - range; x <= pcx + range; x++) {
             for (let z = pcz - range; z <= pcz + range; z++) {
                 if (!isRevealed(x, z)) continue;
                 ctx.fillRect((x * C - Hf) * scale, (z * C - Hf) * scale, C * scale, C * scale);
             }
         }
-        ctx.strokeStyle = level.id === 1 ? 'rgba(210,180,160,0.8)' : 'rgba(150,200,170,0.75)';
+        // Deep water shows as a dark blue wash
+        if (level.isDeepCell) {
+            ctx.fillStyle = 'rgba(40,80,110,0.35)';
+            for (let x = pcx - range; x <= pcx + range; x++) {
+                for (let z = pcz - range; z <= pcz + range; z++) {
+                    if (!isRevealed(x, z) || !level.isDeepCell(x, z)) continue;
+                    ctx.fillRect((x * C - Hf) * scale, (z * C - Hf) * scale, C * scale, C * scale);
+                }
+            }
+        }
+        ctx.strokeStyle = indoor ? 'rgba(210,180,160,0.8)' : 'rgba(150,200,170,0.75)';
         ctx.lineWidth = 2;
         ctx.lineCap = 'round';
         ctx.beginPath();
@@ -234,7 +294,8 @@ const HUD = (() => {
             ctx.arc(x * scale, z * scale, r, 0, TAU);
             ctx.fill();
         };
-        for (const l of level.lamps) if (isRevealed(l.cell.x, l.cell.z)) dot(l.pos.x, l.pos.z, 2.5, l.level > 0.3 ? '#ffa860' : '#6a4a30');
+        const lampOn = level.id === 4 ? '#ff4a30' : '#ffa860';
+        for (const l of level.lamps) if (isRevealed(l.cell.x, l.cell.z)) dot(l.pos.x, l.pos.z, 2.5, l.level > 0.3 ? lampOn : '#6a4a30');
         for (const p of level.pickups) {
             if (p.collected || !isRevealed(p.cell.x, p.cell.z)) continue;
             dot(p.pos.x, p.pos.z, 3, p.type === 'battery' ? '#46ff86' : p.type === 'relic' ? '#ffd36a' : '#ff7a40');
@@ -251,7 +312,9 @@ const HUD = (() => {
             const edge = d > R - 12;
             if (edge) { rx = rx / d * (R - 12); ry = ry / d * (R - 12); }
             const pulse = 0.6 + Math.sin(time * 4) * 0.4;
-            ctx.fillStyle = level.id === 1 ? `rgba(70,255,130,${pulse})` : `rgba(255,210,110,${pulse})`;
+            const gold = level.id === 2 || level.exitStyle === 'portal';
+            ctx.fillStyle = level.exitStyle === 'heart' ? `rgba(255,40,30,${pulse})`
+                : gold ? `rgba(255,210,110,${pulse})` : `rgba(70,255,130,${pulse})`;
             ctx.beginPath();
             if (edge) {
                 const a = Math.atan2(ry, rx);
@@ -277,6 +340,7 @@ const HUD = (() => {
 
     return {
         update, setObjective, setStatus, setPrompt, toast, matchFlash, setLookWarning, setGodMode, setCrosshair,
+        setHint, setCamcorder, setGaze, subliminal,
         openNote, closeNote, levelCard, showLoading, showHud,
         resetMap, reveal, drawMap
     };
