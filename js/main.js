@@ -440,7 +440,9 @@
     // =========================================================================
     const isLocked = () => document.pointerLockElement === renderer.domElement;
     // Desktop play captures the mouse; touch play (and ?debug) doesn't need to
-    const wantsLock = () => !touchMode && !state.debug;
+    // (never on a browser that can't capture the mouse at all - waiting for it would pause forever)
+    const canLock = 'requestPointerLock' in Element.prototype;
+    const wantsLock = () => canLock && !touchMode && !state.debug;
 
     // "Enter the game": capture the mouse on desktop; on a phone go fullscreen in
     // landscape instead and carry straight on (there is no pointer lock to wait for)
@@ -1486,9 +1488,25 @@
     window.addEventListener('keyup', (e) => { keys[e.code] = false; });
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
+    // Which build is running, and whether it found a touch screen (shown on the title screen)
+    const BUILD = '2.1';
+    $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
+    // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
+    if (!TouchControls.canFullscreen) {
+        document.querySelectorAll('.fullscreen-toggle').forEach((b) => { b.style.display = 'none'; });
+        if (touchMode && !TouchControls.standalone) $('ios-tip').classList.add('show');
+    }
+
     // Touch controls: the joystick is read in updatePlayer; look and buttons arrive here
+    if (!TouchControls.canFullscreen) $('t-fullscreen').style.display = 'none';
     TouchControls.init({
         any() { AudioSys.retryBlocked(); },
+        // Fullscreen is lost when you switch apps, rotate, or the first request is refused:
+        // take it back on the next tap during play (unless you chose to leave it)
+        gesture() {
+            if (TouchControls.canFullscreen && !fsDeclined && state.mode === 'playing' &&
+                !(document.fullscreenElement || document.webkitFullscreenElement)) enterImmersive();
+        },
         look(dx, dy) {
             if (state.mode !== 'playing' || state.note || debugOpen()) return;
             const s = settings.cameraSensitivity * 1.9;
@@ -1499,6 +1517,8 @@
         },
         button(name, down) {
             if (name === 'pause') { if (down) pause(); return; }
+            // On release: browsers only allow fullscreen from the end of a tap
+            if (name === 'fullscreen') { if (!down) { fsDeclined = false; enterImmersive(); } return; }
             if (name === 'run') { keys.ShiftLeft = down; return; }
             if (!down || state.mode !== 'playing') return;
             if (name === 'match') { if (!player.godMode) lightMatch(); }
@@ -1550,21 +1570,27 @@
     // =========================================================================
     // ---- Fullscreen -----------------------------------------------------------
     const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+    // Set when the player deliberately leaves fullscreen, so taps don't drag them back in
+    let fsDeclined = false;
     function toggleFullscreen() {
         const root = document.documentElement;
         if (!fsElement()) {
+            fsDeclined = false;
+            if (touchMode) { enterImmersive(); return; }
             const req = root.requestFullscreen || root.webkitRequestFullscreen;
             if (req) {
                 const p = req.call(root, { navigationUI: 'hide' });
                 if (p && p.catch) p.catch(() => HUD.toast('Fullscreen not available', 'bad'));
             }
         } else {
+            fsDeclined = true;
             const exit = document.exitFullscreen || document.webkitExitFullscreen;
             if (exit) exit.call(document);
         }
     }
     function syncFullscreenUi() {
         const on = !!fsElement();
+        document.body.classList.toggle('fs-on', on);
         document.querySelectorAll('.fullscreen-toggle').forEach((b) => {
             b.classList.toggle('active', on);
             const label = b.querySelector('.fs-label');

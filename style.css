@@ -1343,3 +1343,38 @@ body:not(.touch) .touch-only { display: none !important; }
     .stack { gap: 0.45rem; }
     .stack .btn { padding-top: 0.5rem; padding-bottom: 0.5rem; font-size: 0.95rem; }
 }
+
+/* Build label and the iPhone fullscreen tip on the title screen */
+#build-tag {
+    position: absolute;
+    left: calc(12px + env(safe-area-inset-left));
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    z-index: 3;
+    font-size: 0.62rem;
+    letter-spacing: 0.15em;
+    color: var(--dim);
+}
+
+.ios-tip {
+    display: none;
+    margin-top: 0.8rem;
+    font-family: var(--type);
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.ios-tip.show { display: block; }
+.ios-tip b { color: var(--ink); font-weight: 400; }
+
+#t-fullscreen {
+    position: absolute;
+    top: calc(10px + env(safe-area-inset-top));
+    left: 50%;
+    width: 42px;
+    height: 42px;
+    padding: 10px;
+    margin-left: 31px;
+}
+
+#t-fullscreen svg { width: 100%; height: 100%; display: block; }
+.fs-on #t-fullscreen { display: none; }

@@ -4,8 +4,20 @@
 'use strict';
 
 const TouchControls = (() => {
-    const enabled = (window.matchMedia && matchMedia('(pointer: coarse)').matches) ||
-        ('ontouchstart' in window && navigator.maxTouchPoints > 0);
+    // Touch mode if the main pointer is a finger, the device has a touch screen, or the
+    // browser identifies as a phone/tablet. Force it with ?touch=1 (or off with ?touch=0).
+    const forced = /[?&]touch=([01])\b/.exec(location.search);
+    const ua = navigator.userAgent || '';
+    const mobileUA = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|Opera Mini|IEMobile/i.test(ua) ||
+        (navigator.userAgentData && navigator.userAgentData.mobile) ||
+        (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1); // iPadOS pretends to be a Mac
+    const enabled = forced ? forced[1] === '1' :
+        !!((window.matchMedia && matchMedia('(pointer: coarse)').matches) ||
+        ('ontouchstart' in window && navigator.maxTouchPoints > 0) || mobileUA);
+    // iPhone Safari has no fullscreen API for web pages (Add to Home Screen instead)
+    const canFullscreen = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+    const standalone = (window.matchMedia && matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) ||
+        navigator.standalone === true;
     const move = { x: 0, y: 0, mag: 0, sprint: false };
     const R = 58;              // joystick travel in px
     let handlers = {};
@@ -45,8 +57,12 @@ const TouchControls = (() => {
             b.addEventListener('touchend', up, opts);
             b.addEventListener('touchcancel', up, opts);
         });
-        // Any touch at all gives blocked audio another chance to start (iOS)
-        document.addEventListener('touchend', () => handlers.any && handlers.any(), { passive: true });
+        // Any touch at all gives blocked audio another chance to start (iOS). The end of a
+        // touch also counts as a user gesture, so it's the moment we may re-enter fullscreen.
+        document.addEventListener('touchend', () => {
+            handlers.any && handlers.any();
+            handlers.gesture && handlers.gesture();
+        }, { passive: true });
     }
 
     function onStart(e) {
@@ -133,5 +149,5 @@ const TouchControls = (() => {
         document.querySelectorAll(`[data-touch="${name}"]`).forEach((b) => b.classList.toggle('active', !!on));
     }
 
-    return { enabled, move, init, reset, configure, setActive };
+    return { enabled, canFullscreen, standalone, move, init, reset, configure, setActive };
 })();

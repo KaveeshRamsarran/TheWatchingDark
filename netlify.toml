@@ -1,0 +1,10 @@
+# Netlify: a static site - no build step, serve this folder as-is
+[build]
+  publish = "."
+  command = ""
+
+# Always check for a newer version of the game files, so phones never run stale code
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
