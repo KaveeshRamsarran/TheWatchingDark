@@ -165,28 +165,52 @@ const Models = (() => {
     // ---------------------------------------------------------------------------
     // Rigged Watcher built in Blender (tools/blender/build_models.py)
     // ---------------------------------------------------------------------------
-    function watcherRigMaterials() {
-        if (shared.watcherRig) return shared.watcherRig;
+    // Skin looks for each creature built on the Watcher body:
+    //  watcher - near-black hide;  drowned - pale, waterlogged and eyeless;
+    //  unseen  - bone-white and faintly luminous, so it blazes in night vision
+    const VARIANTS = {
+        watcher: { color: 0x46424a, rim: 0x080103, rimPower: 3.2, emissive: 0x000000, roughness: 1, eyes: 'burning', smoke: [0x050206, 0.55, 0.55], procColor: 0x040304, procRim: 0x1e0206 },
+        drowned: { color: 0x7d8a80, rim: 0x0c1c18, rimPower: 2.6, emissive: 0x000000, roughness: 0.55, eyes: 'none', smoke: null, procColor: 0x56625a, procRim: 0x0c1c18 },
+        unseen: { color: 0x9e9c96, rim: 0x3a3a3a, rimPower: 2.2, emissive: 0x080808, roughness: 0.8, eyes: 'hollow', smoke: null, procColor: 0x9e9c96, procRim: 0x3a3a3a }
+    };
+
+    function watcherRigMaterials(variant = 'watcher') {
+        const key = 'watcherRig_' + variant;
+        if (shared[key]) return shared[key];
+        const V = VARIANTS[variant] || VARIANTS.watcher;
         const sk = Textures.skin();
-        shared.watcherRig = {
+        shared[key] = {
             skin: markShared(addRim(new THREE.MeshStandardMaterial({
-                map: sk.map, normalMap: sk.normalMap, roughnessMap: sk.roughnessMap, roughness: 1,
-                color: 0x46424a, normalScale: new THREE.Vector2(1.6, 1.6), skinning: true
-            }), 0x080103, 3.2)),
+                map: sk.map, normalMap: sk.normalMap, roughnessMap: sk.roughnessMap, roughness: V.roughness,
+                color: V.color, emissive: V.emissive, normalScale: new THREE.Vector2(1.6, 1.6), skinning: true
+            }), V.rim, V.rimPower)),
             teeth: markShared(new THREE.MeshStandardMaterial({ color: 0x8c7d66, roughness: 0.4, skinning: true })),
             maw: markShared(new THREE.MeshBasicMaterial({ color: 0x000000, skinning: true })),
             eye: null
         };
-        return shared.watcherRig;
+        return shared[key];
     }
+
+    function variantSmoke(variant) {
+        const V = VARIANTS[variant] || VARIANTS.watcher;
+        if (!V.smoke) return null;
+        if (variant === 'watcher') return watcherAssets().smoke;
+        const key = 'smoke_' + variant;
+        if (!shared[key]) shared[key] = smokeMaterial(...V.smoke);
+        return shared[key];
+    }
+
+    // Eye material for creatures without burning eyes (the update code still sets its intensity)
+    const deadEyeMat = () => new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x000000, roughness: 1 });
 
     const AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);
     const qTmp = new THREE.Quaternion();
 
-    function createWatcher(scale = 1) {
+    function createWatcher(scale = 1, variant = 'watcher') {
         const model = Assets.ok ? Assets.watcher() : null;
-        if (!model) return createWatcherProcedural(scale);
-        const M = watcherRigMaterials();
+        if (!model) return createWatcherProcedural(scale, variant);
+        const VV = VARIANTS[variant] || VARIANTS.watcher;
+        const M = watcherRigMaterials(variant);
         model.traverse((o) => {
             if (!o.isMesh) return;
             const n = o.material.name || '';
@@ -219,8 +243,11 @@ const Models = (() => {
             rig.jaw.down = new THREE.Vector3(0, -1, 0).applyQuaternion(pinv);
         }
 
-        // Burning eyes deep in the sockets
-        const eyeMat = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2a1a, emissiveIntensity: 3, roughness: 0.4 });
+        // Burning eyes deep in the sockets (or none at all)
+        const burning = VV.eyes === 'burning';
+        const eyeMat = burning
+            ? new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2a1a, emissiveIntensity: 3, roughness: 0.4 })
+            : deadEyeMat();
         const eyeGlows = [];
         const headBone = rig.head ? rig.head.bone : root;
         if (!shared.watcherEyeGeo) {
@@ -229,21 +256,25 @@ const Models = (() => {
             shared.watcherEyeGeo = mergeGeometries([ring, core]);
             shared.watcherEyeGeo.userData.shared = true;
         }
-        for (const side of [-1, 1]) {
-            const p = new THREE.Vector3(side * 0.07, 2.27, 0.39);
-            headBone.worldToLocal(p);
-            const eye = new THREE.Mesh(shared.watcherEyeGeo, eyeMat);
-            eye.position.copy(p);
-            eye.quaternion.copy(headBone.getWorldQuaternion(new THREE.Quaternion()).invert());
-            headBone.add(eye);
-            const g = glowSprite(0xff2010, 0.3, 0.9);
-            g.position.copy(p);
-            headBone.add(g);
-            eyeGlows.push(g);
+        if (VV.eyes !== 'none') {
+            for (const side of [-1, 1]) {
+                // Deep in the sockets of the Blender skull (printed by build_models.py)
+                const p = new THREE.Vector3(side * 0.033, 2.635, 0.44);
+                headBone.worldToLocal(p);
+                const eye = new THREE.Mesh(shared.watcherEyeGeo, eyeMat);
+                eye.position.copy(p);
+                eye.quaternion.copy(headBone.getWorldQuaternion(new THREE.Quaternion()).invert());
+                headBone.add(eye);
+                if (!burning) continue;
+                const g = glowSprite(0xff2010, 0.22, 0.9);
+                g.position.copy(p);
+                headBone.add(g);
+                eyeGlows.push(g);
+            }
         }
 
-        const smoke = smokePoints(watcherAssets().smoke, 36, 0.55, 2.3);
-        root.add(smoke);
+        const smokeMat = variantSmoke(variant);
+        if (smokeMat) root.add(smokePoints(smokeMat, 36, 0.55, 2.3));
         root.scale.setScalar(scale);
 
         function pose(name, x, y = 0, z = 0) {
@@ -304,8 +335,15 @@ const Models = (() => {
         };
     }
 
-    function createWatcherProcedural(scale = 1) {
-        const A = watcherAssets();
+    function createWatcherProcedural(scale = 1, variant = 'watcher') {
+        const A0 = watcherAssets();
+        const VV = VARIANTS[variant] || VARIANTS.watcher;
+        let A = A0;
+        if (variant !== 'watcher') {
+            const key = 'procBody_' + variant;
+            if (!shared[key]) shared[key] = rimMaterial(VV.procColor, VV.roughness, VV.procRim, 2.4);
+            A = Object.assign({}, A0, { body: shared[key] });
+        }
         const root = new THREE.Group();
         const body = new THREE.Group();
         root.add(body);
@@ -334,17 +372,19 @@ const Models = (() => {
         neck.add(headGroup);
         mesh(A.head, A.body, headGroup);
 
-        const eyeMat = new THREE.MeshStandardMaterial({
-            color: 0x220000, emissive: 0xff2a1a, emissiveIntensity: 3, roughness: 0.4
-        });
-        const eyes = new THREE.Mesh(A.eyes, eyeMat);
-        headGroup.add(eyes);
+        const burning = VV.eyes === 'burning';
+        const eyeMat = burning
+            ? new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2a1a, emissiveIntensity: 3, roughness: 0.4 })
+            : deadEyeMat();
+        if (VV.eyes !== 'none') headGroup.add(new THREE.Mesh(A.eyes, eyeMat));
         const eyeGlows = [];
-        for (const side of [-1, 1]) {
-            const s = glowSprite(0xff2010, 0.32, 0.9);
-            s.position.set(side * 0.08, 0.3, 0.2);
-            headGroup.add(s);
-            eyeGlows.push(s);
+        if (burning) {
+            for (const side of [-1, 1]) {
+                const s = glowSprite(0xff2010, 0.32, 0.9);
+                s.position.set(side * 0.08, 0.3, 0.2);
+                headGroup.add(s);
+                eyeGlows.push(s);
+            }
         }
 
         const limbs = {};
@@ -376,8 +416,8 @@ const Models = (() => {
             limbs['knee' + key] = knee;
         }
 
-        const smoke = smokePoints(A.smoke, 40, 0.6, 2.2);
-        body.add(smoke);
+        const smokeMat = variantSmoke(variant);
+        if (smokeMat) body.add(smokePoints(smokeMat, 40, 0.6, 2.2));
 
         root.scale.setScalar(scale);
         const seed = Math.random() * 100;
@@ -544,10 +584,24 @@ const Models = (() => {
         return shared.stoneMats;
     }
 
+    // Blender-built Angel parts (robe, chest, arms, wing); null when the models didn't load
+    function angelParts() {
+        if (shared.angelParts !== undefined) return shared.angelParts;
+        const names = { robe: 'AngelRobe', chest: 'AngelChest', upper: 'AngelUpperArm', fore: 'AngelForearm', wing: 'AngelWing', wingBone: 'AngelWingBone' };
+        const P = {};
+        for (const [k, n] of Object.entries(names)) P[k] = Assets.ok ? Assets.part('angel', n) : null;
+        shared.angelParts = Object.values(P).every(Boolean) ? P : null;
+        if (shared.angelParts) {
+            shared.robeDouble = markShared(new THREE.MeshStandardMaterial({ color: 0xb7afa1, roughness: 0.9, emissive: 0x181612, side: THREE.DoubleSide }));
+        }
+        return shared.angelParts;
+    }
+
     function createAngel({ statue = false } = {}) {
         const A = angelAssets();
+        const P = angelParts();
         const S = statue ? stoneMaterials() : null;
-        const robeMat = statue ? S.stone : A.robe;
+        const robeMat = statue ? S.stone : P ? shared.robeDouble : A.robe;
         const skinMat = statue ? S.stone : A.skin;
         const faceMat = statue ? S.stone : A.face;
         const hairMat = statue ? S.stone : A.hairMat;
@@ -563,7 +617,12 @@ const Models = (() => {
             return m;
         };
 
-        mesh(A.torso, robeMat, body);
+        if (P) {
+            mesh(P.robe, robeMat, body);
+            mesh(P.chest, skinMat, body);
+        } else {
+            mesh(A.torso, robeMat, body);
+        }
 
         const neckPivot = new THREE.Group();
         neckPivot.position.y = 4.62;
@@ -597,12 +656,12 @@ const Models = (() => {
             shoulder.position.set(side * 0.3, 3.62, 0);
             shoulder.rotation.z = side * 0.18;
             body.add(shoulder);
-            mesh(A.upperArm, skinMat, shoulder);
+            mesh(P ? P.upper : A.upperArm, skinMat, shoulder);
             const elbow = new THREE.Group();
             elbow.position.y = -1.25;
             elbow.rotation.x = -0.15;
             shoulder.add(elbow);
-            mesh(A.forearm, skinMat, elbow);
+            mesh(P ? P.fore : A.forearm, skinMat, elbow);
             arms['shoulder' + key] = shoulder;
             arms['elbow' + key] = elbow;
         }
@@ -613,8 +672,9 @@ const Models = (() => {
             pivot.position.set(side * 0.14, 3.55, -0.2);
             pivot.rotation.y = side * -0.5;
             body.add(pivot);
-            const w = mesh(A.wing, wingMat, pivot);
+            const w = mesh(P ? P.wing : A.wing, wingMat, pivot);
             w.scale.x = side;
+            if (P) mesh(P.wingBone, skinMat, pivot).scale.x = side;
             wings.push(pivot);
         }
 
@@ -676,7 +736,7 @@ const Models = (() => {
     }
 
     // Hanging industrial lamp (static parts + bulb). Returned bulb material lets us flicker it.
-    function createLamp(cordLength) {
+    function createLamp(cordLength, color = 0xffb060) {
         if (!shared.lampGeo) {
             const cord = new THREE.CylinderGeometry(0.012, 0.012, 1, 4);
             cord.translate(0, 0.5, 0);
@@ -700,11 +760,11 @@ const Models = (() => {
         const shade = new THREE.Mesh(shared.lampGeo, shared.lampMat);
         shade.castShadow = false;
         g.add(shade);
-        const bulbMat = new THREE.MeshStandardMaterial({ color: 0xffd9a0, emissive: 0xffb060, emissiveIntensity: 6 });
+        const bulbMat = new THREE.MeshStandardMaterial({ color: 0xffd9a0, emissive: color, emissiveIntensity: 6 });
         const bulb = new THREE.Mesh(shared.bulbGeo, bulbMat);
         bulb.position.y = -0.06;
         g.add(bulb);
-        const glow = glowSprite(0xffa850, 2.6, 0.55, true);
+        const glow = glowSprite(color === 0xffb060 ? 0xffa850 : color, 2.6, 0.55, true);
         glow.position.y = -0.15;
         g.add(glow);
         return { group: g, bulbMat, glow };
@@ -859,6 +919,203 @@ const Models = (() => {
         return { group: g, core };
     }
 
+    // Iron fire bowl on a stone pedestal (the final maze has no ceiling to hang lamps from)
+    function createBrazier(color = 0xff6a2a) {
+        if (!shared.brazierGeo) {
+            const ped = new THREE.CylinderGeometry(0.22, 0.32, 1.1, 10);
+            ped.translate(0, 0.55, 0);
+            const foot = new THREE.CylinderGeometry(0.42, 0.46, 0.14, 10);
+            foot.translate(0, 0.07, 0);
+            shared.brazierStoneGeo = mergeGeometries([ped, foot]);
+            shared.brazierStoneGeo.userData.shared = true;
+            const bowl = new THREE.CylinderGeometry(0.46, 0.2, 0.3, 14, 1, true);
+            bowl.translate(0, 1.25, 0);
+            const rim = new THREE.TorusGeometry(0.46, 0.035, 6, 18);
+            rim.rotateX(Math.PI / 2);
+            rim.translate(0, 1.4, 0);
+            shared.brazierGeo = mergeGeometries([bowl, rim]);
+            shared.brazierGeo.userData.shared = true;
+            shared.coalsGeo = new THREE.CircleGeometry(0.4, 14);
+            shared.coalsGeo.rotateX(-Math.PI / 2);
+            shared.coalsGeo.translate(0, 1.3, 0);
+            shared.coalsGeo.userData.shared = true;
+            shared.brazierMat = markShared(new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.6, metalness: 0.7, side: THREE.DoubleSide }));
+        }
+        const g = new THREE.Group();
+        const stone = new THREE.Mesh(shared.brazierStoneGeo, stoneMaterials().stone);
+        stone.castShadow = true;
+        stone.receiveShadow = true;
+        const bowl = new THREE.Mesh(shared.brazierGeo, shared.brazierMat);
+        bowl.castShadow = true;
+        const coalMat = new THREE.MeshStandardMaterial({ color: 0x200804, emissive: color, emissiveIntensity: 2.5, roughness: 1 });
+        const coals = new THREE.Mesh(shared.coalsGeo, coalMat);
+        g.add(stone, bowl, coals);
+        const flames = [];
+        for (let i = 0; i < 3; i++) {
+            const f = new THREE.Sprite(new THREE.SpriteMaterial({ map: Textures.flame(), color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+            f.position.set(rand(-0.14, 0.14), 1.62, rand(-0.14, 0.14));
+            f.userData.phase = Math.random() * 10;
+            g.add(f);
+            flames.push(f);
+        }
+        const glow = glowSprite(color, 3.2, 0.55, true);
+        glow.position.y = 1.7;
+        g.add(glow);
+        return { group: g, flames, glow, coalMat };
+    }
+
+    // An old CRT on a metal desk, its screen crawling with static
+    function createMonitor() {
+        if (!shared.deskGeo) {
+            const top = new THREE.BoxGeometry(1.5, 0.06, 0.8);
+            top.translate(0, 0.78, 0);
+            const parts = [top];
+            for (const [x, z] of [[-0.68, -0.34], [0.68, -0.34], [-0.68, 0.34], [0.68, 0.34]]) {
+                const leg = new THREE.BoxGeometry(0.05, 0.78, 0.05);
+                leg.translate(x, 0.39, z);
+                parts.push(leg);
+            }
+            shared.deskGeo = mergeGeometries(parts);
+            shared.deskGeo.userData.shared = true;
+            const casing = new THREE.BoxGeometry(0.62, 0.5, 0.5);
+            casing.translate(0, 1.06, -0.06);
+            const back = new THREE.BoxGeometry(0.42, 0.34, 0.3);
+            back.translate(0, 1.04, -0.42);
+            shared.crtGeo = mergeGeometries([casing, back]);
+            shared.crtGeo.userData.shared = true;
+            shared.screenGeo = new THREE.PlaneGeometry(0.5, 0.38);
+            shared.screenGeo.translate(0, 1.07, 0.195);
+            shared.screenGeo.userData.shared = true;
+            shared.crtMat = markShared(new THREE.MeshStandardMaterial({ color: 0x2a2824, roughness: 0.55 }));
+        }
+        const g = new THREE.Group();
+        const desk = new THREE.Mesh(shared.deskGeo, metalMaterial());
+        desk.castShadow = true;
+        desk.receiveShadow = true;
+        const crt = new THREE.Mesh(shared.crtGeo, shared.crtMat);
+        crt.castShadow = true;
+        const screenMat = new THREE.MeshBasicMaterial({ map: Textures.staticNoise(), color: 0x6a7a88 });
+        const screen = new THREE.Mesh(shared.screenGeo, screenMat);
+        g.add(desk, crt, screen);
+        const glow = glowSprite(0x8aa8ff, 1.6, 0.18, true);
+        glow.position.set(0, 1.07, 0.35);
+        g.add(glow);
+        return { group: g, screenMat, glow };
+    }
+
+    // A thin woman in a stained dress, head bowed, long black hair hanging over her face.
+    // She does nothing. She is simply there. (Final level.)
+    function createFigure() {
+        const parts = Assets.ok ? ['FigureDress', 'FigureSkin', 'FigureHead', 'FigureHair'].map((n) => Assets.part('figure', n)) : [];
+        if (parts.length && parts.every(Boolean)) {
+            // Blender-built: torn dress, bony arms, long hair hanging over the face
+            if (!shared.figureMats) {
+                shared.figureMats = {
+                    dress: markShared(addRim(new THREE.MeshStandardMaterial({ color: 0x625a52, roughness: 0.95, side: THREE.DoubleSide }), 0x1a1614, 2.5)),
+                    skin: markShared(new THREE.MeshStandardMaterial({ color: 0x8c807a, roughness: 0.7 })),
+                    hair: markShared(new THREE.MeshStandardMaterial({ color: 0x050404, roughness: 0.55, side: THREE.DoubleSide }))
+                };
+            }
+            const M = shared.figureMats;
+            const root = new THREE.Group();
+            const mk = (geo, mat, parent) => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; parent.add(m); return m; };
+            mk(parts[0], M.dress, root);
+            mk(parts[1], M.skin, root);
+            const headPivot = new THREE.Group();
+            headPivot.position.set(0, 1.6, 0);
+            headPivot.rotation.set(0.55, 0, rand(-0.5, 0.5)); // bowed, tilted
+            root.add(headPivot);
+            mk(parts[2], M.skin, headPivot);
+            mk(parts[3], M.hair, headPivot);
+            return { root, headPivot };
+        }
+        if (!shared.figure) {
+            const V = (x, y) => new THREE.Vector2(x, y);
+            // Long shift dress: hem, narrow waist, small chest; shoulders are a separate shape
+            const dress = new THREE.LatheGeometry([
+                V(0.0, 0.0), V(0.33, 0.02), V(0.3, 0.45), V(0.22, 0.88), V(0.135, 1.08), V(0.16, 1.24),
+                V(0.17, 1.33), V(0.15, 1.42), V(0.06, 1.49), V(0.0, 1.5)
+            ], 18);
+            dress.scale(1, 1, 0.72);
+            const shoulders = new THREE.SphereGeometry(1, 14, 8);
+            shoulders.scale(0.215, 0.065, 0.095);
+            shoulders.translate(0, 1.43, 0);
+            const neck = new THREE.CylinderGeometry(0.038, 0.048, 0.16, 8);
+            neck.translate(0, 1.55, 0);
+            const dressAll = mergeGeometries([dress, shoulders]);
+            dress.dispose();
+            shoulders.dispose();
+            const head = new THREE.SphereGeometry(0.115, 14, 10);
+            head.scale(0.92, 1.15, 1.0);
+            const hair = new THREE.CylinderGeometry(0.125, 0.2, 0.85, 14, 3, true);
+            hair.translate(0, -0.33, 0);
+            const hairCap = new THREE.SphereGeometry(0.128, 14, 8, 0, TAU, 0, Math.PI * 0.55);
+            const arm = limbGeometry(0.044, 0.032, 0.66, 7);
+            const hand = new THREE.BoxGeometry(0.06, 0.16, 0.03);
+            hand.translate(0, -0.74, 0);
+            const fingers = [];
+            for (let f = 0; f < 4; f++) {
+                const fg = limbGeometry(0.009, 0.006, 0.12, 4);
+                fg.translate((f - 1.5) * 0.014, -0.82, 0);
+                fingers.push(fg);
+            }
+            const armFull = mergeGeometries([arm, hand, ...fingers]);
+            for (const g of [dressAll, neck, head, hair, hairCap, armFull]) g.userData.shared = true;
+            shared.figure = {
+                dress: dressAll, neck, head, hair, hairCap, arm: armFull,
+                dressMat: markShared(addRim(new THREE.MeshStandardMaterial({ color: 0x625a52, roughness: 0.95 }), 0x1a1614, 2.5)),
+                skinMat: markShared(new THREE.MeshStandardMaterial({ color: 0x8c807a, roughness: 0.7 })),
+                hairMat: markShared(new THREE.MeshStandardMaterial({ color: 0x050404, roughness: 0.55, side: THREE.DoubleSide }))
+            };
+        }
+        const F = shared.figure;
+        const root = new THREE.Group();
+        const mesh = (geo, mat, parent) => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; parent.add(m); return m; };
+        mesh(F.dress, F.dressMat, root);
+        mesh(F.neck, F.skinMat, root);
+        const headPivot = new THREE.Group();
+        headPivot.position.set(0, 1.62, 0.02);
+        headPivot.rotation.set(0.55, 0, rand(-0.5, 0.5)); // bowed, tilted
+        root.add(headPivot);
+        const head = new THREE.Group();
+        head.position.y = 0.1;
+        headPivot.add(head);
+        mesh(F.head, F.skinMat, head);
+        mesh(F.hairCap, F.hairMat, head).position.y = 0.01;
+        mesh(F.hair, F.hairMat, head);
+        for (const side of [-1, 1]) {
+            const a = mesh(F.arm, F.skinMat, root);
+            a.position.set(side * 0.2, 1.44, 0.0);
+            a.rotation.set(rand(-0.1, 0.15), 0, side * 0.06);
+        }
+        return { root, headPivot };
+    }
+
+    // The eye above the final maze: a vast eyeball between two dark lids
+    function createEye() {
+        const g = new THREE.Group();
+        const ball = new THREE.Mesh(
+            new THREE.SphereGeometry(1, 48, 32),
+            new THREE.MeshBasicMaterial({ map: Textures.eyeball(), color: 0xb8a8a8, fog: false })
+        );
+        g.add(ball);
+        const lidMat = new THREE.MeshBasicMaterial({ color: 0x080304, fog: false, side: THREE.DoubleSide });
+        // Upper lid = top hemisphere, lower lid = bottom hemisphere; they roll back to open
+        const upper = new THREE.Mesh(new THREE.SphereGeometry(1.06, 40, 16, 0, TAU, 0, Math.PI / 2), lidMat);
+        const lower = new THREE.Mesh(new THREE.SphereGeometry(1.06, 40, 16, 0, TAU, Math.PI / 2, Math.PI / 2), lidMat);
+        g.add(upper, lower);
+        const halo = glowSprite(0xff1a10, 7, 0.22, false);
+        halo.material.depthTest = true;
+        g.add(halo);
+        // open: 0 = shut, 1 = wide
+        const setOpen = (open) => {
+            upper.rotation.x = -0.95 * open;
+            lower.rotation.x = 0.7 * open;
+        };
+        setOpen(1);
+        return { group: g, ball, halo, setOpen };
+    }
+
     // ---------------------------------------------------------------------------
     // First-person hands: flashlight (right) and match (left)
     // ---------------------------------------------------------------------------
@@ -960,6 +1217,7 @@ const Models = (() => {
     return {
         pointUniforms, glowSprite, smokeMaterial, smokePoints, stoneMaterials, metalMaterial,
         createWatcher, createAngel, createLamp, createBattery, createRelic, createNoteStand,
-        createExitDoor, createPortal, createViewModels, createEnvMap
+        createExitDoor, createPortal, createViewModels, createEnvMap,
+        createBrazier, createMonitor, createEye, createFigure
     };
 })();

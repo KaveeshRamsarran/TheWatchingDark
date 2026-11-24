@@ -545,6 +545,149 @@ kbd {
     background: rgba(0, 40, 10, 0.5);
 }
 
+#crouch-indicator {
+    position: absolute;
+    left: 26px;
+    bottom: 132px;
+    font-size: 0.66rem;
+    letter-spacing: 0.35em;
+    color: var(--muted);
+    text-shadow: 0 1px 3px #000;
+    opacity: 0;
+    transition: opacity 0.25s;
+}
+
+#crouch-indicator.show { opacity: 0.85; }
+
+/* Final level: the gaze ring fills while you stare back */
+#gaze-ring {
+    --p: 0%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 74px;
+    height: 74px;
+    margin: -37px 0 0 -37px;
+    border-radius: 50%;
+    background: conic-gradient(rgba(255, 50, 36, 0.9) var(--p), rgba(255, 255, 255, 0.08) 0);
+    -webkit-mask: radial-gradient(circle, transparent 31px, #000 32px, #000 35px, transparent 36px);
+    mask: radial-gradient(circle, transparent 31px, #000 32px, #000 35px, transparent 36px);
+    filter: drop-shadow(0 0 8px rgba(255, 30, 20, 0.7));
+    opacity: 0;
+    transition: opacity 0.6s;
+}
+
+#gaze-ring.show { opacity: 1; }
+
+#subliminal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 160;
+    mix-blend-mode: screen;
+}
+
+#subliminal.show { display: flex; }
+#subliminal img { width: 70vmin; height: 70vmin; object-fit: cover; opacity: 0.32; filter: grayscale(1) contrast(1.6); }
+
+/* Camcorder viewfinder (Level IV) */
+#camcorder {
+    position: absolute;
+    inset: 14vh 24vw 21vh 24vw;
+    font-family: var(--mono);
+    color: #d8ffe0;
+    text-shadow: 0 0 6px rgba(120, 255, 150, 0.6);
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+#camcorder.show { opacity: 1; }
+
+.cam-corner {
+    position: absolute;
+    width: 48px;
+    height: 48px;
+    border: 0 solid rgba(220, 255, 225, 0.75);
+}
+
+.cam-corner.tl { top: 0; left: 0; border-top-width: 3px; border-left-width: 3px; }
+.cam-corner.tr { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; }
+.cam-corner.bl { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; }
+.cam-corner.br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; }
+
+.cam-rec {
+    position: absolute;
+    top: 14px;
+    left: 22px;
+    font-size: 1.15rem;
+    letter-spacing: 0.2em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cam-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #ff2a20;
+    box-shadow: 0 0 10px #ff2a20;
+    animation: recBlink 1s steps(1) infinite;
+}
+
+@keyframes recBlink { 50% { opacity: 0; } }
+
+.cam-time { position: absolute; top: 16px; right: 22px; font-size: 1.05rem; letter-spacing: 0.12em; }
+.cam-mode { position: absolute; bottom: 16px; left: 22px; font-size: 0.8rem; letter-spacing: 0.3em; opacity: 0.8; }
+
+.cam-batt {
+    position: absolute;
+    bottom: 14px;
+    right: 22px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
+}
+
+.cam-batt-bar {
+    width: 70px;
+    height: 14px;
+    border: 2px solid rgba(220, 255, 225, 0.8);
+    padding: 2px;
+    position: relative;
+}
+
+.cam-batt-bar::after {
+    content: '';
+    position: absolute;
+    right: -6px;
+    top: 3px;
+    width: 3px;
+    height: 6px;
+    background: rgba(220, 255, 225, 0.8);
+}
+
+#cam-batt-fill { height: 100%; background: rgba(220, 255, 225, 0.9); transform-origin: left center; }
+#camcorder.low #cam-batt-fill { background: #ff4a3a; }
+#camcorder.low .cam-batt { color: #ff6a5a; animation: recBlink 0.6s steps(1) infinite; }
+
+.cam-cross {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 36px;
+    height: 36px;
+    margin: -18px 0 0 -18px;
+    background:
+        linear-gradient(rgba(220, 255, 225, 0.6), rgba(220, 255, 225, 0.6)) center / 2px 100% no-repeat,
+        linear-gradient(rgba(220, 255, 225, 0.6), rgba(220, 255, 225, 0.6)) center / 100% 2px no-repeat;
+    opacity: 0.6;
+}
+
 /* Big centred match counter */
 #match-counter-message {
     position: fixed;
@@ -860,6 +1003,46 @@ kbd {
     letter-spacing: 0.35em;
     color: var(--red-hot);
 }
+
+/* Debug console */
+#debug-console { z-index: 1100; }
+.debug-panel { width: min(520px, 92vw); }
+.debug-levels { display: flex; flex-direction: column; gap: 0.45rem; }
+.debug-levels .btn { width: 100%; text-align: left; letter-spacing: 0.08em; }
+.debug-levels .btn b { display: inline-block; min-width: 2.6em; color: var(--red-hot); font-weight: 400; }
+.debug-levels .btn.current { border-color: var(--red-hot); }
+.debug-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.debug-row .btn { flex: 1 1 180px; }
+.debug-toggle span { color: var(--muted); margin-left: 0.4em; }
+.debug-toggle.on { border-color: var(--green); }
+.debug-toggle.on span { color: var(--green); }
+#debug-input {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    font: inherit;
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    color: var(--ink);
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--line);
+    outline: none;
+    user-select: text;
+    -webkit-user-select: text;
+}
+#debug-input:focus { border-color: rgba(233, 223, 207, 0.45); }
+#debug-log {
+    margin-top: 0.6rem;
+    min-height: 3.6em;
+    max-height: 9em;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--muted);
+    white-space: pre-wrap;
+}
+#debug-log .ok { color: var(--green); }
+#debug-log .err { color: var(--red-hot); }
 
 .setting-group { margin-bottom: 0.7rem; }
 .setting-group label { display: block; font-size: 0.85rem; color: #cfc2b2; margin-bottom: 0.3rem; }

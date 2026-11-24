@@ -91,5 +91,48 @@ const Assets = (() => {
         return out;
     }
 
-    return { load, has, watcher, flashlight, tree, get ok() { return ok; } };
+    // One named object from a model file, baked into a single shared geometry
+    // (position, normal, uv and - when the model has them - greyscale vertex colours)
+    const partCache = {};
+    function part(file, name) {
+        const key = file + ':' + name;
+        if (key in partCache) return partCache[key];
+        let out = null;
+        const g = gltfs[file];
+        const node = g && g.scene.getObjectByName(name);
+        if (node) {
+            g.scene.updateMatrixWorld(true);
+            const geos = [];
+            node.traverse((o) => {
+                if (!o.isMesh) return;
+                const src = o.geometry, geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', src.attributes.position.clone());
+                if (src.attributes.normal) geo.setAttribute('normal', src.attributes.normal.clone());
+                if (src.attributes.uv) geo.setAttribute('uv', src.attributes.uv.clone());
+                const c = src.attributes.color;
+                if (c) {
+                    const div = !c.normalized ? 1 : c.array instanceof Uint16Array ? 65535 : c.array instanceof Uint8Array ? 255 : 1;
+                    const arr = new Float32Array(c.count * 3);
+                    for (let i = 0; i < c.count; i++) {
+                        arr[i * 3] = c.array[i * c.itemSize] / div;
+                        arr[i * 3 + 1] = c.array[i * c.itemSize + 1] / div;
+                        arr[i * 3 + 2] = c.array[i * c.itemSize + 2] / div;
+                    }
+                    geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+                }
+                if (src.index) geo.setIndex(src.index.clone());
+                geo.applyMatrix4(o.matrixWorld);
+                geos.push(geo);
+            });
+            if (geos.length) {
+                out = geos.length === 1 ? geos[0] : mergeGeometries(geos);
+                out.computeBoundingSphere();
+                out.userData.shared = true;
+            }
+        }
+        partCache[key] = out;
+        return out;
+    }
+
+    return { load, has, watcher, flashlight, tree, part, get ok() { return ok; } };
 })();

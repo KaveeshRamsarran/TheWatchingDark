@@ -152,19 +152,23 @@ function mergeGeometries(geos) {
 
 // Box whose side UVs are in world units horizontally and span 0..1 vertically,
 // so baked vertical gradients (grime at the floor, stains from the ceiling) line up.
-function makeWallBox(w, h, d, texWorldWidth, uOffset = 0) {
-    const g = new THREE.BoxGeometry(w, h, d);
+// Optional segment counts subdivide the faces (used by walls that bend and breathe).
+function makeWallBox(w, h, d, texWorldWidth, uOffset = 0, sw = 1, sh = 1, sd = 1) {
+    const g = new THREE.BoxGeometry(w, h, d, sw, sh, sd);
     const uv = g.attributes.uv;
-    // Face order in BoxGeometry: +x, -x, +y, -y, +z, -z (4 verts each)
+    // Face order in BoxGeometry: +x, -x, +y, -y, +z, -z
+    const counts = [(sd + 1) * (sh + 1), (sd + 1) * (sh + 1), (sw + 1) * (sd + 1), (sw + 1) * (sd + 1), (sw + 1) * (sh + 1), (sw + 1) * (sh + 1)];
     const faceU = [d, d, w, w, w, w];
     const faceV = [1, 1, d / texWorldWidth, d / texWorldWidth, 1, 1];
+    let i0 = 0;
     for (let f = 0; f < 6; f++) {
-        for (let k = 0; k < 4; k++) {
-            const i = f * 4 + k;
-            const isSide = f !== 2 && f !== 3;
+        const isSide = f !== 2 && f !== 3;
+        for (let k = 0; k < counts[f]; k++) {
+            const i = i0 + k;
             uv.setX(i, uv.getX(i) * (faceU[f] / texWorldWidth) + uOffset);
             uv.setY(i, isSide ? uv.getY(i) : uv.getY(i) * faceV[f]);
         }
+        i0 += counts[f];
     }
     return g;
 }

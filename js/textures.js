@@ -34,21 +34,32 @@ const Textures = (() => {
 
     // Run a per-pixel sampler and build colour / normal / roughness canvases.
     // sampler(u, v, out) must set out.r, out.g, out.b (0-255), out.h (height 0-1), out.ro (roughness 0-1)
-    function buildMaps(size, sampler, normalStrength = 2.0) {
+    // With emissive = true the sampler may also set out.e (0-1) for an emissive mask.
+    function buildMaps(size, sampler, normalStrength = 2.0, emissive = false) {
         const colorC = makeCanvas(size), normalC = makeCanvas(size), roughC = makeCanvas(size);
         const cctx = colorC.getContext('2d'), nctx = normalC.getContext('2d'), rctx = roughC.getContext('2d');
         const cimg = cctx.createImageData(size, size);
         const nimg = nctx.createImageData(size, size);
         const rimg = rctx.createImageData(size, size);
+        const emissiveC = emissive ? makeCanvas(size) : null;
+        const eimg = emissive ? emissiveC.getContext('2d').createImageData(size, size) : null;
         const heights = new Float32Array(size * size);
-        const out = { r: 0, g: 0, b: 0, h: 0, ro: 0.8 };
+        const out = { r: 0, g: 0, b: 0, h: 0, ro: 0.8, e: 0 };
         const inv = 1 / size;
 
         for (let y = 0; y < size; y++) {
             for (let x = 0; x < size; x++) {
                 out.ro = 0.8;
+                out.e = 0;
                 sampler((x + 0.5) * inv, (y + 0.5) * inv, out);
                 const i = y * size + x, p = i * 4;
+                if (eimg) {
+                    const e = clamp(out.e, 0, 1) * 255;
+                    eimg.data[p] = e;
+                    eimg.data[p + 1] = e * 0.25;
+                    eimg.data[p + 2] = e * 0.2;
+                    eimg.data[p + 3] = 255;
+                }
                 cimg.data[p] = out.r;
                 cimg.data[p + 1] = out.g;
                 cimg.data[p + 2] = out.b;
@@ -83,15 +94,18 @@ const Textures = (() => {
         cctx.putImageData(cimg, 0, 0);
         nctx.putImageData(nimg, 0, 0);
         rctx.putImageData(rimg, 0, 0);
-        return { colorC, normalC, roughC };
+        if (emissiveC) emissiveC.getContext('2d').putImageData(eimg, 0, 0);
+        return { colorC, normalC, roughC, emissiveC };
     }
 
-    function mapsToTextures({ colorC, normalC, roughC }) {
-        return {
+    function mapsToTextures({ colorC, normalC, roughC, emissiveC }) {
+        const out = {
             map: toTexture(colorC),
             normalMap: toTexture(normalC, { srgb: false }),
             roughnessMap: toTexture(roughC, { srgb: false })
         };
+        if (emissiveC) out.emissiveMap = toTexture(emissiveC);
+        return out;
     }
 
     // -------------------------------------------------------------------------
@@ -180,6 +194,184 @@ const Textures = (() => {
         }, 2.2);
         cache.floor = mapsToTextures(maps);
         return cache.floor;
+    }
+
+    // Poured concrete slab: saw-cut control joints, exposed aggregate, hairline cracks and
+    // damp, glossy stains that catch the flashlight. Tile = 4 units (joints every 4 units).
+    function concreteFloor() {
+        if (cache.concreteFloor) return cache.concreteFloor;
+        const size = 512;
+        const maps = buildMaps(size, (u, v, o) => {
+            const big = Noise.fbm(u, v, 3, 4);
+            const mid = Noise.fbm(u + 0.31, v + 0.17, 12, 3);
+            const fine = Noise.value2(u * 180, v * 180, 180, 180);
+            const w = Noise.worley(u, v, 42);
+            const stone = (1 - smoothstep(0.12, 0.3, w.f1)) * (w.id > 0.62 ? 1 : 0);
+            const stoneTone = w.id;
+
+            // Saw-cut joints along the tile edges
+            const ju = Math.min(u, 1 - u) * size, jv = Math.min(v, 1 - v) * size;
+            const joint = 1 - smoothstep(0.6, 2.4, Math.min(ju, jv));
+            const chip = joint > 0.01 ? smoothstep(0.75, 0.9, Noise.value2(u * 90, v * 90, 90, 90)) * 0.4 : 0;
+
+            // Hairline cracks wandering across the slab
+            const cn = Noise.fbm(u, v, 5, 4);
+            const crack = (1 - smoothstep(0.0, 0.007, Math.abs(cn - 0.5))) *
+                smoothstep(0.42, 0.62, Noise.fbm(u + 0.5, v + 0.5, 3, 2));
+
+            // Oil and water stains: darker and glossier
+            const stain = smoothstep(0.6, 0.74, Noise.fbm(u + 0.7, v + 0.2, 4, 4));
+            const damp = smoothstep(0.52, 0.78, Noise.fbm(u + 0.2, v + 0.9, 2, 3));
+
+            const shade = 0.58 + big * 0.38 + (mid - 0.5) * 0.25 + (fine - 0.5) * 0.12;
+            let r = 112 * shade, g = 109 * shade, b = 103 * shade;
+            r = lerp(r, 120 + stoneTone * 40, stone * 0.4);
+            g = lerp(g, 114 + stoneTone * 34, stone * 0.4);
+            b = lerp(b, 104 + stoneTone * 30, stone * 0.4);
+            r *= 1 - stain * 0.5; g *= 1 - stain * 0.48; b *= 1 - stain * 0.42;
+            r *= 1 - damp * 0.22; g *= 1 - damp * 0.2; b *= 1 - damp * 0.18;
+            const dk = 1 - joint * 0.72 - crack * 0.6 - chip * 0.3;
+            o.r = clamp(r * dk, 0, 255);
+            o.g = clamp(g * dk, 0, 255);
+            o.b = clamp(b * dk, 0, 255);
+            o.h = 0.5 + (mid - 0.5) * 0.3 + (fine - 0.5) * 0.22 + stone * 0.18 - joint * 0.65 - crack * 0.5 - chip * 0.3;
+            o.ro = 0.88 - stain * 0.42 - damp * 0.38 + (fine - 0.5) * 0.1 + joint * 0.1;
+        }, 2.5);
+        cache.concreteFloor = mapsToTextures(maps);
+        return cache.concreteFloor;
+    }
+
+    // Living tissue for the final level: wet muscle fibre, dark veins (which glow through the
+    // emissive mask when the walls pulse), yellow fat, nodules and blackened sores.
+    // vRep tiles the pattern vertically (walls stretch one tile over their full height).
+    function flesh(vRep = 1, wall = false) {
+        const key = 'flesh_' + vRep + (wall ? 'w' : '');
+        if (cache[key]) return cache[key];
+        const size = 512;
+        const maps = buildMaps(size, (u, v, o) => {
+            const vv = (v * vRep) % 1;
+            const warp = (Noise.fbm(u, vv, 4, 3) - 0.5) * 0.08;
+            const base = Noise.fbm(u + warp, vv, 5, 4);
+            const fiber = 0.5 + 0.5 * Math.sin((u * 46 + Noise.fbm(u, vv, 3, 3) * 9) * TAU);
+            const w = Noise.worley((u + warp + 1) % 1, vv, 7);
+            const vein = 1 - smoothstep(0.0, 0.05, w.f2 - w.f1);
+            const w2 = Noise.worley((u + 0.31) % 1, (vv + 0.17) % 1, 19);
+            const capillary = 1 - smoothstep(0.0, 0.025, w2.f2 - w2.f1);
+            const fat = smoothstep(0.64, 0.8, Noise.fbm((u + 0.5) % 1, (vv + 0.3) % 1, 6, 3));
+            const n = Noise.worley((u + 0.7) % 1, (vv + 0.4) % 1, 26);
+            const nodule = (1 - smoothstep(0.0, 0.38, n.f1)) * (n.id > 0.78 ? 1 : 0);
+            const sore = smoothstep(0.72, 0.86, Noise.fbm((u + 0.2) % 1, (vv + 0.6) % 1, 8, 3));
+
+            const k = 0.9 + fiber * (wall ? 0.09 : 0.07);
+            let r = (118 + base * 80) * k, g = (20 + base * 24) * k, b = (26 + base * 20) * k;
+            r = lerp(r, 205, fat * 0.55); g = lerp(g, 156, fat * 0.55); b = lerp(b, 92, fat * 0.55);
+            r = lerp(r, 214, nodule * 0.7); g = lerp(g, 172, nodule * 0.7); b = lerp(b, 120, nodule * 0.7);
+            r = lerp(r, 92, capillary * 0.45); g = lerp(g, 14, capillary * 0.45); b = lerp(b, 40, capillary * 0.45);
+            r = lerp(r, 48, vein * 0.85); g = lerp(g, 16, vein * 0.85); b = lerp(b, 64, vein * 0.85);
+            r = lerp(r, 34, sore * 0.8); g = lerp(g, 6, sore * 0.8); b = lerp(b, 8, sore * 0.8);
+            if (wall) {
+                // Blood pools darker toward the floor (v = 1 is the bottom of the wall)
+                const pool = smoothstep(0.7, 1.0, v + (base - 0.5) * 0.2);
+                r *= 1 - pool * 0.5; g *= 1 - pool * 0.6; b *= 1 - pool * 0.55;
+            }
+            o.r = clamp(r, 0, 255); o.g = clamp(g, 0, 255); o.b = clamp(b, 0, 255);
+            o.h = base * 0.35 + fiber * (wall ? 0.05 : 0.03) + vein * 0.4 + nodule * 0.5 + fat * 0.2 - sore * 0.35;
+            o.ro = 0.3 + (1 - base) * 0.2 + fat * 0.1 - vein * 0.08 + sore * 0.35;
+            o.e = vein * 0.95 + capillary * 0.3;
+        }, 4.5, true);
+        cache[key] = mapsToTextures(maps);
+        return cache[key];
+    }
+
+    // Gentle, tileable ripples for standing water (normal map only)
+    function waterNormal() {
+        if (cache.waterNormal) return cache.waterNormal;
+        const maps = buildMaps(256, (u, v, o) => {
+            const a = Noise.fbm(u, v, 6, 3);
+            const b = Noise.fbm(u + 0.37, v + 0.71, 14, 2);
+            const ring = Math.sin((Noise.fbm(u, v, 3, 2) * 6 + u * 2) * TAU) * 0.08;
+            o.r = o.g = o.b = 128;
+            o.h = a * 0.6 + b * 0.3 + ring;
+        }, 3.0);
+        cache.waterNormal = { normalMap: toTexture(maps.normalC, { srgb: false }) };
+        return cache.waterNormal;
+    }
+
+    // Grainy CRT static; the screens scroll its offset every frame
+    function staticNoise() {
+        if (cache.static) return cache.static;
+        const W = 128, H = 128, c = makeCanvas(W, H), ctx = c.getContext('2d');
+        const img = ctx.createImageData(W, H);
+        for (let y = 0; y < H; y++) {
+            const line = 0.75 + Math.random() * 0.35;
+            for (let x = 0; x < W; x++) {
+                const p = (y * W + x) * 4;
+                const k = Math.random() * 255 * line;
+                img.data[p] = k * 0.9;
+                img.data[p + 1] = k * 0.95;
+                img.data[p + 2] = k;
+                img.data[p + 3] = 255;
+            }
+        }
+        ctx.putImageData(img, 0, 0);
+        const t = toTexture(c, { mipmaps: false });
+        t.magFilter = THREE.NearestFilter;
+        t.minFilter = THREE.NearestFilter;
+        cache.static = t;
+        return t;
+    }
+
+    // The great eye above the final maze. Equirectangular; the iris is centred on +z (u = 0.25).
+    function eyeball() {
+        if (cache.eyeball) return cache.eyeball;
+        const W = 1024, H = 512, c = makeCanvas(W, H), ctx = c.getContext('2d');
+        const img = ctx.createImageData(W, H);
+        const cx = W * 0.25, cy = H * 0.5;
+        const px = W / TAU; // pixels per radian (same both ways for a 2:1 map)
+        const IRIS = 0.42, PUPIL = 0.17, LIMBUS = 0.47;
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                const dx = (x - cx) / px, dy = (y - cy) / px;
+                const d = Math.sqrt(dx * dx + dy * dy);
+                const a = Math.atan2(dy, dx);
+                const n = Noise.fbm(x / W, y / H, 8, 4);
+                let r, g, b;
+                if (d < PUPIL) {
+                    r = g = b = 2;
+                } else if (d < IRIS) {
+                    const t = (d - PUPIL) / (IRIS - PUPIL);
+                    const fib = 0.5 + 0.5 * Math.sin(a * 70 + Noise.fbm(x / W, y / H, 30, 2) * 18);
+                    const k = (0.55 + fib * 0.45) * (1 - t * 0.35);
+                    r = (200 + 55 * (1 - t)) * k;
+                    g = (40 + 70 * (1 - t) * (1 - t)) * k;
+                    b = 12 * k;
+                    if (t < 0.12) { r *= 0.6 + t * 3; g *= 0.6 + t * 3; }
+                } else {
+                    // Yellowed sclera shot with veins that crawl toward the iris
+                    const limbus = 1 - smoothstep(IRIS, LIMBUS, d);
+                    const w = Noise.worley(x / W * 2, y / H, 14);
+                    const vein = (1 - smoothstep(0.0, 0.03, w.f2 - w.f1)) * smoothstep(0.3, 1.6, d);
+                    r = 196 + n * 40; g = 176 + n * 30; b = 140 + n * 20;
+                    r = lerp(r, 150, vein); g = lerp(g, 20, vein); b = lerp(b, 18, vein);
+                    const shade = 1 - smoothstep(0.9, 2.2, d) * 0.6;
+                    r *= shade; g *= shade; b *= shade;
+                    r = lerp(r, 30, limbus); g = lerp(g, 8, limbus); b = lerp(b, 6, limbus);
+                }
+                const p = (y * W + x) * 4;
+                img.data[p] = clamp(r, 0, 255);
+                img.data[p + 1] = clamp(g, 0, 255);
+                img.data[p + 2] = clamp(b, 0, 255);
+                img.data[p + 3] = 255;
+            }
+        }
+        ctx.putImageData(img, 0, 0);
+        // Wet highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.beginPath();
+        ctx.ellipse(cx - px * 0.14, cy - px * 0.16, px * 0.06, px * 0.04, -0.5, 0, TAU);
+        ctx.fill();
+        cache.eyeball = toTexture(c, { repeat: false });
+        return cache.eyeball;
     }
 
     // Water-damaged drop-ceiling tiles in a metal grid. Tile = 8 units (4x4 tiles).
@@ -786,7 +978,7 @@ const Textures = (() => {
 
     return {
         setRenderer, makeCanvas, toTexture, skin, leafAtlas, knurl,
-        concreteWall, woodFloor, ceilingTiles,
+        concreteWall, woodFloor, concreteFloor, ceilingTiles, waterNormal, staticNoise, eyeball, flesh,
         hedge, bark, forestFloor, stone,
         glow, lightPool, fogPuff, flame, decal, exitSign, paper, angelFace, feather
     };

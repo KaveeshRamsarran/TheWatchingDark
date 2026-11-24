@@ -88,7 +88,8 @@ const Level2 = (() => {
         const cells = World.cells;
 
         scene.background = new THREE.Color(FOG_COLOR);
-        scene.fog = new THREE.Fog(FOG_COLOR, 3, 24);
+        // Thick fog: past a few metres the world dissolves; the Angels' halos glimmer through it
+        scene.fog = new THREE.Fog(FOG_COLOR, 0.5, 12.5);
 
         await nextFrame();
         progress('Growing the hedges...', 0.2);
@@ -507,9 +508,9 @@ const Level2 = (() => {
 
         // ---- Ground fog banks ----------------------------------------------------------
         const fogSprites = [];
-        const fogMatBase = { map: Textures.fogPuff(), color: 0x7d8a9e, transparent: true, depthWrite: false, fog: true };
-        for (let i = 0; i < 28; i++) {
-            const s = new THREE.Sprite(new THREE.SpriteMaterial(Object.assign({ opacity: rand(0.05, 0.11) }, fogMatBase)));
+        const fogMatBase = { map: Textures.fogPuff(), color: 0x2a3242, transparent: true, depthWrite: false, fog: true };
+        for (let i = 0; i < 46; i++) {
+            const s = new THREE.Sprite(new THREE.SpriteMaterial(Object.assign({ opacity: rand(0.045, 0.09) }, fogMatBase)));
             const sz = rand(9, 16);
             s.scale.set(sz, sz * 0.45, 1);
             s.userData.drift = new THREE.Vector2(rand(-0.3, 0.3), rand(-0.3, 0.3));
@@ -544,8 +545,8 @@ const Level2 = (() => {
 
                 for (const s of fogSprites) {
                     const dx = s.position.x - cam.position.x, dz = s.position.z - cam.position.z;
-                    if (dx * dx + dz * dz > 26 * 26) {
-                        const a = rand(0, TAU), d = rand(5, 22);
+                    if (dx * dx + dz * dz > 16 * 16) {
+                        const a = rand(0, TAU), d = rand(2.5, 13);
                         s.position.set(cam.position.x + Math.cos(a) * d, rand(0.4, 1.6), cam.position.z + Math.sin(a) * d);
                     }
                     s.position.x += s.userData.drift.x * dt;
