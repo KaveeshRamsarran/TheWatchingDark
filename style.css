@@ -1120,3 +1120,226 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: none;
     .inv-hint { display: none; }
     .end-stats { gap: 1.2rem; }
 }
+
+/* ==========================================================================
+   Phones & tablets
+   ========================================================================== */
+
+#game-container { height: 100dvh; }
+#note-content { overflow-y: auto; overscroll-behavior: contain; }
+
+body:not(.touch) .touch-only { display: none !important; }
+.touch .desktop-only { display: none !important; }
+
+/* ---- Touch controls ---- */
+#touch-ui { display: none; }
+
+.touch #touch-ui {
+    display: block;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.touch #hud:not(.show) #touch-ui { display: none; }
+
+#touch-zone {
+    position: absolute;
+    inset: 0;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+#touch-stick {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 124px;
+    height: 124px;
+    margin: -62px 0 0 -62px;
+    border-radius: 50%;
+    border: 1px solid rgba(233, 223, 207, 0.22);
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.25) 70%);
+    opacity: 0;
+    transition: opacity 0.15s, border-color 0.2s;
+    pointer-events: none;
+}
+
+#touch-stick.show { opacity: 1; }
+#touch-stick.sprint { border-color: rgba(255, 60, 40, 0.65); }
+
+#touch-knob {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: rgba(233, 223, 207, 0.22);
+    border: 1px solid rgba(233, 223, 207, 0.45);
+    box-shadow: 0 0 14px rgba(0, 0, 0, 0.6);
+    transform: translate(-50%, -50%);
+}
+
+.touch-btn {
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    pointer-events: auto;
+    touch-action: none;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    color: rgba(233, 223, 207, 0.85);
+    background: rgba(18, 12, 12, 0.42);
+    border: 1px solid rgba(233, 223, 207, 0.28);
+    box-shadow: 0 0 12px rgba(0, 0, 0, 0.5);
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.1s, border-color 0.2s, transform 0.1s;
+}
+
+.touch-btn[hidden] { display: none; }
+.touch-btn.down { background: rgba(255, 60, 40, 0.32); transform: scale(0.94); }
+.touch-btn.active { border-color: var(--green); color: var(--green); }
+
+#touch-buttons {
+    position: absolute;
+    right: calc(16px + env(safe-area-inset-right));
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(2, 62px);
+    gap: 12px 14px;
+}
+
+#touch-buttons .big {
+    grid-column: span 2;
+    width: 100%;
+    height: 54px;
+    border-radius: 27px;
+    font-size: 0.72rem;
+    color: var(--amber);
+    border-color: rgba(255, 176, 84, 0.45);
+}
+
+#t-pause {
+    position: absolute;
+    top: calc(10px + env(safe-area-inset-top));
+    left: 50%;
+    width: 42px;
+    height: 42px;
+    padding: 10px;
+    margin-left: -21px;
+}
+
+#t-pause svg { width: 100%; height: 100%; display: block; }
+
+/* ---- HUD rearranged around the thumbs ---- */
+.touch #objective { top: calc(10px + env(safe-area-inset-top)); left: calc(14px + env(safe-area-inset-left)); }
+.touch #objective-level { font-size: 0.85rem; }
+.touch #objective-text { font-size: 0.72rem; max-width: 38vw; }
+
+.touch #vitals {
+    top: calc(58px + env(safe-area-inset-top));
+    bottom: auto;
+    left: calc(14px + env(safe-area-inset-left));
+    width: 150px;
+    gap: 6px;
+}
+
+.touch .vital .v-head { font-size: 0.58rem; margin-bottom: 3px; }
+.touch .vital .v-val { font-size: 0.7rem; }
+.touch .v-bar { height: 4px; }
+
+.touch #minimap-wrap {
+    top: calc(8px + env(safe-area-inset-top));
+    right: calc(10px + env(safe-area-inset-right));
+    width: 104px;
+    height: 104px;
+}
+
+.touch #inventory {
+    top: calc(122px + env(safe-area-inset-top));
+    bottom: auto;
+    right: calc(14px + env(safe-area-inset-right));
+}
+
+.touch .inv-label { font-size: 0.58rem; margin-bottom: 4px; }
+.touch .inv-label kbd, .touch .inv-hint { display: none; }
+.touch #match-row { height: 28px; }
+.touch .match-icon { height: 24px; }
+.touch #crouch-indicator { display: none; }
+.touch #status-text { bottom: calc(12px + env(safe-area-inset-bottom)); font-size: 0.78rem; }
+.touch #toast { font-size: 1rem; top: 24%; }
+.touch #look-warning { top: 56px; font-size: 0.8rem; }
+.touch #godmode-indicator { right: auto; left: calc(14px + env(safe-area-inset-left)); top: calc(150px + env(safe-area-inset-top)); }
+
+/* The read prompt becomes a button you tap */
+.touch #prompt {
+    top: calc(50% + 36px);
+    padding: 0.55rem 1.1rem;
+    font-size: 0.9rem;
+    border: 1px solid rgba(240, 226, 196, 0.45);
+    background: rgba(10, 6, 6, 0.55);
+    border-radius: 22px;
+}
+
+.touch #prompt.show { pointer-events: auto; }
+
+/* Notes: scroll with a thumb, tap to close */
+.touch #note-screen.show { pointer-events: auto; }
+.touch #note-content { max-height: 88vh; padding: 1.4rem 1.6rem 1rem; -webkit-overflow-scrolling: touch; }
+.touch .note-close { font-size: 0.9rem; padding: 0.6rem; border-top: 1px solid rgba(60, 40, 20, 0.3); cursor: pointer; }
+
+.touch #camcorder { inset: 12vh 20vw 16vh 20vw; }
+
+/* ---- Short (landscape phone) screens: menus that fit ---- */
+@media (max-height: 520px) {
+    .menu-content { padding: 1rem; }
+    .menu-kicker { margin-bottom: 0.5rem; font-size: 0.7rem; }
+    .title { font-size: clamp(2rem, 13vh, 4.4rem); }
+    .subtitle { margin-top: 0.6rem; font-size: 0.95rem; }
+    .menu-buttons { margin-top: 1.2rem; gap: 0.6rem; }
+    .menu-buttons .btn { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+    .warning { margin-top: 1rem; font-size: 0.65rem; }
+    .icon-button { top: 12px; right: 12px; width: 40px; height: 40px; padding: 8px; }
+    #fullscreen-icon { right: 62px; }
+    .end-screen { justify-content: flex-start; overflow-y: auto; padding: 1.5rem 1rem; }
+    .end-title { font-size: clamp(1.8rem, 12vh, 3.4rem); }
+    .end-message { font-size: 1rem; }
+    .panel { padding: 1.2rem 1.4rem; }
+    .panel-title { font-size: 1.5rem; }
+    .panel-hint { margin: 0.3rem 0 1rem; }
+    #level-card-title { font-size: clamp(1.8rem, 11vh, 3.2rem); }
+}
+
+/* ---- Portrait phone: ask to rotate ---- */
+#rotate-hint {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 30000;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+    background: #040304;
+    color: var(--ink);
+    text-align: center;
+    padding: 2rem;
+}
+
+#rotate-hint svg { width: 72px; height: 72px; color: var(--red-hot); animation: rotateHint 2.4s ease-in-out infinite; }
+#rotate-hint p { font-family: var(--title); font-size: 1.5rem; letter-spacing: 0.2em; }
+#rotate-hint span { font-family: var(--type); color: var(--muted); font-size: 0.9rem; }
+
+@keyframes rotateHint { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+
+@media (orientation: portrait) {
+    .touch #rotate-hint { display: flex; }
+}
+.touch .note-close-top { margin: -0.4rem 0 0.8rem; padding: 0 0 0.5rem; border-top: none; border-bottom: 1px solid rgba(60, 40, 20, 0.3); font-size: 0.78rem; }
+.touch .controls-mini { display: none; }
+@media (max-height: 520px) {
+    .stack { gap: 0.45rem; }
+    .stack .btn { padding-top: 0.5rem; padding-bottom: 0.5rem; font-size: 0.95rem; }
+}

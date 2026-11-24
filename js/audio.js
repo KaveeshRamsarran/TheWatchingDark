@@ -62,7 +62,8 @@ const AudioSys = (() => {
         music.loop = true;
         musicBase = base;
         music.volume = clamp(base * settings.music, 0, 1);
-        music.play().catch(() => {});
+        musicPaused = false;
+        music.play().catch(() => { blockedMusic = true; });
         return music;
     }
 
@@ -76,8 +77,9 @@ const AudioSys = (() => {
 
     function pauseMusic(paused) {
         if (!music) return;
+        musicPaused = paused;
         if (paused) music.pause();
-        else music.play().catch(() => {});
+        else music.play().catch(() => { blockedMusic = true; });
     }
 
     // ---- Looping voices (footsteps, chimes, ambience) ------------------------
@@ -106,7 +108,7 @@ const AudioSys = (() => {
             play() {
                 if (this.playing) return;
                 this.playing = true;
-                el.play().catch(() => { this.playing = false; });
+                el.play().catch(() => { this.playing = false; blocked.add(this); });
             },
             stop(reset = true) {
                 if (!this.playing) return;
@@ -160,6 +162,37 @@ const AudioSys = (() => {
         matchEl.volume = clamp(0.5 * settings.sfx, 0, 1);
         matchEl.currentTime = 0;
         matchEl.play().catch(() => {});
+    }
+
+    // ---- Mobile browsers (iOS Safari especially) refuse to start sounds that weren't
+    // triggered by a tap. Anything refused is retried on the player's next touch.
+    const blocked = new Set();
+    let blockedMusic = false, musicPaused = false, unlocked = false;
+
+    function retryBlocked() {
+        if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+        if (blockedMusic && music && !musicPaused) {
+            blockedMusic = false;
+            music.play().catch(() => { blockedMusic = true; });
+        }
+        for (const v of Array.from(blocked)) {
+            blocked.delete(v);
+            if (v.level > 0.001 && voices.includes(v)) v.play();
+        }
+    }
+
+    // Prime the one-shot sounds during a tap so they may play later without one
+    function unlock() {
+        ensureContext();
+        if (unlocked) return;
+        unlocked = true;
+        for (const el of [jumpscareEl, matchEl]) {
+            el.muted = true;
+            const p = el.play();
+            const done = () => { el.pause(); el.currentTime = 0; el.muted = false; };
+            if (p && p.then) p.then(done).catch(() => { el.muted = false; unlocked = false; });
+            else done();
+        }
     }
 
     function playJumpscare() {
@@ -987,6 +1020,7 @@ const AudioSys = (() => {
         startDrone, stopDrone, heartbeat, click, pickup, batteryDead, staticBurst, suspendAll,
         splash, drip, clicks, wail, groan, thump, whisper, squelch, fleshStep, sting, flick, camBeep,
         setReverb, startBed, stopBeds,
+        retryBlocked, unlock,
         get context() { return ctx; }
     };
 })();

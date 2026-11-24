@@ -43,6 +43,33 @@ ALTERNATIVE: Direct File Access
 
 
 ═══════════════════════════════════════════════════════════════════
+  PLAYING ON A PHONE OR TABLET
+═══════════════════════════════════════════════════════════════════
+
+  Touch controls appear automatically on touch screens. Hold the
+  phone sideways.
+
+  LEFT THUMB      Drag anywhere on the left half: move (push to the edge to run)
+  RIGHT THUMB     Drag anywhere else: look around
+  RUN / CROUCH    Hold to run; tap to crouch
+  LIGHT / MATCH   Flashlight; light a match
+  CAM             Raise the camcorder (Level IV)
+  Tap prompt      Read a note; tap the note to close it
+  II (top)        Pause (debug console is in the pause menu)
+
+  Graphics default to LOW on phones. Level V is the heaviest level.
+
+  HOSTING IT FOR YOUR PHONE
+  It is a static website - any static host works.
+  - GitHub Pages: repo Settings > Pages > Deploy from a branch >
+    main, / (root). Then open https://<user>.github.io/<repo>/
+  - Same Wi-Fi, no hosting: run  python -m http.server 8000  in this
+    folder and open http://<your PC's IP>:8000 on the phone.
+  - Add to Home Screen (Safari: Share > Add to Home Screen; Chrome:
+    menu > Add to Home screen) to launch it fullscreen in landscape.
+
+
+═══════════════════════════════════════════════════════════════════
   GAME MECHANICS
 ═══════════════════════════════════════════════════════════════════
 

@@ -12,6 +12,9 @@
     const DEFAULTS = { musicVolume: 0.3, sfxVolume: 0.75, cameraSensitivity: 0.002, brightness: 1.0, quality: 'medium' };
     const FOV = 60; // fixed field of view (degrees)
     const settings = Object.assign({}, DEFAULTS);
+    // Phones and tablets: touch controls, no pointer lock, and lighter graphics by default
+    const touchMode = TouchControls.enabled;
+    if (touchMode) settings.quality = 'low';
     try {
         const saved = JSON.parse(localStorage.getItem('gameSettings') || 'null');
         if (saved) {
@@ -307,7 +310,8 @@
         HUD.levelCard(info.num, info.title, info.sub);
         state.mode = 'playing';
         clock.getDelta();
-        if (!isLocked() && !state.debug) pause();
+        TouchControls.configure({ flashlight: level.flashlightAllowed, camera: !!level.camcorder });
+        if (wantsLock() && !isLocked()) pause();
     }
 
     let envMap = null;
@@ -435,24 +439,58 @@
     // Pointer lock & pause
     // =========================================================================
     const isLocked = () => document.pointerLockElement === renderer.domElement;
+    // Desktop play captures the mouse; touch play (and ?debug) doesn't need to
+    const wantsLock = () => !touchMode && !state.debug;
 
+    // "Enter the game": capture the mouse on desktop; on a phone go fullscreen in
+    // landscape instead and carry straight on (there is no pointer lock to wait for)
     function requestLock() {
+        if (touchMode) {
+            enterImmersive();
+            if (state.mode === 'paused') resume();
+            return;
+        }
         try {
             const p = renderer.domElement.requestPointerLock();
             if (p && p.catch) p.catch(() => {});
         } catch (e) { /* ignore */ }
     }
 
+    function enterImmersive() {
+        AudioSys.unlock();
+        const lockLandscape = () => {
+            try {
+                const p = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape');
+                if (p && p.catch) p.catch(() => {});
+            } catch (e) { /* not supported (e.g. iOS) */ }
+        };
+        const root = document.documentElement;
+        if (document.fullscreenElement || document.webkitFullscreenElement) { lockLandscape(); return; }
+        const req = root.requestFullscreen || root.webkitRequestFullscreen;
+        if (!req) return;
+        try {
+            const p = req.call(root, { navigationUI: 'hide' });
+            if (p && p.then) p.then(lockLandscape).catch(() => {});
+        } catch (e) { /* fullscreen not allowed here */ }
+    }
+
     document.addEventListener('pointerlockchange', () => {
         if (isLocked()) {
             if (state.mode === 'paused') resume();
-        } else if (state.mode === 'playing' && !state.debug) {
+        } else if (state.mode === 'playing' && wantsLock()) {
             pause();
         }
     });
 
+    // Switching apps or tabs pauses the game
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && state.mode === 'playing') pause();
+    });
+
     function pause() {
         if (state.mode !== 'playing') return;
+        TouchControls.reset();
+        for (const k in keys) keys[k] = false;
         state.mode = 'paused';
         $('pause-menu').classList.add('active');
         AudioSys.pauseMusic(true);
@@ -554,11 +592,19 @@
         if (keys.KeyS || keys.ArrowDown) mz -= 1;
         if (keys.KeyD || keys.ArrowRight) mx += 1;
         if (keys.KeyA || keys.ArrowLeft) mx -= 1;
+        // Touch joystick: analog, so a light push walks slowly
+        const stick = TouchControls.move;
+        let analog = 1;
+        if (stick.mag > 0.12 && mz === 0 && mx === 0) {
+            mx = stick.x;
+            mz = stick.y;
+            analog = Math.min(1, stick.mag * 1.15);
+        }
         const moving = mz !== 0 || mx !== 0;
 
         if (p.stamina <= 0) p.exhausted = true;
         if (p.exhausted && p.stamina > 30) p.exhausted = false;
-        const wantsSprint = keys.ShiftLeft || keys.ShiftRight;
+        const wantsSprint = keys.ShiftLeft || keys.ShiftRight || stick.sprint;
         p.sprinting = wantsSprint && moving && !p.exhausted && p.sanity > 20 && !p.godMode && !reading;
         if (p.sprinting) p.crouch = false;
         p.crouchAmt = damp(p.crouchAmt, p.crouch ? 1 : 0, 10, dt);
@@ -598,7 +644,7 @@
         fwd.set(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
         right.set(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
         wish.set(0, 0, 0).addScaledVector(fwd, mz).addScaledVector(right, mx);
-        if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed);
+        if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed * analog);
         const accel = moving ? 11 : 9;
         p.vel.x = damp(p.vel.x, wish.x, accel, dt);
         p.vel.z = damp(p.vel.z, wish.z, accel, dt);
@@ -872,7 +918,7 @@
             if (nd > 3.5 || nearestNote !== state.note) closeNote();
             HUD.setPrompt('');
         } else if (nearestNote && nd < 2.4) {
-            HUD.setPrompt('<kbd>E</kbd> Read note');
+            HUD.setPrompt(touchMode ? 'Tap to read the note' : '<kbd>E</kbd> Read note');
             HUD.setCrosshair('interact');
         } else {
             HUD.setPrompt('');
@@ -1037,6 +1083,11 @@
         state.hudTimer -= dt;
         if (state.hudTimer > 0) return;
         state.hudTimer = 0.25;
+        if (touchMode) {
+            TouchControls.setActive('light', level.flashlightAllowed && p.flashlightOn && p.battery > 0);
+            TouchControls.setActive('crouch', p.crouch);
+            TouchControls.setActive('camera', p.lens > 0.5);
+        }
         const id = level.id;
         const hunter = Monsters.nearestHunter;
         HUD.setGaze(level.gaze || 0, level.objective === 'Look at it.');
@@ -1434,6 +1485,49 @@
     });
     window.addEventListener('keyup', (e) => { keys[e.code] = false; });
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+    // Touch controls: the joystick is read in updatePlayer; look and buttons arrive here
+    TouchControls.init({
+        any() { AudioSys.retryBlocked(); },
+        look(dx, dy) {
+            if (state.mode !== 'playing' || state.note || debugOpen()) return;
+            const s = settings.cameraSensitivity * 1.9;
+            player.yaw -= dx * s;
+            player.pitch = clamp(player.pitch - dy * s, -1.45, 1.45);
+            player.swayX = clamp(player.swayX - dx * 0.0003, -0.05, 0.05);
+            player.swayY = clamp(player.swayY + dy * 0.0003, -0.05, 0.05);
+        },
+        button(name, down) {
+            if (name === 'pause') { if (down) pause(); return; }
+            if (name === 'run') { keys.ShiftLeft = down; return; }
+            if (!down || state.mode !== 'playing') return;
+            if (name === 'match') { if (!player.godMode) lightMatch(); }
+            else if (name === 'light') toggleFlashlight();
+            else if (name === 'crouch') toggleCrouch();
+            else if (name === 'camera') { if (level && level.camcorder) player.lensToggle = !player.lensToggle; }
+        }
+    });
+    // Tap the "read note" prompt to read it
+    $('prompt').addEventListener('touchend', (e) => {
+        e.preventDefault();
+        if (state.mode === 'playing' && !state.note && state.nearNote) openNote(state.nearNote);
+    }, { passive: false });
+    // Tap anywhere on an open note to close it (a drag scrolls instead)
+    let noteTouch = null;
+    $('note-screen').addEventListener('touchstart', (e) => {
+        const t = e.changedTouches[0];
+        noteTouch = { x: t.clientX, y: t.clientY };
+    }, { passive: true });
+    $('note-screen').addEventListener('touchend', (e) => {
+        if (!noteTouch) return;
+        const t = e.changedTouches[0];
+        const moved = Math.hypot(t.clientX - noteTouch.x, t.clientY - noteTouch.y);
+        noteTouch = null;
+        if (moved < 12 && state.note) {
+            e.preventDefault();
+            closeNote();
+        }
+    }, { passive: false });
 
     renderer.domElement.addEventListener('click', () => {
         if (state.mode === 'playing' && !isLocked()) requestLock();

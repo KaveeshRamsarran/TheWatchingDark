@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#040304">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Watching Dark">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="images/icon-192.png">
     <title>The Watching Dark</title>
     <link rel="icon" href="data:,">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,6 +28,22 @@
 
         <!-- ============================ HUD ============================ -->
         <div id="hud">
+            <!-- Touch controls (phones and tablets only) -->
+            <div id="touch-ui">
+                <div id="touch-zone"></div>
+                <div id="touch-stick"><div id="touch-knob"></div></div>
+                <button class="touch-btn" data-touch="pause" id="t-pause" aria-label="Pause">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+                </button>
+                <div id="touch-buttons">
+                    <button class="touch-btn" data-touch="camera">CAM</button>
+                    <button class="touch-btn" data-touch="light">LIGHT</button>
+                    <button class="touch-btn" data-touch="crouch">CROUCH</button>
+                    <button class="touch-btn" data-touch="run">RUN</button>
+                    <button class="touch-btn big" data-touch="match">MATCH</button>
+                </div>
+            </div>
+
             <div id="objective">
                 <span id="objective-level">LEVEL I</span>
                 <span id="objective-text">Find an exit.</span>
@@ -80,11 +103,11 @@
 
         <div id="note-screen">
             <div id="note-content">
+                <p class="note-close touch-only note-close-top">Tap the note to close &nbsp;·&nbsp; drag to scroll</p>
                 <h2 id="note-title"></h2>
                 <p class="note-date" id="note-date"></p>
                 <div class="note-text" id="note-text"></div>
-                <p class="note-close"><kbd>E</kbd> close &nbsp;·&nbsp; time stands still while you read</p>
-            </div>
+                <p class="note-close desktop-only"><kbd>E</kbd> close &nbsp;·&nbsp; time stands still while you read</p>            </div>
         </div>
 
         <div id="level-card">
@@ -213,7 +236,17 @@
             <div class="panel howto">
                 <button id="howto-close" class="close-btn" aria-label="Close">&times;</button>
                 <h2 class="panel-title">HOW TO SURVIVE</h2>
-                <div class="howto-grid">
+                <div class="howto-grid touch-only">
+                    <div><kbd>LEFT THUMB</kbd><span>Move — push to the edge to run</span></div>
+                    <div><kbd>RIGHT THUMB</kbd><span>Drag anywhere to look around</span></div>
+                    <div><kbd>RUN</kbd><span>Hold to sprint — drains sanity, and they hear you</span></div>
+                    <div><kbd>LIGHT</kbd><span>Flashlight — limited battery</span></div>
+                    <div><kbd>MATCH</kbd><span>Light a match — the Watchers flee from fire</span></div>
+                    <div><kbd>CROUCH</kbd><span>Slow, but almost silent</span></div>
+                    <div><kbd>CAM</kbd><span>Raise the camcorder (Level IV)</span></div>
+                    <div><kbd>TAP PROMPT</kbd><span>Read notes left by those before you</span></div>
+                </div>
+                <div class="howto-grid desktop-only">
                     <div><kbd>W A S D</kbd><span>Move through the darkness</span></div>
                     <div><kbd>MOUSE</kbd><span>Look around for threats</span></div>
                     <div><kbd>SHIFT</kbd><span>Sprint — drains sanity, and they hear you</span></div>
@@ -261,6 +294,12 @@
             </div>
         </div>
 
+        <div id="rotate-hint">
+            <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="20" y="8" width="24" height="44" rx="4" fill="none" stroke="currentColor" stroke-width="3"/><path d="M50 38a16 16 0 0 1-16 16" fill="none" stroke="currentColor" stroke-width="3"/><path d="M34 50l0 6 6-2" fill="none" stroke="currentColor" stroke-width="3"/></svg>
+            <p>Turn your phone sideways</p>
+            <span>The dark is wider than you think.</span>
+        </div>
+
         <div id="webgl-error">
             <h2>WebGL unavailable</h2>
             <p>The Watching Dark needs a browser with WebGL and hardware acceleration enabled.</p>
@@ -284,6 +323,7 @@
     <script src="js/level5.js"></script>
     <script src="js/monsters.js"></script>
     <script src="js/hud.js"></script>
+    <script src="js/touch.js"></script>
     <script src="js/menu.js"></script>
     <script src="js/main.js"></script>
 </body>
