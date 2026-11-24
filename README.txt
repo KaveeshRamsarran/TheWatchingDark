@@ -52,8 +52,7 @@ ALTERNATIVE: Direct File Access
   LEFT THUMB      Drag anywhere on the left half: move (push to the edge to run)
   LIGHT / CROUCH  Left edge, just above the joystick
   RIGHT THUMB     Drag anywhere else: look around
-  MATCH / RUN     Bottom-right corner. RUN is a toggle: tap it, then move;
-                  it switches off when you stop. CAM appears on Level IV.
+  MATCH           Bottom-right corner; CAM appears above it on Level IV
   Tap prompt      Read a note; tap the note to close it
   II (top)        Pause (debug console is in the pause menu)
   [ ] (top)       Fullscreen again, if it was lost (not on iPhone: use

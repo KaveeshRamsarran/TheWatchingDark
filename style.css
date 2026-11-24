@@ -1217,14 +1217,13 @@ body:not(.touch) .touch-only { display: none !important; }
     position: absolute;
     right: calc(14px + env(safe-area-inset-right));
     bottom: calc(14px + env(safe-area-inset-bottom));
-    width: 170px;
-    height: 170px;
+    width: 96px;
+    height: 180px;
 }
 
 #touch-right .touch-btn { position: absolute; }
 #touch-right .t-match { right: 0; bottom: 0; width: 82px; height: 82px; color: var(--amber); border-color: rgba(255, 176, 84, 0.5); }
 #touch-right .t-match svg { width: 30px; height: 30px; }
-#touch-right .t-run { right: 92px; bottom: 6px; }
 #touch-right .t-cam { right: 10px; bottom: 94px; }
 
 .touch-btn.icon {

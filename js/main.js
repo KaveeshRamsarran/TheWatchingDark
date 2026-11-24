@@ -118,7 +118,6 @@
     };
 
     const keys = {};
-    let touchRun = false, touchRunIdle = 0, touchRunMoved = false;   // the touch RUN toggle
 
     // =========================================================================
     // Sizing & adaptive resolution
@@ -562,7 +561,6 @@
     function pause() {
         if (state.mode !== 'playing') return;
         TouchControls.reset();
-        setTouchRun(false);
         for (const k in keys) keys[k] = false;
         state.mode = 'paused';
         $('pause-menu').classList.add('active');
@@ -691,14 +689,8 @@
 
         if (p.stamina <= 0) p.exhausted = true;
         if (p.exhausted && p.stamina > 30) p.exhausted = false;
-        // Touch RUN is a toggle: it switches itself off when you stop moving or run out of breath
-        // (it waits for you to start moving, then turns off once you stand still)
-        if (touchRun) {
-            if (moving) touchRunMoved = true;
-            touchRunIdle = moving ? 0 : touchRunIdle + dt;
-            if ((touchRunMoved && touchRunIdle > 0.5) || touchRunIdle > 5 || p.exhausted) setTouchRun(false);
-        }
-        const wantsSprint = keys.ShiftLeft || keys.ShiftRight || stick.sprint || touchRun;
+        // On touch, pushing the joystick out to its edge runs
+        const wantsSprint = keys.ShiftLeft || keys.ShiftRight || stick.sprint;
         p.sprinting = wantsSprint && moving && !p.exhausted && p.sanity > 20 && !p.godMode && !reading;
         if (p.sprinting) p.crouch = false;
         p.crouchAmt = damp(p.crouchAmt, p.crouch ? 1 : 0, 10, dt);
@@ -1593,7 +1585,7 @@
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '2.2';
+    const BUILD = '2.3';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {
@@ -1603,12 +1595,6 @@
 
     // Touch controls: the joystick is read in updatePlayer; look and buttons arrive here
     if (!TouchControls.canFullscreen) $('t-fullscreen').style.display = 'none';
-    function setTouchRun(on) {
-        touchRun = on;
-        touchRunIdle = 0;
-        touchRunMoved = false;
-        TouchControls.setActive('run', on);
-    }
     TouchControls.init({
         any() { AudioSys.retryBlocked(); },
         // Fullscreen is lost when you switch apps, rotate, or the first request is refused:
@@ -1629,7 +1615,6 @@
             if (name === 'pause') { if (down) pause(); return; }
             // On release: browsers only allow fullscreen from the end of a tap
             if (name === 'fullscreen') { if (!down) { fsDeclined = false; enterImmersive(); } return; }
-            if (name === 'run') { if (down) setTouchRun(!touchRun); return; }
             if (!down || state.mode !== 'playing') return;
             if (name === 'match') { if (!player.godMode) lightMatch(); }
             else if (name === 'light') toggleFlashlight();
