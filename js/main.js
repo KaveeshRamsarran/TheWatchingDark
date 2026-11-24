@@ -32,6 +32,16 @@
         high: { pixelRatio: Math.min(dpr, 1.5), scale: 1.0, minScale: 0.5, bloom: true, shadows: true, shadowSize: 2048 }
     };
     const quality = () => QUALITY[settings.quality] || QUALITY.medium;
+    // The preset as it applies right now: frame-rate tiers can switch effects off, and
+    // `lite` asks the level builders for lighter geometry (phones / the Low preset)
+    const effectiveQuality = () => {
+        const q = quality();
+        return Object.assign({}, q, {
+            shadows: q.shadows && perfTier < 2,
+            bloom: q.bloom && perfTier < 1,
+            lite: settings.quality === 'low' || touchMode
+        });
+    };
 
     // =========================================================================
     // Renderer & core objects
@@ -108,6 +118,7 @@
     };
 
     const keys = {};
+    let touchRun = false, touchRunIdle = 0, touchRunMoved = false;   // the touch RUN toggle
 
     // =========================================================================
     // Sizing & adaptive resolution
@@ -121,22 +132,79 @@
         const cw = Math.floor(window.innerWidth * q.pixelRatio), ch = Math.floor(window.innerHeight * q.pixelRatio);
         PostFX.setSize(cw, ch, renderScale);
         Models.pointUniforms.pixelScale.value = (ch * renderScale) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
-        PostFX.setBloom(q.bloom);
+        PostFX.setBloom(q.bloom && perfTier < 1);
     }
     window.addEventListener('resize', applySize);
 
-    const perf = { frames: 0, time: 0 };
+    // ---- Frame-rate targeting ------------------------------------------------
+    // Aim for the screen's own refresh rate (capped at 120): measure it, then trade
+    // resolution - and if that runs out, effects - to hold it.
+    const stats = { update: 0, render: 0, frame: 16, show: false, shown: 0 };
+    const HZ = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 240];
+    const nearestHz = (hz) => HZ.reduce((b, k) => (Math.abs(k - hz) < Math.abs(b - hz) ? k : b), 60);
+    const display = { hz: 60, target: 60 };
+    (function measureRefresh() {
+        const gaps = [];
+        let last = 0;
+        const step = (t) => {
+            if (last) gaps.push(t - last);
+            last = t;
+            if (gaps.length < 90) { requestAnimationFrame(step); return; }
+            gaps.sort((a, b) => a - b);
+            display.hz = nearestHz(1000 / gaps[gaps.length >> 1]);
+            display.target = Math.min(display.hz, 120);
+        };
+        requestAnimationFrame(step);
+    })();
+
+    const perf = { frames: 0, time: 0, cooldown: 0 };
+    let perfTier = 0;   // 0 = the chosen preset; each step up sheds an effect to hold frame rate
+
+    function applyTier() {
+        const q = quality();
+        PostFX.setBloom(q.bloom && perfTier < 1);
+        if (perfTier >= 2 && renderer.shadowMap.enabled) {
+            renderer.shadowMap.enabled = false;
+            if (scene) {
+                scene.traverse((o) => {
+                    if (o.isLight) o.castShadow = false;
+                    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+                    for (const m of mats) m.needsUpdate = true;
+                });
+            }
+        }
+        if (rig && rig.motes) rig.motes.visible = perfTier < 3;
+    }
+
     function adaptQuality(rawDt) {
         perf.frames++;
         perf.time += rawDt;
-        if (perf.time < 1.5) return;
+        if (perf.time < 0.75) return;
         const fps = perf.frames / perf.time;
+        perf.cooldown = Math.max(0, perf.cooldown - perf.time);
         perf.frames = 0;
         perf.time = 0;
+        // Some phones only switch to their fast refresh rate once something is moving
+        if (fps > display.hz * 1.15) {
+            display.hz = nearestHz(fps);
+            display.target = Math.min(display.hz, 120);
+        }
         const q = quality();
+        const target = display.target;
+        const minScale = q.minScale * (perfTier >= 3 ? 0.8 : 1);
         let next = renderScale;
-        if (fps < 48 && renderScale > q.minScale) next = Math.max(q.minScale, renderScale - 0.08);
-        else if (fps > 58 && renderScale < q.scale) next = Math.min(q.scale, renderScale + 0.04);
+        if (fps < target * 0.9) {
+            if (renderScale > minScale + 0.001) {
+                next = Math.max(minScale, renderScale - (fps < target * 0.7 ? 0.12 : 0.06));
+            } else if (perfTier < 3) {
+                perfTier++;
+                applyTier();
+            }
+            perf.cooldown = 4;
+        } else if (fps > target * 0.97 && perf.cooldown <= 0 && renderScale < q.scale) {
+            // Creep back up slowly; any dip blocks this for a few seconds (no flicker)
+            next = Math.min(q.scale, renderScale + 0.03);
+        }
         if (Math.abs(next - renderScale) > 0.001) {
             renderScale = next;
             applySize();
@@ -224,7 +292,7 @@
         await Assets.load();
 
         scene = new THREE.Scene();
-        const q = quality();
+        const q = effectiveQuality();
         renderer.shadowMap.enabled = q.shadows;
         Monsters.init(scene);
 
@@ -260,6 +328,7 @@
         state.angelState.looked = 0;
 
         rig = buildRig(scene, level, q);
+        rig.motes.visible = perfTier < 3;
         scene.add(camera);
         camera.fov = FOV;
         // Nothing survives the fog past this point, so don't draw it
@@ -340,8 +409,9 @@
         scene.add(r.flashlight.target);
 
         // Soft fill so the edges of the beam aren't pitch black
-        r.spill = new THREE.PointLight(0xffe8cc, 0, 7, 2);
-        scene.add(r.spill);
+        // (skipped on phones / Low: one less light for every pixel to shade)
+        r.spill = q.lite ? null : new THREE.PointLight(0xffe8cc, 0, 7, 2);
+        if (r.spill) scene.add(r.spill);
 
         r.match = new THREE.PointLight(0xffa04a, 0, 16, 1.8);
         scene.add(r.match);
@@ -355,7 +425,7 @@
 
         // Ambient motes drifting around the camera (shader-animated, no CPU cost)
         const indoor = level.id !== 2;
-        r.motes = createMotes(indoor ? 380 : 260, indoor);
+        r.motes = createMotes(q.lite ? (indoor ? 160 : 120) : (indoor ? 380 : 260), indoor);
         scene.add(r.motes);
 
         // Hallucinated eyes in the dark
@@ -492,6 +562,7 @@
     function pause() {
         if (state.mode !== 'playing') return;
         TouchControls.reset();
+        setTouchRun(false);
         for (const k in keys) keys[k] = false;
         state.mode = 'paused';
         $('pause-menu').classList.add('active');
@@ -523,6 +594,7 @@
 
         if (!scene || !level) return;
 
+        const t0 = performance.now();
         if (state.mode === 'playing') {
             // Reading a note stops the world: nothing moves, nothing drains, until you close it
             if (!state.note) update(dt);
@@ -530,9 +602,22 @@
         } else if (state.mode === 'dying' || state.mode === 'transition') {
             updateCamera(dt);
         }
+        const t1 = performance.now();
 
         if (state.mode !== 'paused' && state.mode !== 'loading' && state.mode !== 'dead' && state.mode !== 'victory') {
             render(dt);
+        }
+        const t2 = performance.now();
+        // Frame timing (shown by the FPS readout): game logic vs. issuing the draw calls
+        stats.update = lerp(stats.update, t1 - t0, 0.05);
+        stats.render = lerp(stats.render, t2 - t1, 0.05);
+        stats.frame = lerp(stats.frame, rawDt * 1000, 0.05);
+        if (stats.show && (stats.shown += rawDt) > 0.25) {
+            stats.shown = 0;
+            $('perf-hud').textContent =
+                `${Math.round(1000 / Math.max(stats.frame, 0.1))} fps / ${display.hz} Hz  ` +
+                `logic ${stats.update.toFixed(1)}ms  draw ${stats.render.toFixed(1)}ms  ` +
+                `res ${Math.round(renderScale * 100)}%  tier ${perfTier}`;
         }
     }
 
@@ -606,7 +691,14 @@
 
         if (p.stamina <= 0) p.exhausted = true;
         if (p.exhausted && p.stamina > 30) p.exhausted = false;
-        const wantsSprint = keys.ShiftLeft || keys.ShiftRight || stick.sprint;
+        // Touch RUN is a toggle: it switches itself off when you stop moving or run out of breath
+        // (it waits for you to start moving, then turns off once you stand still)
+        if (touchRun) {
+            if (moving) touchRunMoved = true;
+            touchRunIdle = moving ? 0 : touchRunIdle + dt;
+            if ((touchRunMoved && touchRunIdle > 0.5) || touchRunIdle > 5 || p.exhausted) setTouchRun(false);
+        }
+        const wantsSprint = keys.ShiftLeft || keys.ShiftRight || stick.sprint || touchRun;
         p.sprinting = wantsSprint && moving && !p.exhausted && p.sanity > 20 && !p.godMode && !reading;
         if (p.sprinting) p.crouch = false;
         p.crouchAmt = damp(p.crouchAmt, p.crouch ? 1 : 0, 10, dt);
@@ -771,11 +863,11 @@
         }
         const intensity = on ? (2.6 + 1.4 * (p.battery / 100)) * flicker : 0;
         fl.intensity = intensity;
-        rig.spill.intensity = on ? 0.16 * flicker : 0;
+        if (rig.spill) rig.spill.intensity = on ? 0.16 * flicker : 0;
         if (level.camcorder) {
             // The camcorder's infrared lamp: invisible to the eye, bright through the lens
             fl.intensity = p.lens * 2.2;
-            rig.spill.intensity = p.lens * 0.3;
+            if (rig.spill) rig.spill.intensity = p.lens * 0.3;
             if (rig.hemi) rig.hemi.intensity = rig.hemiBase + p.lens * 0.22;
         }
 
@@ -783,7 +875,7 @@
         fl.position.copy(lensPos);
         fl.target.position.copy(lensPos).addScaledVector(p.aim, 10);
         fl.target.updateMatrixWorld();
-        rig.spill.position.copy(camera.position).addScaledVector(camDir, 1.2);
+        if (rig.spill) rig.spill.position.copy(camera.position).addScaledVector(camDir, 1.2);
         rig.vm.lensMat.emissiveIntensity = on ? 5 * flicker : 0.05;
         if (rig.vm.reflMat) rig.vm.reflMat.emissiveIntensity = on ? 1.6 * flicker : 0;
 
@@ -1383,6 +1475,7 @@
         'level <1-5>   jump to a level (also: l 3, or just 3)',
         'god [on|off]  toggle invulnerable no-clip flying (also the Z key)',
         'heal          refill sanity, stamina, battery and matches',
+        'fps [on|off]  frame rate, timings, resolution and effects tier',
         'menu          quit to the title screen',
         'clear         clear this log'
     ];
@@ -1401,6 +1494,9 @@
                 return debugLog('God mode ' + (player.godMode ? 'ON' : 'OFF'), 'ok');
             case 'heal': case 'refill':
                 return refillAll();
+            case 'fps':
+                setShowFps(arg === 'on' ? true : arg === 'off' ? false : !stats.show);
+                return debugLog('FPS readout ' + (stats.show ? 'ON' : 'OFF'), 'ok');
             case 'menu':
                 $('debug-console').classList.remove('active');
                 debugResume = false;
@@ -1421,6 +1517,14 @@
     });
     $('debug-god').addEventListener('click', () => setGodMode(!player.godMode));
     $('debug-heal').addEventListener('click', refillAll);
+    function setShowFps(on) {
+        stats.show = on;
+        $('perf-hud').classList.toggle('show', on);
+        const b = $('debug-fps');
+        b.classList.toggle('on', on);
+        b.querySelector('span').textContent = on ? 'ON' : 'OFF';
+    }
+    $('debug-fps').addEventListener('click', () => setShowFps(!stats.show));
     $('debug-close').addEventListener('click', closeDebug);
     $('pause-debug').addEventListener('click', openDebug);
     $('debug-console').addEventListener('click', (e) => { if (e.target.id === 'debug-console') closeDebug(); });
@@ -1489,7 +1593,7 @@
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '2.1';
+    const BUILD = '2.2';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {
@@ -1499,6 +1603,12 @@
 
     // Touch controls: the joystick is read in updatePlayer; look and buttons arrive here
     if (!TouchControls.canFullscreen) $('t-fullscreen').style.display = 'none';
+    function setTouchRun(on) {
+        touchRun = on;
+        touchRunIdle = 0;
+        touchRunMoved = false;
+        TouchControls.setActive('run', on);
+    }
     TouchControls.init({
         any() { AudioSys.retryBlocked(); },
         // Fullscreen is lost when you switch apps, rotate, or the first request is refused:
@@ -1519,7 +1629,7 @@
             if (name === 'pause') { if (down) pause(); return; }
             // On release: browsers only allow fullscreen from the end of a tap
             if (name === 'fullscreen') { if (!down) { fsDeclined = false; enterImmersive(); } return; }
-            if (name === 'run') { keys.ShiftLeft = down; return; }
+            if (name === 'run') { if (down) setTouchRun(!touchRun); return; }
             if (!down || state.mode !== 'playing') return;
             if (name === 'match') { if (!player.godMode) lightMatch(); }
             else if (name === 'light') toggleFlashlight();
@@ -1657,6 +1767,7 @@
         b.addEventListener('click', () => {
             settings.quality = b.dataset.quality;
             renderScale = quality().scale;
+            perfTier = 0;
             syncSettingsUi();
             applySettings();
             saveSettings();
@@ -1669,6 +1780,7 @@
     $('settings-reset').addEventListener('click', () => {
         Object.assign(settings, DEFAULTS);
         renderScale = quality().scale;
+        perfTier = 0;
         syncSettingsUi();
         applySettings();
         saveSettings();
@@ -1687,7 +1799,8 @@
 
     // Debug hooks for automated testing (harmless in normal play)
     window.__twd = {
-        state, player, settings,
+        state, player, settings, stats, display,
+        get perfTier() { return perfTier; },
         startRun, loadLevel, die, completeLevel,
         get level() { return level; },
         get scene() { return scene; },

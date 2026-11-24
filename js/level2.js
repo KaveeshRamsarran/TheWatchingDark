@@ -279,7 +279,8 @@ const Level2 = (() => {
         };
 
         // Inside the maze
-        for (let tries = 0, n = 0; n < 290 && tries < 9000; tries++) {
+        const L = quality.lite;
+        for (let tries = 0, n = 0; n < (L ? 170 : 290) && tries < 9000; tries++) {
             const cx = randInt(0, S - 1), cz = randInt(0, S - 1);
             // Bias trees toward the hedge lines so corridors stay walkable
             const edge = Math.random() < 0.6;
@@ -296,7 +297,7 @@ const Level2 = (() => {
         }
         // Dense forest beyond the maze edges (silhouettes in the fog)
         const lo = -H - 2, hi = S * C - H + 2;
-        for (let n = 0; n < 190; n++) {
+        for (let n = 0; n < (L ? 90 : 190); n++) {
             let x, z;
             const side = randInt(0, 3), along = rand(lo - 24, hi + 24), depth = rand(1.5, 24);
             if (side === 0) { x = along; z = lo - depth; } else if (side === 1) { x = along; z = hi + depth; } else if (side === 2) { x = lo - depth; z = along; } else { x = hi + depth; z = along; }
@@ -330,14 +331,14 @@ const Level2 = (() => {
             }
             return null;
         };
-        for (let i = 0; i < 110; i++) {
+        for (let i = 0; i < (L ? 60 : 110); i++) {
             const s = rand(0.25, 0.9);
             const p = freeSpot(s, 1.4);
             if (!p) continue;
             pushInstance(rocks, p.x, s * 0.35, p.z, s * rand(0.9, 1.4), s * rand(0.6, 1), s * rand(0.9, 1.4), rand(0, TAU), rand(0, 1), rand(0, 1));
             if (s > 0.5) World.addCircle(p.x, p.z, s * 0.9, false);
         }
-        for (let i = 0; i < 40; i++) {
+        for (let i = 0; i < (L ? 20 : 40); i++) {
             const len = rand(2, 4.5), r = rand(0.18, 0.35);
             const p = freeSpot(len / 2, 3);
             if (!p) continue;
@@ -345,7 +346,7 @@ const Level2 = (() => {
             pushInstance(logs, p.x, r, p.z, len, r, r, ry);
             for (let k = -1; k <= 1; k++) World.addCircle(p.x + Math.cos(ry) * k * len * 0.33, p.z - Math.sin(ry) * k * len * 0.33, r + 0.1, false);
         }
-        for (let i = 0; i < 40; i++) {
+        for (let i = 0; i < (L ? 20 : 40); i++) {
             const p = freeSpot(0.5, 2);
             if (!p) continue;
             const r = rand(0.3, 0.55);
@@ -359,7 +360,7 @@ const Level2 = (() => {
 
         // ---- Marble pillars and ruins (merged stone) -------------------------------
         const stoneGeos = [];
-        for (let i = 0; i < 30; i++) {
+        for (let i = 0; i < (L ? 18 : 30); i++) {
             const p = freeSpot(1, 4);
             if (!p) continue;
             const r = rand(0.3, 0.48), h = rand(1.5, 6.5);
@@ -375,7 +376,7 @@ const Level2 = (() => {
             }
             World.addCircle(p.x, p.z, r * 1.2);
         }
-        for (let i = 0; i < 18; i++) {
+        for (let i = 0; i < (L ? 10 : 18); i++) {
             const p = freeSpot(2, 5);
             if (!p) continue;
             const alongX = Math.random() < 0.5;
@@ -509,8 +510,9 @@ const Level2 = (() => {
         // ---- Ground fog banks ----------------------------------------------------------
         const fogSprites = [];
         const fogMatBase = { map: Textures.fogPuff(), color: 0x2a3242, transparent: true, depthWrite: false, fog: true };
-        for (let i = 0; i < 46; i++) {
-            const s = new THREE.Sprite(new THREE.SpriteMaterial(Object.assign({ opacity: rand(0.045, 0.09) }, fogMatBase)));
+        // Big translucent sprites over the whole view are costly on phones: fewer, denser ones there
+        for (let i = 0; i < (L ? 18 : 46); i++) {
+            const s = new THREE.Sprite(new THREE.SpriteMaterial(Object.assign({ opacity: L ? rand(0.09, 0.16) : rand(0.045, 0.09) }, fogMatBase)));
             const sz = rand(9, 16);
             s.scale.set(sz, sz * 0.45, 1);
             s.userData.drift = new THREE.Vector2(rand(-0.3, 0.3), rand(-0.3, 0.3));

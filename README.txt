@@ -50,14 +50,20 @@ ALTERNATIVE: Direct File Access
   phone sideways.
 
   LEFT THUMB      Drag anywhere on the left half: move (push to the edge to run)
+  LIGHT / CROUCH  Left edge, just above the joystick
   RIGHT THUMB     Drag anywhere else: look around
-  RUN / CROUCH    Hold to run; tap to crouch
-  LIGHT / MATCH   Flashlight; light a match
-  CAM             Raise the camcorder (Level IV)
+  MATCH / RUN     Bottom-right corner. RUN is a toggle: tap it, then move;
+                  it switches off when you stop. CAM appears on Level IV.
   Tap prompt      Read a note; tap the note to close it
   II (top)        Pause (debug console is in the pause menu)
+  [ ] (top)       Fullscreen again, if it was lost (not on iPhone: use
+                  Add to Home Screen)
 
-  Graphics default to LOW on phones. Level V is the heaviest level.
+  Graphics default to LOW on phones, and the levels build lighter there.
+  The game measures the screen's refresh rate and aims for it (up to 120 fps),
+  trading resolution - then bloom, shadows and particles - to hold it.
+  Debug console > SHOW FPS shows the frame rate. (iPhone Safari caps every
+  web page at 60 fps, 30 in Low Power Mode.)
 
   HOSTING IT FOR YOUR PHONE
   It is a static website - any static host works.

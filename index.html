@@ -38,12 +38,31 @@
                 <button class="touch-btn" data-touch="fullscreen" id="t-fullscreen" aria-label="Fullscreen">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
                 </button>
-                <div id="touch-buttons">
-                    <button class="touch-btn" data-touch="camera">CAM</button>
-                    <button class="touch-btn" data-touch="light">LIGHT</button>
-                    <button class="touch-btn" data-touch="crouch">CROUCH</button>
-                    <button class="touch-btn" data-touch="run">RUN</button>
-                    <button class="touch-btn big" data-touch="match">MATCH</button>
+                <!-- Left thumb: toggles that sit just above the joystick -->
+                <div id="touch-left">
+                    <button class="touch-btn icon" data-touch="light" aria-label="Flashlight">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/></svg>
+                        <span>LIGHT</span>
+                    </button>
+                    <button class="touch-btn icon" data-touch="crouch" aria-label="Crouch">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 7l6 5 6-5M6 13l6 5 6-5"/></svg>
+                        <span>CROUCH</span>
+                    </button>
+                </div>
+                <!-- Right thumb: actions around the corner -->
+                <div id="touch-right">
+                    <button class="touch-btn icon t-cam" data-touch="camera" aria-label="Camera">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M16 10.5l5-3v9l-5-3z"/></svg>
+                        <span>CAM</span>
+                    </button>
+                    <button class="touch-btn icon t-run" data-touch="run" aria-label="Run">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6 6l6 6-6 6M12 6l6 6-6 6"/></svg>
+                        <span>RUN</span>
+                    </button>
+                    <button class="touch-btn icon t-match" data-touch="match" aria-label="Light a match">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5c.6 2.6 3.5 4.3 3.5 7.6A3.5 3.5 0 0 1 12 13.6a3.5 3.5 0 0 1-3.5-3.5c0-1.7.9-2.7 1.7-3.6.2 1 .7 1.6 1.4 1.9-.2-2.1.1-4.1.4-5.9z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 15.5v6"/></svg>
+                        <span>MATCH</span>
+                    </button>
                 </div>
             </div>
 
@@ -102,6 +121,7 @@
         </div>
 
         <div id="match-counter-message"></div>
+        <div id="perf-hud"></div>
         <div id="subliminal"><img alt="" id="subliminal-image"></div>
 
         <div id="note-screen">
@@ -244,7 +264,7 @@
                 <div class="howto-grid touch-only">
                     <div><kbd>LEFT THUMB</kbd><span>Move — push to the edge to run</span></div>
                     <div><kbd>RIGHT THUMB</kbd><span>Drag anywhere to look around</span></div>
-                    <div><kbd>RUN</kbd><span>Hold to sprint — drains sanity, and they hear you</span></div>
+                    <div><kbd>RUN</kbd><span>Tap to sprint (stops when you do) — drains sanity, and they hear you</span></div>
                     <div><kbd>LIGHT</kbd><span>Flashlight — limited battery</span></div>
                     <div><kbd>MATCH</kbd><span>Light a match — the Watchers flee from fire</span></div>
                     <div><kbd>CROUCH</kbd><span>Slow, but almost silent</span></div>
@@ -291,6 +311,7 @@
                 <div class="debug-row">
                     <button id="debug-god" class="btn small debug-toggle">GOD MODE <span>OFF</span></button>
                     <button id="debug-heal" class="btn small">REFILL ALL</button>
+                    <button id="debug-fps" class="btn small debug-toggle">SHOW FPS <span>OFF</span></button>
                 </div>
 
                 <div class="setting-section">COMMAND</div>

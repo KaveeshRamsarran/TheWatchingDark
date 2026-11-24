@@ -7,7 +7,7 @@ const Facility = (() => {
     const WALL_T = 0.5;
     const TEX_W = 4;          // world units per wall texture tile
     const CHUNK = 5;          // cells per render chunk
-    const LAMP_POOL = 4;      // real lights shared between all lamps
+    const LAMP_POOL = 4;      // real lights shared between all lamps (2 on phones / Low)
 
     const DEFAULTS = {
         wallH: 5.2,
@@ -280,7 +280,7 @@ const Facility = (() => {
 
         const lampLights = [];
         if (lamps.length) {
-            for (let i = 0; i < LAMP_POOL; i++) {
+            for (let i = 0; i < (quality && quality.lite ? 2 : LAMP_POOL); i++) {
                 let l;
                 if (o.lampStyle === 'brazier') {
                     l = new THREE.PointLight(o.lightColor, 0, 16, 1.7);
@@ -323,6 +323,7 @@ const Facility = (() => {
         let lastAssign = 0;
 
         return {
+            lite: !!(quality && quality.lite),
             root, owned, wallSegments, lamps, lampCells,
             used: [...lampCells],
             WALL_H, WALL_T,
@@ -464,7 +465,7 @@ const Facility = (() => {
             World.addCircle(x, z, 0.45, false);
             notes.push({ pos: new THREE.Vector3(x, 0.6 + lift, z), stand, cell: { x: World.cellX(x), z: World.cellX(z) }, ...entry });
         };
-        if (!lore.length) return makeNoteSet(scene, notes);
+        if (!lore.length) return makeNoteSet(scene, notes, shell.lite);
         place(-2.4, 2.6, 0.6, lore[0]);
 
         let maxD = 0;
@@ -488,13 +489,14 @@ const Facility = (() => {
             shell.used.push({ x: spot.cx, z: spot.cz });
             place(spot.x, spot.z, rand(0, TAU), lore[i]);
         }
-        return makeNoteSet(scene, notes);
+        return makeNoteSet(scene, notes, shell.lite);
     }
 
     // Guttering candles on every note, with one real light that follows the nearest
-    function makeNoteSet(scene, notes) {
-        const candle = new THREE.PointLight(0xff9a40, 0, 6, 2);
-        scene.add(candle);
+    // (no real candle light on phones: the flame and glow sprites carry it)
+    function makeNoteSet(scene, notes, lite = false) {
+        const candle = lite ? null : new THREE.PointLight(0xff9a40, 0, 6, 2);
+        if (candle) scene.add(candle);
         let lastCandle = -1;
         return {
             list: notes,
@@ -507,6 +509,7 @@ const Facility = (() => {
                     const d = n.pos.distanceToSquared(cam.position);
                     if (d < nd) { nd = d; nearest = n; }
                 }
+                if (!candle) return;
                 if (nearest && (time - lastCandle > 0.3 || time < lastCandle)) {
                     lastCandle = time;
                     candle.position.set(nearest.pos.x + 0.2, nearest.pos.y + 0.35, nearest.pos.z);
@@ -529,15 +532,18 @@ const Facility = (() => {
             door.group.position.set(ex.x * C, 0, wallZ);
             door.group.rotation.y = Math.PI;
             shell.root.add(door.group);
-            const light = new THREE.PointLight(0x33ff77, 1.1, 12, 1.8);
-            light.position.set(ex.x * C, 3.4, wallZ - 1.2);
-            scene.add(light);
+            // Phones: the glowing sign and door carry it without a real light
+            const light = shell.lite ? null : new THREE.PointLight(0x33ff77, 1.1, 12, 1.8);
+            if (light) {
+                light.position.set(ex.x * C, 3.4, wallZ - 1.2);
+                scene.add(light);
+            }
             exits.push({ cell: ex, pos: new THREE.Vector3(ex.x * C, 1.6, wallZ - 0.6), door, light });
         }
         return {
             list: exits,
             update(time) {
-                for (const ex of exits) ex.light.intensity = 1.0 + Math.sin(time * 2.5) * 0.2;
+                for (const ex of exits) if (ex.light) ex.light.intensity = 1.0 + Math.sin(time * 2.5) * 0.2;
             }
         };
     }

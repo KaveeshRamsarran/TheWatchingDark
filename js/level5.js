@@ -96,8 +96,8 @@ const Level5 = (() => {
             pipeChance: 0,
             columnChance: 0,
             lampStyle: 'none',
-            wallDetail: [7, 6],
-            floorSegments: 110,
+            wallDetail: quality.lite ? [4, 4] : [7, 6],
+            floorSegments: quality.lite ? 56 : 110,
             wallHook: addFlex,
             wallTexture: () => Textures.flesh(2, true),
             floorTexture: () => Textures.flesh(1, false),
@@ -175,18 +175,19 @@ const Level5 = (() => {
             }
             if (c.eyes.length) clusters.push(c);
         };
-        for (let i = 0; i < 75 && pathFaces.length; i++) makeCluster(pick(pathFaces), randInt(1, 6), false);
-        for (let i = 0; i < 36 && heartFaces.length; i++) makeCluster(pick(heartFaces), randInt(3, 8), true);
+        const L = quality.lite;
+        for (let i = 0; i < (L ? 48 : 75) && pathFaces.length; i++) makeCluster(pick(pathFaces), randInt(1, 6), false);
+        for (let i = 0; i < (L ? 22 : 36) && heartFaces.length; i++) makeCluster(pick(heartFaces), randInt(3, 8), true);
 
         const eyeTex = Textures.eyeball();
         const eyeMesh = new THREE.InstancedMesh(
-            new THREE.SphereGeometry(1, 11, 8),
+            new THREE.SphereGeometry(1, L ? 9 : 11, L ? 6 : 8),
             new THREE.MeshStandardMaterial({ map: eyeTex, roughness: 0.15, emissive: 0xffffff, emissiveMap: eyeTex, emissiveIntensity: 0.05 }),
             Math.max(1, eyes.length)
         );
         // Swollen, wet lids of flesh around each eye
         const sockets = new THREE.InstancedMesh(
-            new THREE.TorusGeometry(1, 0.2, 5, 12),
+            new THREE.TorusGeometry(1, 0.2, L ? 4 : 5, L ? 9 : 12),
             new THREE.MeshStandardMaterial({ color: 0x4a1012, roughness: 0.3 }),
             Math.max(1, eyes.length)
         );
@@ -229,7 +230,7 @@ const Level5 = (() => {
         const taken = [];
         const free = (p, r) => taken.every((t) => t.p.distanceTo(p) > t.r + r);
         const claim = (p, r) => taken.push({ p: p.clone(), r });
-        for (let i = 0, tries = 0; i < 60 && tries < 600 && pathFaces.length; tries++) {
+        for (let i = 0, tries = 0; i < (L ? 36 : 60) && tries < 600 && pathFaces.length; tries++) {
             const f = pick(pathFaces);
             const base = f.p.clone().addScaledVector(f.t, rand(-3.2, 3.2)).setY(rand(0.9, 2.3)).addScaledVector(f.n, -0.05);
             if (!free(base, 0.5)) continue;
@@ -242,7 +243,7 @@ const Level5 = (() => {
         // From the floor: hands clawing up beside the path
         const openCells = [];
         for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) if (!World.isSolid(x, z) && Math.hypot(x, z) > 3) openCells.push({ x, z });
-        for (let i = 0; i < 16 && openCells.length; i++) {
+        for (let i = 0; i < (L ? 10 : 16) && openCells.length; i++) {
             const c = pick(openCells);
             const base = new THREE.Vector3(c.x * C + rand(-2.8, 2.8), -0.08, c.z * C + rand(-2.8, 2.8));
             if (World.overlaps(base.x, base.z, 0.6)) continue;
@@ -293,10 +294,10 @@ const Level5 = (() => {
         };
         const tmpV = new THREE.Vector3();
         if (faceGeo && bodyGeo) {
-            for (let i = 0, t = 0; i < 24 && t < 300; t++) if (addRelief(faceGeo, pick(pathFaces), rand(1.0, 1.6), 0.35, rand(1.1, 2.7), 'face')) i++;
-            for (let i = 0, t = 0; i < 10 && t < 300 && heartFaces.length; t++) if (addRelief(faceGeo, pick(heartFaces), rand(1.3, 2.0), 0.35, rand(1.4, 3.6), 'face')) i++;
-            for (let i = 0, t = 0; i < 10 && t < 300; t++) { const s = rand(1.0, 1.25); if (addRelief(bodyGeo, pick(pathFaces), s, 0.65, 1.25 * s, 'body')) i++; }
-            for (let i = 0, t = 0; i < 6 && t < 300 && heartFaces.length; t++) { const s = rand(1.1, 1.5); if (addRelief(bodyGeo, pick(heartFaces), s, 0.65, 1.25 * s, 'body')) i++; }
+            for (let i = 0, t = 0; i < (L ? 14 : 24) && t < 300; t++) if (addRelief(faceGeo, pick(pathFaces), rand(1.0, 1.6), 0.35, rand(1.1, 2.7), 'face')) i++;
+            for (let i = 0, t = 0; i < (L ? 6 : 10) && t < 300 && heartFaces.length; t++) if (addRelief(faceGeo, pick(heartFaces), rand(1.3, 2.0), 0.35, rand(1.4, 3.6), 'face')) i++;
+            for (let i = 0, t = 0; i < (L ? 6 : 10) && t < 300; t++) { const s = rand(1.0, 1.25); if (addRelief(bodyGeo, pick(pathFaces), s, 0.65, 1.25 * s, 'body')) i++; }
+            for (let i = 0, t = 0; i < (L ? 4 : 6) && t < 300 && heartFaces.length; t++) { const s = rand(1.1, 1.5); if (addRelief(bodyGeo, pick(heartFaces), s, 0.65, 1.25 * s, 'body')) i++; }
         }
 
         progress('She is waiting...', 0.86);
