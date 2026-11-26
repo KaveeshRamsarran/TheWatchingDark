@@ -58,9 +58,11 @@ ALTERNATIVE: Direct File Access
   [ ] (top)       Fullscreen again, if it was lost (not on iPhone: use
                   Add to Home Screen)
 
-  Graphics default to LOW on phones, and the levels build lighter there.
-  The game measures the screen's refresh rate and aims for it (up to 120 fps),
-  trading resolution - then bloom, shadows and particles - to hold it.
+  Graphics default to LOW on phones, and the levels build lighter there
+  (phones keep the anti-aliasing but skip the light-in-the-air and contact
+  shadow effects). The game measures the screen's refresh rate and aims for
+  it (up to 120 fps), trading resolution - then light in the air, contact
+  shadows, bloom, shadows and particles - to hold it.
   Debug console > SHOW FPS shows the frame rate. (iPhone Safari caps every
   web page at 60 fps, 30 in Low Power Mode.)
 
@@ -188,6 +190,10 @@ NOTES
 Graphics
   ✓ Procedural PBR textures (colour, normal and roughness maps)
   ✓ HDR rendering with bloom, ACES tone mapping and film grain
+  ✓ Volumetric light: the flashlight, lamps and flames light up the dust in
+    the air, and walls and pillars cut real shadow shafts through the beam
+  ✓ Ambient occlusion: contact shadows in corners and under objects
+  ✓ FXAA anti-aliasing; on High the nearest hanging lamp casts shadows
   ✓ Sanity-driven distortion, chromatic aberration and heartbeat pulse
   ✓ Shadowed flashlight with lag/sway, first-person flashlight & match
   ✓ Rigged, skinned Watcher and gnarled forest trees modelled in Blender
@@ -201,6 +207,9 @@ Performance
   ✓ Grid-based line of sight & collision, shader-animated particles
   ✓ Dynamic resolution keeps the frame rate smooth
   ✓ Low / Medium / High quality presets
+      Low:    no shadows or bloom, anti-aliasing only (phones)
+      Medium: + shadows, bloom, volumetric light, ambient occlusion
+      High:   + full resolution, finer volumetrics, shadowed lamps
 
 Settings
   ✓ Music & effects volume, mouse sensitivity,
@@ -216,7 +225,8 @@ Settings
   js/util.js        Math, tileable noise, geometry helpers
   js/textures.js    Procedural texture generation
   js/audio.js       Music, sound effects, positional voices
-  js/postfx.js      Bloom / tone mapping / screen effects
+  js/postfx.js      Volumetric light, ambient occlusion, FXAA, bloom,
+                    tone mapping and screen effects
   js/world.js       Maze generation, collision, line of sight, pathfinding
   js/models.js      Watcher (and its Drowned/Unseen variants), Angel,
                     eye, props, first-person models

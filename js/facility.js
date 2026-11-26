@@ -288,7 +288,16 @@ const Facility = (() => {
                     l = new THREE.SpotLight(o.lightColor, 0, 24, Math.PI / 2.6, 0.55, 1.6);
                     scene.add(l.target);
                 }
-                l.castShadow = false;
+                // On High the nearest hanging lamp throws real shadows (slot 0 always holds it)
+                l.castShadow = i === 0 && !!(quality && quality.lampShadows) && o.lampStyle !== 'brazier';
+                if (l.castShadow) {
+                    l.shadow.mapSize.set(1024, 1024);
+                    l.shadow.camera.near = 0.3;
+                    l.shadow.camera.far = 24;
+                    l.shadow.bias = -0.0006;
+                    l.shadow.normalBias = 0.03;
+                    l.shadow.radius = 2;
+                }
                 scene.add(l);
                 lampLights.push({ light: l, lamp: null, spot: o.lampStyle !== 'brazier' });
             }
@@ -384,6 +393,22 @@ const Facility = (() => {
                 free.light.target.updateMatrixWorld();
             } else {
                 free.light.position.set(l.pos.x, l.pos.y + 0.2, l.pos.z);
+            }
+        }
+        // The shadow-casting slot follows the nearest lamp
+        const lead = slots[0];
+        if (lead.light.castShadow && sorted.length && lead.lamp !== sorted[0]) {
+            const other = slots.find((s) => s.lamp === sorted[0]);
+            if (other) {
+                const tmp = other.lamp;
+                other.lamp = lead.lamp;
+                lead.lamp = tmp;
+                for (const s of [lead, other]) {
+                    if (!s.lamp) continue;
+                    s.light.position.set(s.lamp.pos.x, s.lamp.pos.y - 0.1, s.lamp.pos.z);
+                    s.light.target.position.set(s.lamp.pos.x, 0, s.lamp.pos.z);
+                    s.light.target.updateMatrixWorld();
+                }
             }
         }
     }

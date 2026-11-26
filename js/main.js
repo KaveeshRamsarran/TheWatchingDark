@@ -27,20 +27,38 @@
 
     const dpr = window.devicePixelRatio || 1;
     const QUALITY = {
-        low: { pixelRatio: 1, scale: 0.6, minScale: 0.4, bloom: false, shadows: false, shadowSize: 512 },
-        medium: { pixelRatio: Math.min(dpr, 1.25), scale: 0.8, minScale: 0.45, bloom: true, shadows: true, shadowSize: 1024 },
-        high: { pixelRatio: Math.min(dpr, 1.5), scale: 1.0, minScale: 0.5, bloom: true, shadows: true, shadowSize: 2048 }
+        low: { pixelRatio: 1, scale: 0.6, minScale: 0.4, bloom: false, shadows: false, shadowSize: 512, ao: false, volumetric: false },
+        medium: {
+            pixelRatio: Math.min(dpr, 1.25), scale: 0.8, minScale: 0.45, bloom: true, shadows: true, shadowSize: 1024,
+            ao: true, volumetric: true, volSteps: 16
+        },
+        high: {
+            pixelRatio: Math.min(dpr, 1.5), scale: 1.0, minScale: 0.5, bloom: true, shadows: true, shadowSize: 2048,
+            ao: true, volumetric: true, volSteps: 24, lampShadows: true
+        }
     };
+    // When the frame rate can't be held, effects go in this order (the tier number)
+    const TIER = { volumetric: 1, ao: 2, bloom: 3, shadows: 4, motes: 5 };
     const quality = () => QUALITY[settings.quality] || QUALITY.medium;
     // The preset as it applies right now: frame-rate tiers can switch effects off, and
     // `lite` asks the level builders for lighter geometry (phones / the Low preset)
     const effectiveQuality = () => {
         const q = quality();
+        const lite = settings.quality === 'low' || touchMode;
         return Object.assign({}, q, {
-            shadows: q.shadows && perfTier < 2,
-            bloom: q.bloom && perfTier < 1,
-            lite: settings.quality === 'low' || touchMode
+            shadows: q.shadows && perfTier < TIER.shadows,
+            bloom: q.bloom && perfTier < TIER.bloom,
+            // Phones get the anti-aliasing only: the depth effects cost too much fill rate
+            ao: q.ao && !lite && perfTier < TIER.ao,
+            volumetric: q.volumetric && !lite && perfTier < TIER.volumetric,
+            lampShadows: q.lampShadows && !lite && q.shadows && perfTier < TIER.shadows,
+            lite
         });
+    };
+    const applyEffects = () => {
+        const q = effectiveQuality();
+        PostFX.setBloom(q.bloom);
+        PostFX.setFeatures({ ao: q.ao, volumetric: q.volumetric, volSteps: q.volSteps || 16 });
     };
 
     // =========================================================================
@@ -92,7 +110,9 @@
         hallucination: null,
         angelState: { closest: Infinity, charge: 0, looked: 0 },
         stats: { runStart: 0, deaths: 0, matchesUsed: 0, notes: new Set() },
-        debug: /[?&]debug\b/.test(location.search)
+        debug: /[?&]debug\b/.test(location.search),
+        // ?fixedq holds the chosen preset (no frame-rate trimming) for testing and screenshots
+        fixedQuality: /[?&]fixedq\b/.test(location.search)
     };
 
     const player = {
@@ -131,7 +151,7 @@
         const cw = Math.floor(window.innerWidth * q.pixelRatio), ch = Math.floor(window.innerHeight * q.pixelRatio);
         PostFX.setSize(cw, ch, renderScale);
         Models.pointUniforms.pixelScale.value = (ch * renderScale) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
-        PostFX.setBloom(q.bloom && perfTier < 1);
+        applyEffects();
     }
     window.addEventListener('resize', applySize);
 
@@ -160,9 +180,8 @@
     let perfTier = 0;   // 0 = the chosen preset; each step up sheds an effect to hold frame rate
 
     function applyTier() {
-        const q = quality();
-        PostFX.setBloom(q.bloom && perfTier < 1);
-        if (perfTier >= 2 && renderer.shadowMap.enabled) {
+        applyEffects();
+        if (perfTier >= TIER.shadows && renderer.shadowMap.enabled) {
             renderer.shadowMap.enabled = false;
             if (scene) {
                 scene.traverse((o) => {
@@ -172,7 +191,7 @@
                 });
             }
         }
-        if (rig && rig.motes) rig.motes.visible = perfTier < 3;
+        if (rig && rig.motes) rig.motes.visible = perfTier < TIER.motes;
     }
 
     function adaptQuality(rawDt) {
@@ -190,12 +209,12 @@
         }
         const q = quality();
         const target = display.target;
-        const minScale = q.minScale * (perfTier >= 3 ? 0.8 : 1);
+        const minScale = q.minScale * (perfTier >= TIER.motes ? 0.8 : 1);
         let next = renderScale;
         if (fps < target * 0.9) {
             if (renderScale > minScale + 0.001) {
                 next = Math.max(minScale, renderScale - (fps < target * 0.7 ? 0.12 : 0.06));
-            } else if (perfTier < 3) {
+            } else if (perfTier < TIER.motes) {
                 perfTier++;
                 applyTier();
             }
@@ -226,7 +245,7 @@
             builder: () => Level1, spawn: () => Monsters.spawnWatchers(randInt(14, 17)),
             music: ['ost', 0.05 / 0.3], steps: 'concrete', far: 55, dark: true, meter: 'battery', hint: HINT_DEFAULT,
             ambient: [0x23252e, 0x080605, 0.13], tint: new THREE.Color(1.03, 0.97, 0.9), exitFlash: [0.6, 1, 0.7],
-            reverb: 0.45, deathTitle: 'CONSUMED BY DARKNESS'
+            reverb: 0.45, dust: 0.012, deathTitle: 'CONSUMED BY DARKNESS'
         },
         2: {
             num: 'II', title: 'THE LOST FOREST', sub: 'They move when you look at them.', objective: "Reach the golden light. Don't stare.",
@@ -234,21 +253,21 @@
             music: ['level2', 0.9 / 0.3], steps: 'grass', far: 34, dark: false, meter: 'relic', hint: HINT_FOREST,
             ambient: null, tint: new THREE.Color(0.9, 0.97, 1.06), exitFlash: [1, 0.85, 0.5], exposure: 1.05, saturation: 0.62,
             // The fog is thick: Angels only notice your gaze once you could actually see them
-            angelSight: 15, haloFar: 32, reverb: 0.25, deathTitle: 'CONSUMED BY LIGHT'
+            angelSight: 15, haloFar: 32, reverb: 0.25, dust: 0.01, deathTitle: 'CONSUMED BY LIGHT'
         },
         3: {
             num: 'III', title: 'THE FLOODED BASEMENT', sub: 'They cannot see you. They can hear you.', objective: 'Find the stairs up. Move quietly.',
             builder: () => Level3, spawn: () => Monsters.spawnDrowned(randInt(16, 18)),
             music: null, bed: 'water', steps: null, far: 52, dark: true, meter: 'battery', hint: HINT_DEFAULT,
             ambient: [0x1a2624, 0x050807, 0.12], tint: new THREE.Color(0.92, 1.0, 0.98), exitFlash: [0.6, 1, 0.7],
-            matchNoise: true, reverb: 1.0, deathTitle: 'DRAGGED UNDER'
+            matchNoise: true, reverb: 1.0, dust: 0.018, deathTitle: 'DRAGGED UNDER'
         },
         4: {
             num: 'IV', title: 'THE OBSERVATION WING', sub: 'They only exist on camera.', objective: 'Find an exit. Keep recording.',
             builder: () => Level4, spawn: () => Monsters.spawnWatchers(randInt(11, 13), 'unseen'),
             music: ['ost', 0.035 / 0.3], steps: 'concrete', far: 50, dark: true, meter: 'camera', hint: HINT_CAMERA,
             ambient: [0x7a4a4a, 0x1a1010, 0.6], tint: new THREE.Color(1.02, 0.95, 0.95), exitFlash: [0.6, 1, 0.7],
-            batteryAmount: 35, maxHunters: 5, reverb: 0.4, deathTitle: 'LOST IN THE STATIC'
+            batteryAmount: 35, maxHunters: 5, reverb: 0.4, dust: 0.01, deathTitle: 'LOST IN THE STATIC'
         },
         5: {
             num: 'V', title: 'THE WATCHING DARK', sub: 'You are inside it now.', objective: 'Go deeper. Find the heart.',
@@ -257,7 +276,7 @@
             spawn: () => { Monsters.spawnWatchers(2); Monsters.spawnAngels(2, player.pos); },
             music: null, steps: null, far: 55, dark: true, meter: 'battery', hint: HINT_DEFAULT,
             ambient: [0x3a1012, 0x080203, 0.06], tint: new THREE.Color(1.08, 0.9, 0.88), exitFlash: [1, 0.2, 0.15],
-            maxHunters: 1, angelCollide: true, reverb: 0.9, subliminal: true, deathTitle: 'THE DARK SAW YOU'
+            maxHunters: 1, angelCollide: true, reverb: 0.9, subliminal: true, dust: 0.015, deathTitle: 'THE DARK SAW YOU'
         }
     };
     const LAST_LEVEL = 5;
@@ -327,7 +346,8 @@
         state.angelState.looked = 0;
 
         rig = buildRig(scene, level, q);
-        rig.motes.visible = perfTier < 3;
+        lightsScanned = -1;
+        rig.motes.visible = perfTier < TIER.motes;
         scene.add(camera);
         camera.fov = FOV;
         // Nothing survives the fog past this point, so don't draw it
@@ -596,7 +616,7 @@
         if (state.mode === 'playing') {
             // Reading a note stops the world: nothing moves, nothing drains, until you close it
             if (!state.note) update(dt);
-            adaptQuality(rawDt);
+            if (!state.fixedQuality) adaptQuality(rawDt);
         } else if (state.mode === 'dying' || state.mode === 'transition') {
             updateCamera(dt);
         }
@@ -1149,7 +1169,7 @@
             state.subliminalTimer = (state.subliminalTimer || rand(8, 16)) - dt;
             if (state.subliminalTimer <= 0) {
                 state.subliminalTimer = rand(10, 24) * (0.4 + p.sanity / 75);
-                HUD.subliminal(Math.random() < 0.5 ? 'images/watcher_jumpscare.png' : 'images/angel.jpg');
+                HUD.subliminal(Math.random() < 0.5 ? 'images/monster.png' : 'images/angel.jpg');
             }
         }
         HUD.update(p, info.meter);
@@ -1242,7 +1262,56 @@
         u.nightVision.value = lens;
         u.interference.value = tear;
 
+        const fog = scene.fog;
+        const fogDensity = !fog ? 0 : fog.isFogExp2 ? fog.density : 3 / Math.max(1, fog.far);
+        PostFX.setFrame(camera, gatherLights(), fogDensity, info.dust || 0.012);
         PostFX.render(scene, camera, state.time);
+    }
+
+    // The lights whose beams hang in the dusty air: the flashlight first, then the nearest others
+    const volLights = Array.from({ length: 6 }, () => ({ pos: new THREE.Vector3(), dir: new THREE.Vector3(), color: new THREE.Color(), range: 0, cosOuter: 0, cosInner: 1 }));
+    const volOut = [];
+    const lightWorld = new THREE.Vector3(), targetWorld = new THREE.Vector3();
+    let sceneLights = [], lightsScanned = -1;
+    function gatherLights() {
+        volOut.length = 0;
+        if (!rig || player.lens > 0.5) return volOut;   // the viewfinder sees in infrared: no dust glow
+        // Monsters and the level can add lights as the level plays out
+        if (lightsScanned < 0 || state.time - lightsScanned > 2) {
+            lightsScanned = state.time;
+            sceneLights = [];
+            scene.traverse((o) => { if ((o.isSpotLight || o.isPointLight) && o !== rig.spill) sceneLights.push(o); });
+        }
+        const cam = camera.position;
+        const cands = [];
+        for (const l of sceneLights) {
+            if (l.intensity <= 0.01 || !l.visible) continue;
+            l.getWorldPosition(lightWorld);
+            const d = lightWorld.distanceTo(cam);
+            if (d > (l.distance || 30) + 30) continue;
+            cands.push({ l, d: l === rig.flashlight ? -1 : d });
+        }
+        cands.sort((a, b) => a.d - b.d);
+        for (let i = 0; i < cands.length && i < volLights.length; i++) {
+            const l = cands[i].l, v = volLights[i];
+            l.getWorldPosition(v.pos);
+            v.range = l.distance || 30;
+            v.color.copy(l.color).multiplyScalar(l.intensity);
+            // Without a shadow map nothing stops a light's glow at the walls, so keep those faint
+            v.shadow = renderer.shadowMap.enabled && l.castShadow ? l.shadow : null;
+            v.weight = l === rig.flashlight ? 1 : l.isSpotLight ? 0.25 : 0.5;
+            if (l.isSpotLight) {
+                l.target.getWorldPosition(targetWorld);
+                v.dir.subVectors(targetWorld, v.pos).normalize();
+                v.cosOuter = Math.cos(l.angle);
+                v.cosInner = Math.cos(l.angle * (1 - l.penumbra));
+                v.spot = true;
+            } else {
+                v.spot = false;
+            }
+            volOut.push(v);
+        }
+        return volOut;
     }
 
     // =========================================================================
@@ -1270,7 +1339,7 @@
         // Same jumpscare as always: image + scream, two seconds
         const js = $('jumpscare-screen');
         const angelic = cause === 'angel' || (cause === 'sanity' && level.id === 2);
-        $('jumpscare-image').src = angelic ? 'images/angel.jpg' : 'images/watcher_jumpscare.png';
+        $('jumpscare-image').src = angelic ? 'images/angel.jpg' : 'images/monster.png';
         js.style.display = 'flex';
         AudioSys.playJumpscare();
         state.fadeTarget = 1;
@@ -1585,7 +1654,7 @@
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '2.3';
+    const BUILD = '2.4';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {
