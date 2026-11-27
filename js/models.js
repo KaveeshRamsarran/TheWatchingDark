@@ -170,15 +170,15 @@ const Models = (() => {
     //  unseen  - bone-white and faintly luminous, so it blazes in night vision
     const VARIANTS = {
         watcher: { color: 0x46424a, rim: 0x080103, rimPower: 3.2, emissive: 0x000000, roughness: 1, eyes: 'burning', smoke: [0x050206, 0.55, 0.55], procColor: 0x040304, procRim: 0x1e0206 },
-        drowned: { color: 0x7d8a80, rim: 0x0c1c18, rimPower: 2.6, emissive: 0x000000, roughness: 0.55, eyes: 'none', smoke: null, procColor: 0x56625a, procRim: 0x0c1c18 },
-        unseen: { color: 0x9e9c96, rim: 0x3a3a3a, rimPower: 2.2, emissive: 0x080808, roughness: 0.8, eyes: 'hollow', smoke: null, procColor: 0x9e9c96, procRim: 0x3a3a3a }
+        drowned: { color: 0xa8b4ac, rim: 0x101c1a, rimPower: 2.6, emissive: 0x000000, roughness: 0.42, eyes: 'none', smoke: null, procColor: 0x56625a, procRim: 0x0c1c18 },
+        unseen: { color: 0xc8c6c0, rim: 0x3a3a3a, rimPower: 2.2, emissive: 0x080808, roughness: 0.8, eyes: 'none', smoke: null, procColor: 0x9e9c96, procRim: 0x3a3a3a }
     };
 
     function watcherRigMaterials(variant = 'watcher') {
         const key = 'watcherRig_' + variant;
         if (shared[key]) return shared[key];
         const V = VARIANTS[variant] || VARIANTS.watcher;
-        const sk = Textures.skin();
+        const sk = variant === 'watcher' ? Textures.skin() : Textures.paleSkin();
         shared[key] = {
             skin: markShared(addRim(new THREE.MeshStandardMaterial({
                 map: sk.map, normalMap: sk.normalMap, roughnessMap: sk.roughnessMap, roughness: V.roughness,
@@ -206,17 +206,42 @@ const Models = (() => {
     const AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);
     const qTmp = new THREE.Quaternion();
 
+    // Per-creature data printed by tools/blender/creatures.py (three.js model space)
+    const CREATURES = {
+        watcher: { file: 'watcher', eyes: [[0.035, 2.2691, 0.672], [-0.035, 2.2691, 0.672]], jaw: [0, -0.9341, 0.3569], jawOpen: 0.085 },
+        unseen: { file: 'unseen', eyes: [], jaw: [-0.9679, 0.2055, 0.1445], jawOpen: 0.075 },
+        drowned: { file: 'crawler', eyes: [], jaw: [0, -0.9985, -0.055], jawOpen: 0.09, crawl: true }
+    };
+
+    function creatureMaterials(variant) {
+        const key = 'creatureMats_' + variant;
+        if (shared[key]) return shared[key];
+        const base = watcherRigMaterials(variant);
+        shared[key] = Object.assign({}, base, {
+            // Wet black hair that clings and drips
+            hair: markShared(new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.32, side: THREE.DoubleSide, skinning: true })),
+            // A thin, stained hospital gown
+            gown: markShared(addRim(new THREE.MeshStandardMaterial({
+                color: 0x4e5650, roughness: 0.95, side: THREE.DoubleSide, skinning: true
+            }), 0x141614, 2.4)),
+            maw: markShared(new THREE.MeshBasicMaterial({ color: 0x000000, skinning: true, side: THREE.DoubleSide }))
+        });
+        return shared[key];
+    }
+
     function createWatcher(scale = 1, variant = 'watcher') {
-        const model = Assets.ok ? Assets.watcher() : null;
+        const info = CREATURES[variant] || CREATURES.watcher;
+        const own = Assets.ok && Assets.has(info.file);
+        const model = Assets.ok ? (Assets.skinned(info.file) || Assets.skinned('watcher')) : null;
         if (!model) return createWatcherProcedural(scale, variant);
         const VV = VARIANTS[variant] || VARIANTS.watcher;
-        const M = watcherRigMaterials(variant);
+        const M = creatureMaterials(variant);
         model.traverse((o) => {
             if (!o.isMesh) return;
             const n = o.material.name || '';
-            o.material = /teeth/i.test(n) ? M.teeth : /maw/i.test(n) ? M.maw : M.skin;
+            o.material = /teeth/i.test(n) ? M.teeth : /maw/i.test(n) ? M.maw : /hair/i.test(n) ? M.hair : /gown/i.test(n) ? M.gown : M.skin;
             o.castShadow = true;
-            // Bind-pose bounds, padded so swinging limbs and the crown are never culled early
+            // Bind-pose bounds, padded so swinging limbs and the head are never culled early
             if (!o.geometry.userData.paddedBounds) {
                 o.geometry.computeBoundingSphere();
                 o.geometry.boundingSphere.radius += 0.9;
@@ -240,8 +265,9 @@ const Models = (() => {
         });
         if (rig.jaw) {
             const pinv = rig.jaw.bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
-            rig.jaw.down = new THREE.Vector3(0, -1, 0).applyQuaternion(pinv);
+            rig.jaw.down = (own ? new THREE.Vector3(...info.jaw) : new THREE.Vector3(0, -1, 0)).normalize().applyQuaternion(pinv);
         }
+        const jawOpen = own ? info.jawOpen : 0.05;
 
         // Burning eyes deep in the sockets (or none at all)
         const burning = VV.eyes === 'burning';
@@ -256,16 +282,15 @@ const Models = (() => {
             shared.watcherEyeGeo = mergeGeometries([ring, core]);
             shared.watcherEyeGeo.userData.shared = true;
         }
-        if (VV.eyes !== 'none') {
-            for (const side of [-1, 1]) {
-                // Deep in the sockets of the Blender skull (printed by build_models.py)
-                const p = new THREE.Vector3(side * 0.033, 2.635, 0.44);
+        const eyePos = own ? info.eyes : (burning ? [[0.033, 2.635, 0.44], [-0.033, 2.635, 0.44]] : []);
+        if (burning) {
+            for (const e of eyePos) {
+                const p = new THREE.Vector3(...e);
                 headBone.worldToLocal(p);
                 const eye = new THREE.Mesh(shared.watcherEyeGeo, eyeMat);
                 eye.position.copy(p);
                 eye.quaternion.copy(headBone.getWorldQuaternion(new THREE.Quaternion()).invert());
                 headBone.add(eye);
-                if (!burning) continue;
                 const g = glowSprite(0xff2010, 0.22, 0.9);
                 g.position.copy(p);
                 headBone.add(g);
@@ -285,22 +310,64 @@ const Models = (() => {
             if (y) q.multiply(qTmp.setFromAxisAngle(r.ay, y));
             if (z) q.multiply(qTmp.setFromAxisAngle(r.az, z));
         }
+        function openJaw(amount) {
+            if (rig.jaw && rig.jaw.down) rig.jaw.bone.position.copy(rig.jaw.restPos).addScaledVector(rig.jaw.down, amount * jawOpen);
+        }
 
         const seed = Math.random() * 100;
         const tiltSign = Math.random() < 0.5 ? -1 : 1;
         let phase = Math.random() * TAU, step = 1, twitch = rand(1, 5);
+        let snap = 0, snapTarget = 0, snapTimer = rand(0.5, 3);
+        const patient = variant === 'unseen' && own;
+
+        // The Drowned crawl: diagonal limbs move together, elbows and knees jutting up like
+        // a spider's, the head hanging low and snapping round toward every sound
+        function crawl(dt, speed, time, hunt, near) {
+            phase += dt * (1.6 + speed * 2.4);
+            step += dt;
+            snapTimer -= dt;
+            if (snapTimer <= 0) {
+                snapTimer = hunt > 0.5 ? rand(0.25, 1.1) : rand(1.2, 4);
+                snapTarget = rand(-0.9, 0.9) * (0.4 + hunt * 0.6);
+            }
+            snap = damp(snap, snapTarget, 18, dt);
+            if (step < 1 / 15) return;
+            step = 0;
+            const amp = clamp(speed / 2.5, 0.12, 1.2);
+            const s = Math.sin(phase), c = Math.cos(phase);
+            const j = () => (Math.random() - 0.5) * 0.12 * (0.3 + hunt);
+            const close = clamp(near, 0, 1);
+            pose('hips', 0, s * 0.1 * amp, s * 0.06 * amp);
+            pose('spine', -0.04 * hunt, -s * 0.12 * amp, -s * 0.05 * amp);
+            pose('chest', j() * 0.4, s * 0.1 * amp, s * 0.06 * amp);
+            // Rearing its head up toward you when it is close and has heard you
+            pose('neck', -0.35 * hunt * close + j() * 0.5, snap * 0.35, 0);
+            pose('head', -0.25 * hunt * close + j(), snap * 0.6 + j(), snap * 0.5 + Math.sin(time * 0.7 + seed) * 0.2);
+            for (const [side, k, sw, cw] of [['L', 1, s, c], ['R', -1, -s, -c]]) {
+                // Arms reach forward and plant; the opposite leg drives
+                const lift = Math.max(0, cw) * amp;
+                pose('upperarm_' + side, -lift * 0.35, k * sw * 0.42 * amp, k * lift * 0.25);
+                pose('forearm_' + side, -lift * 0.3 + j(), 0, 0);
+                pose('hand_' + side, lift * 0.4, 0, 0);
+                const legLift = Math.max(0, -cw) * amp;
+                pose('thigh_' + side, legLift * 0.3, -k * sw * 0.34 * amp, -k * legLift * 0.2);
+                pose('shin_' + side, -legLift * 0.35, 0, 0);
+            }
+            openJaw(clamp(0.25 + hunt * close * 1.1 + Math.sin(time * 3 + seed) * 0.08, 0, 1.25));
+        }
 
         return {
             root, eyeMat, eyeGlows, headGroup: headBone, rigged: true,
             // speed: units/sec; frozen: holds the current pose; hunt: 0..1; near: 0..1 (how close)
             animate(dt, speed, frozen, time, hunt = 0, near = 0) {
+                if (info.crawl && own) { crawl(dt, speed, time, hunt, near); return; }
                 if (frozen) {
                     // Statues don't move... almost. A sudden snap of the head, now and then.
                     twitch -= dt;
                     if (twitch <= 0) {
                         twitch = rand(2.5, 7);
-                        const snap = rand(-0.6, 0.6);
-                        pose('head', -0.2, snap * 0.5, snap);
+                        const sn = rand(-0.6, 0.6);
+                        pose('head', -0.2, sn * 0.5, sn);
                     }
                     return;
                 }
@@ -316,20 +383,23 @@ const Models = (() => {
                 pose('spine', 0.12 + hunt * 0.12, -s * 0.08 * amp, 0);
                 pose('chest', 0.08 + hunt * 0.16 + j() * 0.3, s * 0.06 * amp, 0);
                 pose('neck', 0.05 + hunt * 0.12, 0, 0);
-                pose('head', -0.12 - hunt * 0.2 + j(), Math.sin(time * 0.4 + seed) * 0.3 + j(),
-                    Math.sin(time * 0.6 + seed) * 0.16 + hunt * 0.28 * tiltSign + j());
+                if (patient) {
+                    // The broken neck: the head lolls and bounces on the shoulder with every step
+                    pose('head', Math.abs(s) * 0.12 * amp + j(), Math.sin(time * 0.5 + seed) * 0.15, -Math.abs(c) * 0.18 * amp + j());
+                } else {
+                    pose('head', -0.12 - hunt * 0.2 + j(), Math.sin(time * 0.4 + seed) * 0.3 + j(),
+                        Math.sin(time * 0.6 + seed) * 0.16 + hunt * 0.28 * tiltSign + j());
+                }
+                const armSwing = patient ? 0.12 : 0.3;
                 for (const [side, sw, cw] of [['L', s, c], ['R', -s, -c]]) {
                     pose('thigh_' + side, -sw * 0.55 * amp - 0.12, 0, 0);
                     pose('shin_' + side, Math.max(0, cw) * 0.9 * amp + 0.2, 0, 0);
                     pose('foot_' + side, -0.15, 0, 0);
-                    pose('upperarm_' + side, sw * 0.3 * amp - hunt * 0.6 + j() * 0.6, 0, 0);
+                    pose('upperarm_' + side, sw * armSwing * amp - hunt * 0.6 + j() * 0.6, 0, 0);
                     pose('forearm_' + side, -0.2 - hunt * 0.7 + j() * 0.6, 0, 0);
                     pose('hand_' + side, -0.25 - hunt * 0.3, 0, 0);
                 }
-                if (rig.jaw && rig.jaw.down) {
-                    const open = hunt * clamp(near, 0, 1) * (0.75 + Math.random() * 0.25);
-                    rig.jaw.bone.position.copy(rig.jaw.restPos).addScaledVector(rig.jaw.down, open * 0.05);
-                }
+                openJaw(hunt * clamp(near, 0, 1) * (0.75 + Math.random() * 0.25) + (patient ? 0.35 : 0));
             },
             pose
         };
@@ -597,7 +667,188 @@ const Models = (() => {
         return shared.angelParts;
     }
 
+    // Blender-built face: porcelain skull, hinged jaw, teeth, the throat; and the eyes on its wings
+    function angelHeadParts() {
+        if (shared.angelHead !== undefined) return shared.angelHead;
+        const names = { head: 'AngelHead', jaw: 'AngelJaw', throat: 'AngelThroat', teethUp: 'AngelTeethUp', teethLow: 'AngelTeethLow', eyes: 'AngelWingEyes' };
+        const P = {};
+        for (const [k, n] of Object.entries(names)) P[k] = Assets.ok ? Assets.part('angel', n) : null;
+        shared.angelHead = P.head && P.jaw && P.throat ? P : null;
+        if (shared.angelHead) {
+            shared.angelPorcelain = markShared(new THREE.MeshStandardMaterial({ color: 0xd8d0c4, roughness: 0.32, emissive: 0x1c1a16 }));
+            shared.angelThroat = markShared(new THREE.MeshBasicMaterial({ color: 0x000000 }));
+            shared.angelTeeth = markShared(new THREE.MeshStandardMaterial({ color: 0x9a8c74, roughness: 0.4 }));
+        }
+        return shared.angelHead;
+    }
+    const ANGEL_JAW_HINGE = [0, -0.15, -0.09];
+    const ANGEL_EYES = [[0.085, 0.07, 0.2144], [-0.085, 0.07, 0.2144]];
+
+    // ---------------------------------------------------------------------------
+    // THE ANGEL, as it really is. Not a robed figure - that is only what the statues
+    // remember. Wheels within wheels, burning, every rim full of eyes, turning around one
+    // vast eye; six wings around it. When you look at it, it all begins to turn.
+    // ---------------------------------------------------------------------------
+    function seraphAssets() {
+        if (shared.seraph) return shared.seraph;
+        const eyeGeo = new THREE.SphereGeometry(1, 14, 10);
+        // A rim of eyes: each one on the ring, staring outward or off to either side
+        const ringEyes = (R, count, size) => {
+            const parts = [];
+            const d = new THREE.Object3D();
+            const out = new THREE.Vector3();
+            for (let i = 0; i < count; i++) {
+                const t = (i / count) * TAU + rand(-0.08, 0.08);
+                const s = size * rand(0.75, 1.25);
+                d.position.set(Math.cos(t) * R, Math.sin(t) * R, 0);
+                const k = Math.random();
+                out.set(Math.cos(t), Math.sin(t), k < 0.35 ? 1.6 : k < 0.55 ? -1.6 : rand(-0.4, 0.4)).normalize();
+                d.lookAt(out.add(d.position));
+                d.scale.setScalar(s);
+                d.updateMatrix();
+                parts.push(eyeGeo.clone().applyMatrix4(d.matrix));
+            }
+            const g = mergeGeometries(parts);
+            parts.forEach((p) => p.dispose());
+            return g;
+        };
+        const rings = [
+            { R: 1.2, tube: 0.045, eyes: 14, size: 0.1 },
+            { R: 1.42, tube: 0.04, eyes: 16, size: 0.09 },
+            { R: 1.64, tube: 0.05, eyes: 18, size: 0.11 }
+        ].map((r) => {
+            const torus = new THREE.TorusGeometry(r.R, r.tube, 10, 72);
+            // Hammered, uneven metal
+            const p = torus.attributes.position;
+            for (let i = 0; i < p.count; i++) {
+                const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+                const k = 1 + (Noise.value3(x * 6, y * 6, z * 6) - 0.5) * 0.04;
+                p.setXYZ(i, x * k, y * k, z * (1 + (Noise.value3(x * 9 + 3, y * 9, z * 9) - 0.5) * 0.5));
+            }
+            torus.computeVertexNormals();
+            const eyes = ringEyes(r.R, r.eyes, r.size);
+            torus.userData.shared = eyes.userData.shared = true;
+            return { torus, eyes };
+        });
+        const ball = new THREE.SphereGeometry(0.62, 48, 32);
+        const upperLid = new THREE.SphereGeometry(0.66, 40, 16, 0, TAU, 0, Math.PI / 2);
+        const lowerLid = new THREE.SphereGeometry(0.66, 40, 16, 0, TAU, Math.PI / 2, Math.PI / 2);
+        for (const g of [ball, upperLid, lowerLid]) g.userData.shared = true;
+        const eyeTex = Textures.eyeball();
+        shared.seraph = {
+            rings, ball, upperLid, lowerLid,
+            ringMat: markShared(new THREE.MeshStandardMaterial({
+                color: 0x5a4018, metalness: 0.9, roughness: 0.3, emissive: 0xff6a18, emissiveIntensity: 0.55
+            })),
+            eyeMat: markShared(new THREE.MeshBasicMaterial({ map: eyeTex, color: new THREE.Color(1.15, 1.05, 0.95) })),
+            bigEyeMat: markShared(new THREE.MeshBasicMaterial({ map: eyeTex, color: new THREE.Color(1.25, 1.15, 1.05) })),
+            lidMat: markShared(addRim(new THREE.MeshStandardMaterial({ color: 0x2a1614, roughness: 0.55, side: THREE.DoubleSide }), 0x3a1008, 2.2))
+        };
+        return shared.seraph;
+    }
+
+    function createSeraph() {
+        const A = angelAssets();
+        const P = angelParts();
+        const HP = angelHeadParts();
+        const S = seraphAssets();
+        const root = new THREE.Group();
+        const body = new THREE.Group();
+        body.position.y = 3.3;
+        root.add(body);
+        const mesh = (geo, mat, parent, shadow = true) => {
+            const m = new THREE.Mesh(geo, mat);
+            m.castShadow = shadow;
+            parent.add(m);
+            return m;
+        };
+
+        // The eye at the centre of it all, half-lidded until you meet its gaze
+        const core = new THREE.Group();
+        body.add(core);
+        mesh(S.ball, S.bigEyeMat, core, false);
+        const upper = mesh(S.upperLid, S.lidMat, core, false);
+        const lower = mesh(S.lowerLid, S.lidMat, core, false);
+        const setOpen = (open) => {
+            upper.rotation.x = -0.95 * open;
+            lower.rotation.x = 0.7 * open;
+        };
+
+        // Wheels within wheels, each turning on its own axis (and burning hotter as it comes)
+        const ringMat = S.ringMat.clone();
+        const wheels = S.rings.map((r, i) => {
+            const pivot = new THREE.Group();
+            pivot.rotation.set(rand(0, TAU), rand(0, TAU), rand(0, TAU));
+            body.add(pivot);
+            const spin = new THREE.Group();
+            pivot.add(spin);
+            mesh(r.torus, ringMat, spin);
+            mesh(r.eyes, S.eyeMat, spin, false);
+            return { pivot, spin, rate: (i % 2 ? -1 : 1) * rand(0.25, 0.45), axis: new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize() };
+        });
+
+        // Six wings: two over its face, two to fly, two below - and eyes among the feathers
+        const wingMat = A.wingMat;
+        const wings = [];
+        const eyesMat = HP && HP.eyes ? new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.2, 1.1, 0.95) }) : null;
+        // Feathered wing points up-right at about 53 degrees in its own frame
+        for (const [target, tilt] of [[62, 0.35], [8, 0.15], [-48, 0.3]]) {
+            for (const side of [1, -1]) {
+                const pivot = new THREE.Group();
+                pivot.rotation.order = 'ZYX';
+                pivot.rotation.z = side * THREE.MathUtils.degToRad(target - 53);
+                pivot.rotation.y = side * -tilt;
+                pivot.position.z = -0.35;
+                body.add(pivot);
+                const w = mesh(P ? P.wing : A.wing, wingMat, pivot);
+                w.scale.x = side;
+                if (P) mesh(P.wingBone, A.skin, pivot).scale.x = side;
+                if (eyesMat) mesh(HP.eyes, eyesMat, pivot, false).scale.x = side;
+                pivot.userData.base = pivot.rotation.y;
+                pivot.scale.setScalar(target > 40 ? 0.85 : 1);
+                wings.push(pivot);
+            }
+        }
+
+        // Burning light pouring out of the centre
+        const haloGlow = glowSprite(0xffc860, 6.5, 0.55);
+        body.add(haloGlow);
+        const g = glowSprite(0xfff4dd, 1.4, 0.8, true);
+        g.position.z = 0.55;
+        body.add(g);
+        const eyeGlows = [g];
+
+        const seed = Math.random() * 100;
+        let flap = Math.random() * TAU;
+        setOpen(0.45);
+        return {
+            root, body, headGroup: core, halo: null, haloGlow, eyeGlows, wings, arms: {},
+            animate(dt, charge, active, time) {
+                ringMat.emissiveIntensity = 0.55 + charge * 1.4 + Math.sin(time * 23 + seed) * 0.08 * charge;
+                if (!active) return; // unwatched, it hangs utterly still
+                // Every wheel turns, faster the harder it comes for you
+                for (const w of wheels) w.spin.rotation.z += dt * w.rate * (1 + charge * 7);
+                for (const w of wheels) w.pivot.rotateOnAxis(w.axis, dt * 0.15 * (1 + charge * 3));
+                flap += dt * (1.5 + charge * 8);
+                wings.forEach((p, i) => {
+                    const sgn = i % 2 ? -1 : 1;
+                    p.rotation.y = p.userData.base + sgn * Math.sin(flap + i * 0.6) * (0.12 + charge * 0.35);
+                });
+                setOpen(lerp(0.45, 1.05, charge));
+                body.position.y = 3.3 + Math.sin(time * 1.7 + seed) * 0.12;
+                body.rotation.z = Math.sin(time * 0.6 + seed) * 0.05;
+                core.rotation.z = Math.sin(time * 13 + seed) * 0.03 * charge;
+                if (eyesMat) {
+                    const k = 1.1 + charge * 2.2;
+                    eyesMat.color.setRGB(k, k * 0.9, k * 0.75);
+                }
+            },
+            setIdlePose() { setOpen(0.45); }
+        };
+    }
+
     function createAngel({ statue = false } = {}) {
+        if (!statue) return createSeraph();
         const A = angelAssets();
         const P = angelParts();
         const S = statue ? stoneMaterials() : null;
@@ -630,7 +881,26 @@ const Models = (() => {
         const headGroup = new THREE.Group();
         headGroup.position.y = 0.28;
         neckPivot.add(headGroup);
-        mesh(A.head, faceMat, headGroup);
+        const HP = angelHeadParts();
+        let jawPivot = null;
+        if (HP) {
+            const porcelain = statue ? S.stone : shared.angelPorcelain;
+            const teethMat = statue ? S.stone : shared.angelTeeth;
+            mesh(HP.head, porcelain, headGroup);
+            mesh(HP.throat, shared.angelThroat, headGroup, false);
+            if (HP.teethUp) mesh(HP.teethUp, teethMat, headGroup, false);
+            // The jaw hangs from a hinge behind the mouth; charging, it drops open to the chest
+            jawPivot = new THREE.Group();
+            jawPivot.position.set(...ANGEL_JAW_HINGE);
+            headGroup.add(jawPivot);
+            const jaw = new THREE.Group();
+            jaw.position.set(-ANGEL_JAW_HINGE[0], -ANGEL_JAW_HINGE[1], -ANGEL_JAW_HINGE[2]);
+            jawPivot.add(jaw);
+            mesh(HP.jaw, porcelain, jaw);
+            if (HP.teethLow) mesh(HP.teethLow, teethMat, jaw, false);
+        } else {
+            mesh(A.head, faceMat, headGroup);
+        }
         mesh(A.hair, hairMat, headGroup, false);
 
         let halo = null, haloGlow = null, eyeGlows = [];
@@ -641,9 +911,10 @@ const Models = (() => {
             haloGlow = glowSprite(0xffc860, 2.2, 0.55);
             haloGlow.position.copy(halo.position);
             headGroup.add(haloGlow);
-            for (const side of [-1, 1]) {
-                const g = glowSprite(0xfff4dd, 0.22, 0.8, true);
-                g.position.set(side * 0.105, 0.03, 0.27);
+            for (const [i, side] of [[0, -1], [1, 1]]) {
+                const g = glowSprite(0xfff4dd, HP ? 0.26 : 0.22, 0.8, true);
+                if (HP) g.position.set(...ANGEL_EYES[i]);
+                else g.position.set(side * 0.105, 0.03, 0.27);
                 headGroup.add(g);
                 eyeGlows.push(g);
             }
@@ -666,6 +937,35 @@ const Models = (() => {
             arms['elbow' + key] = elbow;
         }
 
+        // A second, thinner pair of arms below the first, hands pressed together as if praying
+        const arms2 = {};
+        for (const side of [-1, 1]) {
+            const key = side < 0 ? 'L' : 'R';
+            const shoulder = new THREE.Group();
+            shoulder.position.set(side * 0.24, 3.22, 0.04);
+            shoulder.rotation.z = side * 0.32;
+            shoulder.scale.setScalar(0.78);
+            body.add(shoulder);
+            mesh(P ? P.upper : A.upperArm, skinMat, shoulder);
+            const elbow = new THREE.Group();
+            elbow.position.y = -1.25;
+            shoulder.add(elbow);
+            mesh(P ? P.fore : A.forearm, skinMat, elbow);
+            arms2['shoulder' + key] = shoulder;
+            arms2['elbow' + key] = elbow;
+        }
+        const pray = () => {
+            arms2.shoulderL.rotation.x = arms2.shoulderR.rotation.x = -0.35;
+            arms2.elbowL.rotation.x = arms2.elbowR.rotation.x = -1.9;
+            arms2.shoulderL.rotation.y = -0.5;
+            arms2.shoulderR.rotation.y = 0.5;
+        };
+        pray();
+
+        // Eyes open all along its wings, and they burn brighter as it comes for you
+        const wingEyeMat = HP && HP.eyes
+            ? (statue ? S.stone : new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.3, 1.2, 1.0) }))
+            : null;
         const wings = [];
         for (const side of [-1, 1]) {
             const pivot = new THREE.Group();
@@ -675,6 +975,7 @@ const Models = (() => {
             const w = mesh(P ? P.wing : A.wing, wingMat, pivot);
             w.scale.x = side;
             if (P) mesh(P.wingBone, skinMat, pivot).scale.x = side;
+            if (P && wingEyeMat) mesh(HP.eyes, wingEyeMat, pivot, false).scale.x = side;
             wings.push(pivot);
         }
 
@@ -687,6 +988,7 @@ const Models = (() => {
             headGroup.rotation.set(rand(-0.3, 0.4), rand(-0.6, 0.6), rand(-0.3, 0.3));
             body.rotation.x = rand(0, 0.15);
             root.scale.setScalar(rand(0.75, 0.95));
+            if (jawPivot && Math.random() < 0.4) jawPivot.rotation.x = rand(0.2, 0.7);   // some scream in stone
         }
 
         const seed = Math.random() * 100;
@@ -711,10 +1013,31 @@ const Models = (() => {
                 body.position.y = 0.15 + Math.sin(time * 2.2 + seed) * 0.08;
                 headGroup.rotation.z = Math.sin(time * 9 + seed) * 0.04 * charge;
                 if (halo) halo.rotation.z += dt * (0.4 + charge * 6);
+                // The face splits open: the jaw drops, shuddering, the harder it charges
+                if (jawPivot) {
+                    jawPivot.rotation.x = damp(jawPivot.rotation.x, charge * 0.35 + Math.sin(time * 31 + seed) * 0.05 * charge, 7, dt);
+                    // ...and unhinges, sliding down and out of the skull like a snake's
+                    jawPivot.position.y = damp(jawPivot.position.y, ANGEL_JAW_HINGE[1] - charge * 0.24, 7, dt);
+                    jawPivot.position.z = damp(jawPivot.position.z, ANGEL_JAW_HINGE[2] + charge * 0.06, 7, dt);
+                }
+                // The praying hands come apart and reach for you
+                const r2 = charge;
+                arms2.shoulderL.rotation.x = damp(arms2.shoulderL.rotation.x, lerp(-0.35, -1.5, r2), 6, dt);
+                arms2.shoulderR.rotation.x = damp(arms2.shoulderR.rotation.x, lerp(-0.35, -1.5, r2), 6, dt);
+                arms2.elbowL.rotation.x = damp(arms2.elbowL.rotation.x, lerp(-1.9, -0.3, r2), 6, dt);
+                arms2.elbowR.rotation.x = damp(arms2.elbowR.rotation.x, lerp(-1.9, -0.3, r2), 6, dt);
+                arms2.shoulderL.rotation.y = damp(arms2.shoulderL.rotation.y, lerp(-0.5, 0.1, r2), 6, dt);
+                arms2.shoulderR.rotation.y = damp(arms2.shoulderR.rotation.y, lerp(0.5, -0.1, r2), 6, dt);
+                if (wingEyeMat && wingEyeMat.color) {
+                    const k = 1.1 + charge * 2.2;
+                    wingEyeMat.color.setRGB(k, k * 0.9, k * 0.72);
+                }
             },
             setIdlePose() {
                 arms.shoulderL.rotation.x = -0.2;
                 arms.shoulderR.rotation.x = -0.2;
+                pray();
+                if (jawPivot) jawPivot.rotation.x = 0;
             }
         };
     }
@@ -1027,6 +1350,12 @@ const Models = (() => {
             root.add(headPivot);
             mk(parts[2], M.skin, headPivot);
             mk(parts[3], M.hair, headPivot);
+            // Behind the face: nothing. Black, through the eyes and the open mouth.
+            const hollow = Assets.part('figure', 'FigureHollow');
+            if (hollow) {
+                if (!shared.figureHollow) shared.figureHollow = markShared(new THREE.MeshBasicMaterial({ color: 0x000000 }));
+                mk(hollow, shared.figureHollow, headPivot).castShadow = false;
+            }
             return { root, headPivot };
         }
         if (!shared.figure) {

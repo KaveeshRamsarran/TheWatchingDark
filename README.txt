@@ -102,10 +102,11 @@ MATCHES
 MONSTERS
 
   Level 1: THE WATCHERS
-    - Nearly three metres tall: starved, stretched bodies, a craning neck,
-      a long swept-back skull with burning eyes in empty sockets, a slit of
-      needle teeth, and arms so long the claws hang past their knees
-    - They move in a jerky, stop-motion gait, and their jaws open as they close in
+    - Starved, hunched giants: a row of spines down the back, shoulder
+      blades jutting through the hide, arms so long the claws hang past
+      their knees, and a skull face - burning pinpoints deep in empty
+      sockets, and a grin torn open to the ears, full of needle teeth
+    - They move in a jerky, stop-motion gait; the jaw unhinges as they close in
     - Only move when you're not looking at them
     - Hunt by sight and by sound - sprinting draws them in
     - Navigate the maze to reach you; more join the hunt over time
@@ -113,14 +114,22 @@ MONSTERS
     - Death on contact
 
   Level 2: THE ANGELS
-    - Towering, robed, with tattered wings and a broken halo
+    - Biblically accurate: burning wheels within wheels, every rim crowded
+      with eyes, turning around one vast eye, inside six wings that are
+      covered in eyes too. The robed statues in the forest are only what
+      people remember of them.
+    - Unwatched, they hang utterly still. Look at one and it all begins to
+      turn - the wheels spin and burn white-hot, the great eye opens wide
     - The opposite of the Watchers: they CHARGE while you look at them,
       faster the longer you stare, and freeze when you look away
     - Their halos glimmer through the fog - a warning not to look
     - Sacred relics restore sanity and slow them for 10 seconds
 
   Level 3: THE DROWNED
-    - Pale, eyeless and waterlogged - completely blind
+    - They crawl. Pale, waterlogged things on all fours, elbows and knees
+      jutting up like a spider's, the eyeless head hanging low with its
+      jaw open and its long black hair trailing through the water
+    - Completely blind
     - Hunt by SOUND alone: walking carries ~2 rooms, sprinting the whole
       level, crouching only reaches something right beside you
     - Deep pools (dark water, blue on the minimap) slow you down and
@@ -129,6 +138,9 @@ MONSTERS
       away quietly and they'll find nothing. Listen for their clicking.
 
   Level 4: THE UNSEEN
+    - Patients in torn hospital gowns, necks broken so the head lies on
+      one shoulder - no eyes, skin grown over the sockets, the mouth
+      stretched open in a scream
     - Exist only on camera: invisible to the naked eye
     - Through the night-vision camcorder they freeze in frame; lower it
       and they move. Static (and a tearing picture) means one is close
@@ -210,7 +222,9 @@ Graphics
   ✓ FXAA anti-aliasing; on High the nearest hanging lamp casts shadows
   ✓ Sanity-driven distortion, chromatic aberration and heartbeat pulse
   ✓ Shadowed flashlight with lag/sway, first-person flashlight & match
-  ✓ Rigged, skinned Watcher and gnarled forest trees modelled in Blender
+  ✓ Rigged, skinned creatures modelled in Blender - the Watcher, the
+    crawling Drowned and the Unseen each have their own body and gait
+  ✓ Gnarled forest trees modelled in Blender
   ✓ Detailed first-person flashlight with knurled grip and reflector
   ✓ Moonlight shadows, drifting ground fog
   ✓ Fields of real grass blades that sway in the wind (Level 2, the ending)
@@ -244,8 +258,8 @@ Settings
   js/postfx.js      Volumetric light, ambient occlusion, FXAA, bloom,
                     tone mapping and screen effects
   js/world.js       Maze generation, collision, line of sight, pathfinding
-  js/models.js      Watcher (and its Drowned/Unseen variants), Angel,
-                    eye, props, first-person models
+  js/models.js      Watcher, Drowned (crawler) and Unseen, the Angels and
+                    their statues, eye, props, first-person models
   js/facility.js    Shared builder for the indoor maze levels (walls,
                     lamps, decals, pickups, notes, exit doors)
   js/level1.js      Level 1 construction
@@ -261,9 +275,10 @@ Settings
   js/main.js        Game flow, player, input, rendering
   js/assets.js      Embedded 3D models (GENERATED - see below)
   js/assetloader.js Loads the embedded models
-  tools/blender/    Blender script that builds the models (Watcher, Angel,
-                    the woman, the things in the walls, trees, flashlight)
-                    and renders the Watcher jumpscare image
+  tools/blender/    Blender scripts that build the models: build_models.py
+                    (statue Angel, the woman, the things in the walls, trees,
+                    flashlight, Watcher jumpscare image) and creatures.py
+                    (the Watcher, the Unseen and the crawling Drowned)
   tools/pack_assets.mjs  Packs exported models into js/assets.js
   audio/            Sound effects and music
   images/           Jumpscare images
@@ -277,8 +292,9 @@ Settings
   node tools/pack_assets.mjs tools/build js/assets.js
 
   Add "preview" after the output folder to also render preview images, and
-  "watcher", "trees", "flashlight", "angel", "figure", "flesh" or
-  "creatures" (angel + figure + flesh) after that to rebuild just those.
+  "watcher", "unseen", "crawler", "monsters" (all three), "trees",
+  "flashlight", "angel", "figure", "flesh" or "creatures" (angel + figure
+  + flesh) after that to rebuild just those.
 
   The jumpscare image is rendered from the Watcher model into the build
   folder; copy it to images/watcher_jumpscare.png:

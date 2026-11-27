@@ -951,9 +951,26 @@ def build_angel():
     for o, n in ((robe, 6000), (chest, 3000), (upper, 1200), (fore, 2400), (wbone, 900)):
         decimate(o, n)
         smart_uv(o, 0.6)
-    staged({upper: T(0.3, 3.62, 0), fore: T(0.36, 2.37, 0), wing: T(0.14, 3.55, -0.2), wbone: T(0.14, 3.55, -0.2)},
-           lambda: preview("angel", target=(0, 0, 2.6), dist=8.5, height=3.0, lens=40))
-    export([robe, chest, upper, fore, wing, wbone], "angel.glb")
+    head_parts = angel_head(rng)
+    eyes_w = wing_eyes(rng, along)
+    stage = {upper: T(0.3, 3.62, 0), fore: T(0.36, 2.37, 0), wing: T(0.14, 3.55, -0.2), wbone: T(0.14, 3.55, -0.2),
+             eyes_w: T(0.14, 3.55, -0.2)}
+    for o in head_parts:
+        stage[o] = T(0, 4.9, 0)
+    if PREVIEW:
+        preview_colors()
+    staged(stage, lambda: preview("angel", target=(0, 0, 2.9), dist=8.5, height=3.4, lens=40))
+    if PREVIEW:
+        for o in head_parts:
+            o.location = T(0, 4.9, 0)
+        cam = bpy.context.scene.camera
+        cam.location = T(0.35, 4.95, 1.3)
+        cam.rotation_euler = (T(0, 4.85, 0) - cam.location).to_track_quat("-Z", "Y").to_euler()
+        bpy.context.scene.render.filepath = os.path.join(OUT, "preview_angel_face.png")
+        bpy.ops.render.render(write_still=True)
+        for o in head_parts:
+            o.location = (0, 0, 0)
+    export([robe, chest, upper, fore, wing, wbone, eyes_w] + head_parts, "angel.glb", colors=True)
 
 
 def lerp_f(a, b, t):
@@ -1027,21 +1044,13 @@ def build_figure():
     skin = skin_mesh3("FigureSkin", nodes, subsurf=2)
     skin.data.materials.append(skin_m)
 
-    # Head (relative to the neck pivot)
+    # Head (relative to the neck pivot): hollow black eyes, mouth hanging open
     C = (0.0, 0.12, 0.01)
     R = (0.085, 0.112, 0.098)
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=20, radius=1.0)
-    head = bpy.context.active_object
-    head.name = "FigureHead"
-    for v in head.data.vertices:
-        u = v.co.copy()
-        x, y, z = u.x * R[0], u.z * R[1], -u.y * R[2]      # unit sphere -> three-space offsets
-        if y < -0.03:                                       # narrow chin
-            x *= 1 - 0.3 * smooth01(-0.03, -0.11, y)
-        v.co = T(C[0] + x, C[1] + y, C[2] + z)
-    for p in head.data.polygons:
-        p.use_smooth = True
+    FH = figure_head(rng)
+    head = FH["head"]
     head.data.materials.append(skin_m)
+    hollow = FH["throat"]
 
     # Hair: long ribbons hanging from the scalp, the front ones curtaining the face
     bm = bmesh.new()
@@ -1094,8 +1103,20 @@ def build_figure():
     decimate(skin, 3500)
     smart_uv(dress, 0.4)
     smart_uv(skin, 0.3)
-    staged({head: T(0, 1.6, 0), hair: T(0, 1.6, 0)}, lambda: preview("figure", target=(0, 0, 0.9), dist=3.0, height=1.3))
-    export([dress, skin, head, hair], "figure.glb")
+    if PREVIEW:
+        preview_colors()
+    staged({head: T(0, 1.6, 0), hair: T(0, 1.6, 0), hollow: T(0, 1.6, 0)}, lambda: preview("figure", target=(0, 0, 0.9), dist=3.0, height=1.3))
+    if PREVIEW:
+        for o in (head, hair, hollow):
+            o.location = T(0, 1.6, 0)
+        cam = bpy.context.scene.camera
+        cam.location = T(0.12, 1.74, 0.55)
+        cam.rotation_euler = (T(0, 1.71, 0.02) - cam.location).to_track_quat("-Z", "Y").to_euler()
+        bpy.context.scene.render.filepath = os.path.join(OUT, "preview_figure_face.png")
+        bpy.ops.render.render(write_still=True)
+        for o in (head, hair, hollow):
+            o.location = (0, 0, 0)
+    export([dress, skin, head, hair, hollow], "figure.glb")
 
 
 # -----------------------------------------------------------------------------
@@ -1273,8 +1294,14 @@ def render_jumpscare():
     bpy.ops.render.render(write_still=True)
     print("RENDERED", scene.render.filepath)
 
-if ONLY in ("all", "watcher"):
-    build_watcher()
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "creatures.py"), encoding="utf-8").read())
+
+if ONLY in ("all", "watcher", "monsters"):
+    build_watcher2()
+if ONLY in ("all", "unseen", "monsters"):
+    build_unseen()
+if ONLY in ("all", "crawler", "monsters"):
+    build_crawler()
 if ONLY in ("all", "trees"):
     build_trees()
 if ONLY in ("all", "flashlight"):

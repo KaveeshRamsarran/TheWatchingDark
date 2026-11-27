@@ -39,11 +39,13 @@ const Assets = (() => {
 
     const has = (name) => !!gltfs[name];
 
-    // A fully independent copy of the rigged Watcher (shares geometry, owns its skeleton)
-    function watcher() {
-        if (!gltfs.watcher || !THREE.SkeletonUtils) return null;
-        return THREE.SkeletonUtils.clone(gltfs.watcher.scene);
+    // A fully independent copy of a rigged creature (shares geometry, owns its skeleton):
+    // 'watcher', 'unseen' or 'crawler'
+    function skinned(name) {
+        if (!gltfs[name] || !THREE.SkeletonUtils) return null;
+        return THREE.SkeletonUtils.clone(gltfs[name].scene);
     }
+    const watcher = () => skinned('watcher');
 
     function flashlight() {
         return gltfs.flashlight ? gltfs.flashlight.scene.clone(true) : null;
@@ -134,5 +136,5 @@ const Assets = (() => {
         return out;
     }
 
-    return { load, has, watcher, flashlight, tree, part, get ok() { return ok; } };
+    return { load, has, watcher, skinned, flashlight, tree, part, get ok() { return ok; } };
 })();

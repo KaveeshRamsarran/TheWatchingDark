@@ -902,6 +902,32 @@ const Textures = (() => {
         return cache.skin;
     }
 
+    // Pale, bloodless skin for the Drowned and the Unseen: blotchy, with grey-violet veins
+    // showing through, and the same wrinkled relief as the Watcher's hide
+    function paleSkin() {
+        if (cache.paleSkin) return cache.paleSkin;
+        const size = 512;
+        const maps = buildMaps(size, (u, v, o) => {
+            const base = Noise.fbm(u, v, 6, 4);
+            const w = Noise.worley(u, v, 9);
+            const vein = 1 - smoothstep(0.0, 0.04, w.f2 - w.f1);
+            const w2 = Noise.worley(u + 0.37, v + 0.11, 23);
+            const fine = 1 - smoothstep(0.0, 0.03, w2.f2 - w2.f1);
+            const wrinkle = Noise.fbm(u, v, 40, 2, 0.5, 120);
+            const blotch = smoothstep(0.55, 0.8, Noise.fbm(u + 0.6, v, 5, 3));
+            const k = 0.82 + base * 0.3;
+            let r = 196 * k, g = 192 * k, b = 184 * k;
+            r = lerp(r, 112, vein * 0.55); g = lerp(g, 104, vein * 0.55); b = lerp(b, 128, vein * 0.55);
+            r = lerp(r, 150, fine * 0.3); g = lerp(g, 142, fine * 0.3); b = lerp(b, 152, fine * 0.3);
+            r = lerp(r, 160, blotch * 0.45); g = lerp(g, 140, blotch * 0.45); b = lerp(b, 138, blotch * 0.45);
+            o.r = clamp(r, 0, 255); o.g = clamp(g, 0, 255); o.b = clamp(b, 0, 255);
+            o.h = base * 0.35 + wrinkle * 0.3 + vein * 0.2 + fine * 0.1 - blotch * 0.1;
+            o.ro = 0.45 + (1 - base) * 0.25;
+        }, 3.0);
+        cache.paleSkin = mapsToTextures(maps);
+        return cache.paleSkin;
+    }
+
     // Leaf-card atlas: left half a broadleaf cluster, right half a pine-needle spray
     function leafAtlas() {
         if (cache.leaves) return cache.leaves;
@@ -1006,7 +1032,7 @@ const Textures = (() => {
     }
 
     return {
-        setRenderer, makeCanvas, toTexture, skin, leafAtlas, knurl,
+        setRenderer, makeCanvas, toTexture, skin, paleSkin, leafAtlas, knurl,
         concreteWall, woodFloor, concreteFloor, ceilingTiles, waterNormal, staticNoise, eyeball, flesh,
         hedge, bark, forestFloor, grassField, stone,
         glow, lightPool, fogPuff, flame, decal, exitSign, paper, angelFace, feather
