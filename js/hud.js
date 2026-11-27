@@ -14,7 +14,6 @@ const HUD = (() => {
         status: $('status-text'), prompt: $('prompt'), toast: $('toast'),
         matchMsg: $('match-counter-message'),
         look: $('look-warning'),
-        god: $('godmode-indicator'),
         minimap: $('minimap'),
         noteScreen: $('note-screen'), noteTitle: $('note-title'), noteDate: $('note-date'), noteText: $('note-text'),
         levelCard: $('level-card'), levelCardTitle: $('level-card-title'), levelCardSub: $('level-card-sub'), levelCardNum: $('level-card-num'),
@@ -132,7 +131,6 @@ const HUD = (() => {
         el.look.classList.toggle('show', v > 0);
     }
 
-    function setGodMode(on) { el.god.style.display = on ? 'block' : 'none'; }
 
     // A ring around the crosshair that fills while you hold the great eye's gaze
     function setGaze(p, show = p > 0) {
@@ -360,7 +358,7 @@ const HUD = (() => {
     }
 
     return {
-        update, setObjective, setStatus, setPrompt, toast, matchFlash, setLookWarning, setGodMode, setCrosshair,
+        update, setObjective, setStatus, setPrompt, toast, matchFlash, setLookWarning, setCrosshair,
         setHint, setCamcorder, setGaze, subliminal, flashWord, clearFlashWord,
         openNote, closeNote, levelCard, showLoading, showHud,
         resetMap, reveal, drawMap

@@ -48,11 +48,6 @@ ALTERNATIVE: Direct File Access
                   (every key above can be changed in Settings > Keys)
   ESC             Pause menu (settings, resume, quit)
   ALT+ENTER       Toggle fullscreen (also on the title screen, pause menu & settings)
-  Z               God mode (testing: invulnerable, no-clip, fly)
-  `  (backquote)  Debug console: jump to any level, god mode, refills,
-                  "ending eye" / "ending light" to watch an ending,
-                  "scare" to be caught by the nearest monster
-                  (also in the pause menu; type help for commands)
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -67,7 +62,7 @@ ALTERNATIVE: Direct File Access
   RIGHT THUMB     Drag anywhere else: look around
   MATCH           Bottom-right corner; CAM appears above it on Level IV
   Tap prompt      Read a note; tap the note to close it
-  II (top)        Pause (debug console is in the pause menu)
+  II (top)        Pause
   [ ] (top)       Fullscreen again, if it was lost (not on iPhone: use
                   Add to Home Screen)
 
@@ -76,8 +71,8 @@ ALTERNATIVE: Direct File Access
   shadow effects). The game measures the screen's refresh rate and aims for
   it (up to 120 fps), trading resolution - then light in the air, contact
   shadows, bloom, shadows and particles - to hold it.
-  Debug console > SHOW FPS shows the frame rate. (iPhone Safari caps every
-  web page at 60 fps, 30 in Low Power Mode.)
+  Add ?fps to the address to show the frame rate. (iPhone Safari caps
+  every web page at 60 fps, 30 in Low Power Mode.)
 
   HOSTING IT FOR YOUR PHONE
   It is a static website - any static host works.

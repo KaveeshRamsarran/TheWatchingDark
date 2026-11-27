@@ -5,7 +5,6 @@
 
 const AudioSys = (() => {
     const FILES = {
-        menu: 'audio/main menu.mp3',
         ost: 'audio/OST.mp3',
         level2: 'audio/Level2.mp3',
         footsteps: 'audio/footsteps.mp3',
@@ -19,6 +18,7 @@ const AudioSys = (() => {
 
     let ctx = null;
     let sfxGain = null;
+    let musicGain = null;
     let drone = null;
     let canRoute = false;
     let music = null;
@@ -40,6 +40,10 @@ const AudioSys = (() => {
             sfxGain = ctx.createGain();
             sfxGain.gain.value = settings.sfx;
             sfxGain.connect(ctx.destination);
+            // Beds played as music (the title screen) follow the music slider
+            musicGain = ctx.createGain();
+            musicGain.gain.value = settings.music * 2.5;
+            musicGain.connect(ctx.destination);
             canRoute = location.protocol === 'http:' || location.protocol === 'https:';
         }
         if (ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -50,6 +54,7 @@ const AudioSys = (() => {
         settings.music = musicVol;
         settings.sfx = sfxVol;
         if (sfxGain) sfxGain.gain.value = sfxVol;
+        if (musicGain) musicGain.gain.value = musicVol * 2.5;
         if (music) music.volume = clamp(musicBase * musicVol, 0, 1);
         for (const v of voices) v.apply();
     }
@@ -979,14 +984,14 @@ const AudioSys = (() => {
 
     // ---- Continuous beds ---------------------------------------------------------
     // 'water': slow lapping and a distant rush.  'flesh': a low, breathing organ drone.
-    function startBed(kind) {
+    function startBed(kind, asMusic = false) {
         if (!ensureContext()) return null;
         ensureReverb();
         const nodes = [];
         const master = ctx.createGain();
         master.gain.value = 0;
         master.gain.setTargetAtTime(1, ctx.currentTime, 1.5);
-        master.connect(sfxGain);
+        master.connect(asMusic ? musicGain : sfxGain);
         const keep = (n) => { nodes.push(n); return n; };
         const lfo = (rate, depth, param, offset) => {
             const o = keep(ctx.createOscillator());

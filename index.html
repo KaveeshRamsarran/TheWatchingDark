@@ -18,9 +18,9 @@
     <link rel="preload" as="image" href="images/monster.png">
     <link rel="preload" as="image" href="images/angel.jpg">
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
+    <script src="js/vendor/three.min.js"></script>
+    <script src="js/vendor/GLTFLoader.js"></script>
+    <script src="js/vendor/SkeletonUtils.js"></script>
 </head>
 <body>
     <div id="game-container">
@@ -113,7 +113,6 @@
                 <svg viewBox="0 0 48 24" aria-hidden="true"><path d="M2 12 Q24 -6 46 12 Q24 30 2 12 Z" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="24" cy="12" r="6" fill="currentColor"/></svg>
                 <span>DON'T LOOK</span>
             </div>
-            <div id="godmode-indicator">GOD MODE</div>
         </div>
 
         <div id="match-counter-message"></div>
@@ -215,7 +214,6 @@
                     <button id="pause-journal" class="btn">JOURNAL</button>
                     <button id="pause-settings" class="btn">SETTINGS</button>
                     <button class="btn fullscreen-toggle"><span class="fs-label">FULLSCREEN</span></button>
-                    <button id="pause-debug" class="btn">DEBUG CONSOLE</button>
                     <button id="pause-quit" class="btn">QUIT TO MENU</button>
                 </div>
                 <div class="controls-mini" id="controls-mini"></div>
@@ -316,33 +314,6 @@
         </div>
 
         <!-- ========================= DEBUG CONSOLE ========================= -->
-        <div id="debug-console" class="modal">
-            <div class="panel debug-panel">
-                <button id="debug-close" class="close-btn" aria-label="Close">&times;</button>
-                <h2 class="panel-title">DEBUG</h2>
-                <p class="panel-hint">Press <kbd>`</kbd> anywhere to open or close</p>
-
-                <div class="setting-section">JUMP TO LEVEL</div>
-                <div class="debug-levels">
-                    <button class="btn small debug-level" data-level="1"><b>I</b> The Maze</button>
-                    <button class="btn small debug-level" data-level="2"><b>II</b> The Lost Forest</button>
-                    <button class="btn small debug-level" data-level="3"><b>III</b> The Flooded Basement</button>
-                    <button class="btn small debug-level" data-level="4"><b>IV</b> The Observation Wing</button>
-                    <button class="btn small debug-level" data-level="5"><b>V</b> The Watching Dark</button>
-                </div>
-
-                <div class="setting-section">CHEATS</div>
-                <div class="debug-row">
-                    <button id="debug-god" class="btn small debug-toggle">GOD MODE <span>OFF</span></button>
-                    <button id="debug-heal" class="btn small">REFILL ALL</button>
-                    <button id="debug-fps" class="btn small debug-toggle">SHOW FPS <span>OFF</span></button>
-                </div>
-
-                <div class="setting-section">COMMAND</div>
-                <input id="debug-input" type="text" placeholder="type help and press Enter" autocomplete="off" spellcheck="false">
-                <div id="debug-log"></div>
-            </div>
-        </div>
 
         <div id="rotate-hint">
             <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="20" y="8" width="24" height="44" rx="4" fill="none" stroke="currentColor" stroke-width="3"/><path d="M50 38a16 16 0 0 1-16 16" fill="none" stroke="currentColor" stroke-width="3"/><path d="M34 50l0 6 6-2" fill="none" stroke="currentColor" stroke-width="3"/></svg>

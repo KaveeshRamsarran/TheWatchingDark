@@ -1,8 +1,8 @@
-// THE WATCHING DARK - title screen background & menu music
+// THE WATCHING DARK - title screen background & sound
 'use strict';
 
 const Menu = (() => {
-    let music = null;
+    let bed = null;
     let running = false;
     let canvas, ctx;
     let w = 0, h = 0;
@@ -18,7 +18,7 @@ const Menu = (() => {
         canvas.height = h;
     }
 
-    function init(volume) {
+    function init() {
         canvas = document.getElementById('menu-bg');
         ctx = canvas.getContext('2d');
         resize();
@@ -28,13 +28,8 @@ const Menu = (() => {
         }
         for (let i = 0; i < 6; i++) eyes.push(newEye());
 
-        music = new Audio('audio/main menu.mp3');
-        music.loop = true;
-        music.volume = volume;
-        const tryPlay = () => { if (running && music.paused) music.play().catch(() => {}); };
-        tryPlay();
-        // Browsers block autoplay until the first interaction
-        const unlock = () => tryPlay();
+        // Browsers block sound until the first interaction: start it then
+        const unlock = () => { if (running) playBed(); };
         document.addEventListener('pointerdown', unlock);
         document.addEventListener('keydown', unlock);
         start();
@@ -47,26 +42,24 @@ const Menu = (() => {
         };
     }
 
+    // The title screen breathes with the same drone as the Watching Dark itself
+    function playBed() {
+        AudioSys.ensureContext();
+        if (bed) return;
+        bed = AudioSys.startBed('flesh', true);
+        if (bed) bed.set(0.3);
+    }
+
     function start() {
         running = true;
-        if (music) {
-            music.currentTime = 0;
-            music.play().catch(() => {});
-        }
+        playBed();
         last = performance.now();
         requestAnimationFrame(loop);
     }
 
     function stop() {
         running = false;
-        if (music) {
-            music.pause();
-            music.currentTime = 0;
-        }
-    }
-
-    function setVolume(v) {
-        if (music) music.volume = clamp(v, 0, 1);
+        if (bed) { bed.stop(); bed = null; }
     }
 
     function loop(now) {
@@ -125,5 +118,5 @@ const Menu = (() => {
         ctx.fillRect(0, 0, w, h);
     }
 
-    return { init, start, stop, setVolume };
+    return { init, start, stop };
 })();

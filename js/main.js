@@ -158,7 +158,7 @@
     // ---- Frame-rate targeting ------------------------------------------------
     // Aim for the screen's own refresh rate (capped at 120): measure it, then trade
     // resolution - and if that runs out, effects - to hold it.
-    const stats = { update: 0, render: 0, frame: 16, show: false, shown: 0 };
+    const stats = { update: 0, render: 0, frame: 16, show: /[?&]fps\b/.test(location.search), shown: 0 };
     const HZ = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 240];
     const nearestHz = (hz) => HZ.reduce((b, k) => (Math.abs(k - hz) < Math.abs(b - hz) ? k : b), 60);
     const display = { hz: 60, target: 60 };
@@ -420,7 +420,6 @@
         HUD.setGaze(0);
         HUD.setHint(typeof info.hint === 'function' ? info.hint() : info.hint);
         HUD.setCamcorder(false);
-        HUD.setGodMode(player.godMode);
         state.levelTime = 0;
         state.flash = 0;
         state.fade = 1;
@@ -688,10 +687,6 @@
 
     function update(dt) {
         state.levelTime += dt;
-        if (pendingEnding && level.forceEnding) {
-            level.forceEnding(pendingEnding, player);
-            pendingEnding = null;
-        }
         if (player.relicTime > 0) player.relicTime = Math.max(0, player.relicTime - dt);
 
         updatePlayer(dt);
@@ -1138,7 +1133,7 @@
     function finishRebind(code) {
         const a = rebinding;
         rebinding = null;
-        if (a && code !== 'Escape' && code !== 'Backquote') {
+        if (a && code !== 'Escape') {
             // A key already in use swaps places with the old one
             const other = Object.keys(binds).find((k) => k !== a && binds[k] === code);
             if (other) binds[other] = binds[a];
@@ -1158,7 +1153,7 @@
             mini.innerHTML = `<span>${kb('forward')}${kb('left')}${kb('back')}${kb('right')} move</span><span>${kb('sprint')} sprint</span>` +
                 `<span>${kb('flashlight')} flashlight</span><span>${kb('match')} match</span><span>${kb('crouch')} crouch</span>` +
                 `<span><kbd>RMB</kbd> camera</span><span>${kb('interact')} read / hide</span><span>${kb('journal')} journal</span>` +
-                `<span><kbd>ESC</kbd> pause</span><span><kbd>\`</kbd> debug</span>`;
+                `<span><kbd>ESC</kbd> pause</span>`;
         }
         const mk = $('match-key');
         if (mk) mk.textContent = keyLabel(binds.match);
@@ -1686,7 +1681,6 @@
             hint: 'It is still down there, waiting for someone to look back.'
         }
     };
-    let pendingEnding = null;
     let captionTimer = null;
 
     function clearCaption() {
@@ -1908,192 +1902,10 @@
     }
 
     // =========================================================================
-    // Debug console: jump to any level, god mode, refills. Press ` to toggle.
-    // =========================================================================
-    const debugOpen = () => $('debug-console').classList.contains('active');
-    let debugResume = false;
-
-    function setGodMode(on) {
-        player.godMode = on;
-        HUD.setGodMode(on);
-        if (!on) player.pos.y = 0;
-        if (state.mode === 'playing' || state.mode === 'paused') HUD.toast('GOD MODE: ' + (on ? 'ON' : 'OFF'), on ? 'good' : 'bad');
-        syncDebug();
-    }
-
-    function syncDebug() {
-        const g = $('debug-god');
-        g.classList.toggle('on', player.godMode);
-        g.querySelector('span').textContent = player.godMode ? 'ON' : 'OFF';
-        const inGame = !!level && state.mode !== 'menu';
-        document.querySelectorAll('.debug-level').forEach((b) => {
-            b.classList.toggle('current', inGame && Number(b.dataset.level) === state.levelId);
-        });
-    }
-
-    function debugLog(text, kind = '') {
-        const log = $('debug-log');
-        const line = document.createElement('div');
-        if (kind) line.className = kind;
-        line.textContent = text;
-        log.appendChild(line);
-        while (log.children.length > 30) log.removeChild(log.firstChild);
-        log.scrollTop = log.scrollHeight;
-    }
-
-    function openDebug() {
-        debugResume = state.mode === 'playing';
-        $('debug-console').classList.add('active');
-        if (isLocked()) document.exitPointerLock();
-        for (const k in keys) keys[k] = false;
-        syncDebug();
-        setTimeout(() => $('debug-input').focus(), 30);
-    }
-
-    function closeDebug() {
-        $('debug-console').classList.remove('active');
-        $('debug-input').blur();
-        // Drop straight back into the game if that's where we came from
-        if (debugResume && state.mode === 'paused') requestLock();
-        debugResume = false;
-    }
-
-    function toggleDebug() {
-        if (debugOpen()) closeDebug();
-        else openDebug();
-    }
-
-    function jumpToLevel(n) {
-        if (!LEVEL_INFO[n]) { debugLog(`No level ${n}. Levels are 1-${LAST_LEVEL}.`, 'err'); return; }
-        if (state.mode === 'loading' || state.mode === 'transition' || state.mode === 'dying') {
-            debugLog('Busy - try again in a moment.', 'err');
-            return;
-        }
-        debugResume = false;
-        if (intro) { const it = intro; intro = null; $('intro').classList.remove('show'); AudioSys.stopDrone(); void it; }
-        $('debug-console').classList.remove('active');
-        ['death-screen', 'victory-screen'].forEach((id) => $(id).classList.remove('show'));
-        $('pause-menu').classList.remove('active');
-        $('settings-panel').classList.remove('active');
-        $('jumpscare-screen').style.display = 'none';
-        AudioSys.ensureContext();
-        AudioSys.suspendAll(false);
-        if (state.mode === 'menu' || !state.stats.runStart) {
-            Menu.stop();
-            state.stats = { runStart: performance.now(), deaths: 0, matchesUsed: 0, notes: new Set() };
-        }
-        $('start-screen').classList.add('hidden');
-        debugLog(`Loading level ${LEVEL_INFO[n].num}: ${LEVEL_INFO[n].title}`, 'ok');
-        requestLock();
-        loadLevel(n);
-    }
-
-    function refillAll() {
-        if (!level || state.mode === 'menu') { debugLog('Not in a level.', 'err'); return; }
-        player.sanity = 100;
-        player.stamina = 100;
-        player.battery = 100;
-        player.exhausted = false;
-        player.matches = Math.max(player.matches, 5);
-        debugLog('Sanity, stamina, battery and matches refilled.', 'ok');
-    }
-
-    const DEBUG_HELP = [
-        'level <1-5>   jump to a level (also: l 3, or just 3)',
-        'god [on|off]  toggle invulnerable no-clip flying (also the Z key)',
-        'heal          refill sanity, stamina, battery and matches',
-        'fps [on|off]  frame rate, timings, resolution and effects tier',
-        'ending <eye|light>  play one of the two endings',
-        'scare  let the nearest monster catch you (watch its death scene)',
-        'menu          quit to the title screen',
-        'clear         clear this log'
-    ];
-
-    function runCommand(raw) {
-        const text = raw.trim().toLowerCase();
-        if (!text) return;
-        debugLog('> ' + raw.trim());
-        const [cmd, arg] = text.split(/\s+/);
-        if (/^\d+$/.test(cmd)) return jumpToLevel(Number(cmd));
-        switch (cmd) {
-            case 'level': case 'lvl': case 'l': case 'goto':
-                return jumpToLevel(Number(arg));
-            case 'god':
-                setGodMode(arg === 'on' ? true : arg === 'off' ? false : !player.godMode);
-                return debugLog('God mode ' + (player.godMode ? 'ON' : 'OFF'), 'ok');
-            case 'heal': case 'refill':
-                return refillAll();
-            case 'scare': {
-                if (!level || state.mode !== 'playing' && state.mode !== 'paused') { debugLog('Not in a level.', 'err'); return; }
-                const near = (list) => list.slice().sort((a, b) => a.dist - b.dist)[0];
-                let killer = null, cause = null;
-                if (Monsters.drowned.length) { killer = near(Monsters.drowned); cause = 'drowned'; }
-                else if (Monsters.watchers.length) { killer = near(Monsters.watchers); cause = killer.variant === 'unseen' ? 'unseen' : 'watcher'; }
-                else if (Monsters.angels.length) { killer = near(Monsters.angels); cause = 'angel'; }
-                if (!killer) { debugLog('Nothing here to catch you.', 'err'); return; }
-                if (arg === 'angel' && Monsters.angels.length) { killer = near(Monsters.angels); cause = 'angel'; }
-                $('debug-console').classList.remove('active');
-                if (state.mode === 'paused') resume();
-                debugLog(`Caught by: ${cause}`, 'ok');
-                die(cause, killer);
-                return;
-            }
-            case 'ending': {
-                const kind = /^(light|day|daylight|2)$/.test(arg || '') ? 'light' : 'eye';
-                pendingEnding = kind;
-                debugLog(`Ending: ${ENDINGS[kind].title}`, 'ok');
-                if (level && level.id === LAST_LEVEL && (state.mode === 'playing' || state.mode === 'paused')) {
-                    $('debug-console').classList.remove('active');
-                    if (state.mode === 'paused') resume();
-                    return;
-                }
-                return jumpToLevel(LAST_LEVEL);
-            }
-            case 'fps':
-                setShowFps(arg === 'on' ? true : arg === 'off' ? false : !stats.show);
-                return debugLog('FPS readout ' + (stats.show ? 'ON' : 'OFF'), 'ok');
-            case 'menu':
-                $('debug-console').classList.remove('active');
-                debugResume = false;
-                return toMenu();
-            case 'clear':
-                $('debug-log').textContent = '';
-                return;
-            case 'help': case '?':
-                DEBUG_HELP.forEach((l) => debugLog(l));
-                return;
-            default:
-                debugLog(`Unknown command "${cmd}". Type help.`, 'err');
-        }
-    }
-
-    document.querySelectorAll('.debug-level').forEach((b) => {
-        b.addEventListener('click', () => jumpToLevel(Number(b.dataset.level)));
-    });
-    $('debug-god').addEventListener('click', () => setGodMode(!player.godMode));
-    $('debug-heal').addEventListener('click', refillAll);
-    function setShowFps(on) {
-        stats.show = on;
-        $('perf-hud').classList.toggle('show', on);
-        const b = $('debug-fps');
-        b.classList.toggle('on', on);
-        b.querySelector('span').textContent = on ? 'ON' : 'OFF';
-    }
-    $('debug-fps').addEventListener('click', () => setShowFps(!stats.show));
-    $('debug-close').addEventListener('click', closeDebug);
-    $('pause-debug').addEventListener('click', openDebug);
-    $('debug-console').addEventListener('click', (e) => { if (e.target.id === 'debug-console') closeDebug(); });
-    $('debug-input').addEventListener('keydown', (e) => {
-        if (e.code !== 'Enter') return;
-        runCommand(e.target.value);
-        e.target.value = '';
-    });
-
-    // =========================================================================
     // Input
     // =========================================================================
     document.addEventListener('mousemove', (e) => {
-        if (state.mode !== 'playing' || state.note || debugOpen() || (!isLocked() && !state.debug)) return;
+        if (state.mode !== 'playing' || state.note || (!isLocked() && !state.debug)) return;
         const s = settings.cameraSensitivity;
         player.yaw -= e.movementX * s;
         player.pitch = clamp(player.pitch - e.movementY * s, -1.45, 1.45);
@@ -2108,16 +1920,6 @@
             e.stopPropagation();
             finishRebind(e.code);
             return;
-        }
-        // The debug console gets first look at every key
-        if (e.code === 'Backquote') {
-            e.preventDefault();
-            if (!e.repeat) toggleDebug();
-            return;
-        }
-        if (debugOpen()) {
-            if (e.code === 'Escape') { e.preventDefault(); closeDebug(); }
-            return; // typing in the console never moves the player
         }
         if (state.mode === 'intro') {
             if (e.repeat) return;
@@ -2140,14 +1942,13 @@
         else if (c === binds.camera) { if (level && level.camcorder) player.lensToggle = !player.lensToggle; }
         else if (c === binds.interact) interact();
         else if (c === binds.journal) { if (!state.note) openJournal(); }
-        else if (c === 'KeyZ') setGodMode(!player.godMode);
         else if (c === 'Escape') { if (state.note) closeNote(); }
     });
     window.addEventListener('keyup', (e) => { keys[e.code] = false; });
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '3.0';
+    const BUILD = '3.1';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {
@@ -2166,7 +1967,7 @@
                 !(document.fullscreenElement || document.webkitFullscreenElement)) enterImmersive();
         },
         look(dx, dy) {
-            if (state.mode !== 'playing' || state.note || debugOpen()) return;
+            if (state.mode !== 'playing' || state.note) return;
             const s = settings.cameraSensitivity * 1.9;
             player.yaw -= dx * s;
             player.pitch = clamp(player.pitch - dy * s, -1.45, 1.45);
@@ -2295,7 +2096,6 @@
 
     function applySettings() {
         AudioSys.setVolumes(settings.musicVolume, settings.sfxVolume);
-        Menu.setVolume(settings.musicVolume);
         applySize();
     }
 
@@ -2344,13 +2144,14 @@
     syncSettingsUi();
     applySize();
     AudioSys.setVolumes(settings.musicVolume, settings.sfxVolume);
-    Menu.init(settings.musicVolume);
+    Menu.init();
     syncFullscreenUi();
     Assets.load();
     frame();
+    if (stats.show) $('perf-hud').classList.add('show');
 
-    // Debug hooks for automated testing (harmless in normal play)
-    window.__twd = {
+    // Hooks for automated testing: only with ?debug in the address
+    if (state.debug) window.__twd = {
         state, player, settings, stats, display,
         get perfTier() { return perfTier; },
         startRun, loadLevel, die, completeLevel,
