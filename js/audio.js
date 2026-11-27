@@ -1204,7 +1204,7 @@ const AudioSys = (() => {
             intensity = (v) => choir.gain.setTargetAtTime(0.6 + v * 1.4, ctx.currentTime, 0.6);
         } else if (kind === 'studio') {
             // Level IV: dead air on a soundstage. Mains buzz from the rigs, tape hiss, a low
-            // drone, and a projector somewhere still flickering a reel nobody is watching.
+            // drone, and the lighting rigs creaking overhead.
             for (const [f, g] of [[60, 0.007], [120, 0.005], [180, 0.002], [240, 0.001]]) {
                 const o = keep(ctx.createOscillator());
                 o.frequency.value = f;
@@ -1240,26 +1240,11 @@ const AudioSys = (() => {
                 o.start();
             }
             lfo(0.04, 50, lp.frequency, 160);
-            // The projector: a fluttering whirr, 18 frames a second, drifting in and out
-            const pj = keep(noise());
-            pj.loop = true;
-            const pbp = ctx.createBiquadFilter();
-            pbp.type = 'bandpass';
-            pbp.frequency.value = 1300;
-            pbp.Q.value = 1.4;
-            const flutter = ctx.createGain();
-            lfo(18, 0.004, flutter.gain, 0.004);
-            const swell = ctx.createGain();
-            lfo(0.03, 0.8, swell.gain, 0.6);
-            pj.connect(pbp);
-            pbp.connect(flutter);
-            flutter.connect(swell);
-            swell.connect(master);
-            pj.start();
-            events.push(() => relay(master));
+            // Rigging overhead settling in the dark
+            events.push(() => creak(master, rand(200, 520), rand(0.03, 0.06)));
             intensity = (v) => drone.gain.setTargetAtTime(0.05 + v * 0.1, ctx.currentTime, 0.4);
         }
-        // Occasional sounds out in the dark (a creak, a crack, a relay)
+        // Occasional sounds out in the dark (a creak, a crack)
         let eventTimer = null;
         if (events.length) {
             const tick = () => {
@@ -1324,38 +1309,6 @@ const AudioSys = (() => {
             out(g, rand(-1, 1), 0.7);
             src.start(ti, Math.random(), 0.12);
         }
-    }
-    // A studio light relay clunking, and the buzz as something comes on for a moment
-    function relay() {
-        const t = ctx.currentTime + 0.01;
-        const src = noise();
-        const lp = ctx.createBiquadFilter();
-        lp.type = 'lowpass';
-        lp.frequency.value = 900;
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.06, t + 0.005);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
-        src.connect(lp);
-        lp.connect(g);
-        const pan = rand(-0.9, 0.9);
-        out(g, pan, 0.6);
-        src.start(t, Math.random(), 0.15);
-        const o = ctx.createOscillator();
-        o.type = 'sawtooth';
-        o.frequency.value = 120;
-        const og = ctx.createGain();
-        og.gain.setValueAtTime(0.0001, t + 0.05);
-        og.gain.exponentialRampToValueAtTime(0.012, t + 0.1);
-        og.gain.exponentialRampToValueAtTime(0.0001, t + rand(0.6, 1.4));
-        const olp = ctx.createBiquadFilter();
-        olp.type = 'lowpass';
-        olp.frequency.value = 600;
-        o.connect(olp);
-        olp.connect(og);
-        out(og, pan, 0.4);
-        o.start(t);
-        o.stop(t + 1.6);
     }
 
     function stopBeds() {

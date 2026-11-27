@@ -3,6 +3,8 @@
 // holding a perfect 1950s home - a living room, a kitchen, a bedroom - with no fourth wall,
 // under dead stage lights. The crew are mannequins: through the lens they look exactly like
 // the things that only exist on camera. Lower it, and the mannequins are still there.
+// In the middle of the wing is the studio audience: a great dark hall full of mannequins
+// facing an empty stage. Not all of them are mannequins.
 'use strict';
 
 const Level4 = (() => {
@@ -10,7 +12,19 @@ const Level4 = (() => {
 
     const WARNINGS = [
         'SMILE FOR THE CAMERA', 'KEEP RECORDING', 'QUIET ON SET', "IT'S ONLY ON TAPE", "DON'T LOWER IT",
-        'WHO IS BEHIND YOU', 'STAGE 4', 'BATTERY IS LIFE', 'FILM THE CORNERS', 'STATIC MEANS CLOSE', 'ROLLING'
+        'WHO IS BEHIND YOU', 'STAGE 4', 'BATTERY IS LIFE', 'FILM THE CORNERS', 'STATIC MEANS CLOSE', 'ROLLING',
+        'COUNT THE AUDIENCE', 'NOT ALL OF THEM ARE DUMMIES'
+    ];
+    const BIG = 5; // the audience hall, in cells
+
+    // How the audience stands. Each is a set of bone turns on top of the rest pose.
+    const POSES = [
+        { head: [0, 0, 0] },                                                              // waiting
+        { head: [0.1, 0, 0.38], neck: [0, 0, 0.12] },                                     // head on one side
+        { head: [0.5, 0, 0], neck: [0.25, 0, 0] },                                        // head bowed
+        { upperarm_L: [-0.85, 0, 0], upperarm_R: [-0.85, 0, 0], forearm_L: [-0.35, 0, 0], forearm_R: [-0.35, 0, 0], head: [0.15, 0, 0] }, // reaching
+        { upperarm_R: [-1.05, 0, 0], forearm_R: [-0.1, 0, 0], head: [0, -0.12, 0] },      // pointing
+        { upperarm_L: [-0.55, 0, 0], upperarm_R: [-0.55, 0, 0], forearm_L: [-2.0, 0, 0], forearm_R: [-2.0, 0, 0], head: [0.35, 0, 0] } // hands to the face
     ];
     const KINDS = ['living', 'kitchen', 'bedroom'];
 
@@ -18,7 +32,12 @@ const Level4 = (() => {
         const S = World.SIZE, C = World.CELL, H = World.HALF;
         const shell = await Facility.build(scene, quality, progress, {
             // Soundstages joined by backstage corridors
-            generate: () => World.generate({ rooms: [8, 11], roomSize: [4, 6], halls: [0, 1], corridors: [5, 8] }),
+            generate: () => World.generate({ rooms: [8, 11], roomSize: [4, 6], halls: [0, 1], corridors: [5, 8], bigRoom: [BIG, BIG] }),
+            // The audience hall is lit: you have to be able to see them without the camera
+            lampAt: () => {
+                const B = World.bigRoom;
+                return B ? [[1, 1], [3, 1], [1, 3], [3, 3]].map(([x, z]) => ({ x: B.x + x, z: B.z + z })) : [];
+            },
             wallH: WALL_H,
             fogColor: 0x020202,
             fogDensity: 0.07,
@@ -101,7 +120,9 @@ const Level4 = (() => {
 
         // ---- Choose where the sets stand: interior cells of the soundstages, facing in --------
         const sets = [];
-        const banned = (x, z) => (x < 3 && z < 3) || World.exits.some((e) => Math.abs(e.x - x) + Math.abs(e.z - z) < 3);
+        const B = World.bigRoom;
+        const inBig = (x, z, m = 0) => !!B && x >= B.x - m && x < B.x + B.w + m && z >= B.z - m && z < B.z + B.h + m;
+        const banned = (x, z) => (x < 3 && z < 3) || inBig(x, z, 1) || World.exits.some((e) => Math.abs(e.x - x) + Math.abs(e.z - z) < 3);
         World.rooms.forEach((r) => {
             const inner = [];
             for (let x = r.x + 1; x < r.x + r.w - 1; x++) for (let z = r.z + 1; z < r.z + r.h - 1; z++) inner.push({ x, z });
@@ -308,7 +329,7 @@ const Level4 = (() => {
             const x = seg.x + nx * (Facility.WALL_T / 2 + 0.3) + (seg.horizontal ? along : 0);
             const z = seg.z + nz * (Facility.WALL_T / 2 + 0.3) + (seg.horizontal ? 0 : along);
             const cx = World.cellX(x), cz = World.cellX(z);
-            if (!World.inBounds(cx, cz) || inRoom(cx, cz) || (cx < 2 && cz < 2)) continue;
+            if (!World.inBounds(cx, cz) || inRoom(cx, cz) || inBig(cx, cz) || (cx < 2 && cz < 2)) continue;
             if (World.exits.some((e) => Math.abs(e.x - cx) + Math.abs(e.z - cz) < 2)) continue;
             if (World.overlaps(x + nx * 0.1, z + nz * 0.1, 0.22) || World.overlaps(x + nx * 1.1, z + nz * 1.1, 0.5)) continue;
             if (hideSpots.some((h) => h.in.distanceToSquared(new THREE.Vector3(x, 0, z)) < 64)) continue;
@@ -319,6 +340,76 @@ const Level4 = (() => {
             lockers++;
         }
         mats.Metal = Props.material('Metal', { color: 0x5a6a62, roughness: 0.5, metalness: 0.6 });
+
+        // ---- The studio audience ---------------------------------------------------------------
+        // A great hall in the middle of the wing: an empty stage, and rows of mannequins facing it.
+        // A few of them are the Unseen, standing in exactly the same poses (spawned by Monsters).
+        let audience = null, applause = null;
+        if (B) {
+            progress('Seating the audience...', 0.8);
+            await nextFrame();
+            const ox = (B.x + (B.w - 1) / 2) * C, oz = (B.z + (B.h - 1) / 2) * C;
+            const f = randInt(0, 3) * Math.PI / 2;
+            const cos = Math.cos(f), sin = Math.sin(f);
+            const at = (lx, lz) => ({ x: ox + lx * cos + lz * sin, z: oz - lx * sin + lz * cos });
+            const faceTo = (lx, lz, tx, tz) => Math.atan2(tx - lx, tz - lz) + f;
+            const half = B.w * C / 2 - Facility.WALL_T / 2;
+
+            // The stage, set back from the wall so nothing behind it is cut off
+            const STAGE_Z = -14.5;
+            { const p = at(0, STAGE_Z); box('Plywood', 16, 0.7, 4.5, p.x, 0.35, p.z, f); box('Trim', 16.1, 0.08, 4.6, p.x, 0.72, p.z, f); }
+            { const a = at(-8.1, STAGE_Z - 2.3), b2 = at(8.1, STAGE_Z + 2.3); World.addBox(Math.min(a.x, b2.x), Math.max(a.x, b2.x), Math.min(a.z, b2.z), Math.max(a.z, b2.z)); }
+            // On the stage, the crew's gear turned round to face the seats
+            for (const [name, lx, lz] of [['StudioCamera', 0, STAGE_Z + 0.8], ['StageLight', -6.5, STAGE_Z + 1.4], ['StageLight', 6.5, STAGE_Z + 1.4], ['DirectorChair', 2.2, STAGE_Z]]) {
+                if (!Props.has(name)) continue;
+                const p = at(lx, lz);
+                batch.add(name, p.x, 0.7, p.z, faceTo(lx, lz, 0, 6), 1, { Fabric: 'Fabric', Wood: 'Wood' });
+            }
+            // The APPLAUSE sign, hanging over the stage
+            applause = new THREE.MeshBasicMaterial({ map: Textures.onAir('APPLAUSE'), color: new THREE.Color(1.5, 1.2, 1.2) });
+            { const p = at(0, STAGE_Z - 1.2); const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.9), applause); sign.position.set(p.x, 4.4, p.z); sign.rotation.y = f; shell.root.add(sign);
+              for (const side of [-1.5, 1.5]) { const q = at(side, STAGE_Z - 1.2); const g = new THREE.CylinderGeometry(0.012, 0.012, WALL_H - 4.85, 4); g.translate(q.x, 4.85 + (WALL_H - 4.85) / 2, q.z); batch.addGeometry('Rig', g); } }
+            // Rigs across the top of the hall
+            for (let lz = -half + 3; lz < half - 2; lz += 6) {
+                const a = at(-half + 1, lz), b2 = at(half - 1, lz);
+                const g = new THREE.CylinderGeometry(0.05, 0.05, Math.hypot(b2.x - a.x, b2.z - a.z), 8);
+                g.rotateZ(Math.PI / 2);
+                g.rotateY(f);
+                g.translate((a.x + b2.x) / 2, WALL_H - 0.9, (a.z + b2.z) / 2);
+                batch.addGeometry('Rig', g);
+            }
+
+            // Seats in rows facing the stage, with an aisle down the middle
+            const slots = [];
+            for (let lz = -8.5; lz <= 9; lz += 2.3) {
+                for (let lx = -13; lx <= 13; lx += 2.1) {
+                    if (Math.abs(lx) < 1.8) continue;
+                    const jx = lx + rand(-0.35, 0.35), jz = lz + rand(-0.35, 0.35);
+                    const p = at(jx, jz);
+                    if (World.overlaps(p.x, p.z, 0.6)) continue;
+                    slots.push({ x: p.x, z: p.z, yaw: faceTo(jx, jz, jx * 0.4, STAGE_Z) + rand(-0.15, 0.15), front: lz });
+                }
+            }
+            slots.sort(() => Math.random() - 0.5);
+            // Each one is a full creature: fewer of them on lighter settings
+            const high = !!(quality && quality.shadowSize >= 2048);
+            const total = Math.min(slots.length, L ? 20 : high ? 46 : 34);
+            const realCount = L ? 4 : high ? 6 : 5;
+            const people = slots.slice(0, total).map((s) => ({ x: s.x, z: s.z, yaw: s.yaw, scale: rand(0.95, 1.05), pose: randInt(0, POSES.length - 1) }));
+            // The real ones: never the very front row, so the first faces you see are honest
+            const realIdx = [];
+            for (let i = 0; i < people.length && realIdx.length < realCount; i++) if (slots[i].front > -8) realIdx.push(i);
+            const lurkers = realIdx.map((i) => people[i]);
+            const dummies = people.filter((_, i) => !realIdx.includes(i));
+            if (dummies.length) shell.root.add(Models.createCrowd('unseen', POSES, dummies));
+            for (const d of dummies) World.addCircle(d.x, d.z, 0.3, false);
+            const room = {
+                x0: B.x * C - World.HALF, x1: (B.x + B.w - 1) * C + World.HALF,
+                z0: B.z * C - World.HALF, z1: (B.z + B.h - 1) * C + World.HALF,
+                entered: false
+            };
+            audience = { room, poses: POSES, lurkers, dummies: dummies.length, center: { x: ox, z: oz }, face: f };
+        }
 
         batch.flush(shell.root, mats);
 
@@ -338,7 +429,7 @@ const Level4 = (() => {
             if (seg.horizontal) { x = seg.x + along; z = seg.z + side * off; ry = side > 0 ? 0 : Math.PI; }
             else { x = seg.x + side * off; z = seg.z + along; ry = side > 0 ? Math.PI / 2 : -Math.PI / 2; }
             const cx = World.cellX(x), cz = World.cellX(z);
-            if (!World.inBounds(cx, cz) || (cx < 2 && cz < 2)) continue;
+            if (!World.inBounds(cx, cz) || (cx < 2 && cz < 2) || inBig(cx, cz)) continue;
             if (World.exits.some((e) => e.x === cx && e.z === cz)) continue;
             const nx = seg.horizontal ? 0 : side, nz = seg.horizontal ? side : 0;
             if (World.overlaps(x + nx * 0.5, z + nz * 0.5, 0.8)) continue;
@@ -381,7 +472,8 @@ const Level4 = (() => {
             flashlightAllowed: false,
             camcorder: true,
             hideSpots,
-            debugThings: { sets, mannequins, signs, hideSpots },
+            audience,
+            debugThings: { sets, mannequins, signs, hideSpots, audience },
 
             update(dt, time, cam) {
                 shell.update(dt, time, cam);
@@ -394,6 +486,12 @@ const Level4 = (() => {
                 // The ON AIR signs buzz and stutter
                 const k = Noise.value2(time * 6, 11.3, 256, 256) > 0.12 ? 1 : 0.2;
                 onAirMat.color.setRGB(1.5 * k, 1.2 * k, 1.2 * k);
+                // APPLAUSE comes on by itself, now and then, for nobody
+                if (applause) {
+                    const on = Noise.value2(time * 0.35, 4.7, 256, 256) > 0.55 && Noise.value2(time * 9, 2.1, 256, 256) > 0.1;
+                    const a = on ? 1 : 0.12;
+                    applause.color.setRGB(1.5 * a, 1.2 * a, 1.2 * a);
+                }
                 Facility.animatePickups(pickups, dt, time);
                 notes.update(dt, time, cam);
                 exits.update(time);

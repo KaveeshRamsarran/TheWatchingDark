@@ -9,6 +9,7 @@ const World = (() => {
     let cells = [];       // cells[x][z] = { n, s, e, w } (true = wall)
     let exits = [];
     let rooms = [];       // rectangular rooms opened by the last generate(): { x, z, w, h } in cells
+    let bigRoom = null;   // one great open hall, if generate() was asked for it: { x, z, w, h } in cells
 
     // Collision primitives: axis-aligned boxes and vertical cylinders (circles)
     const boxes = [];
@@ -32,10 +33,12 @@ const World = (() => {
     // Generation (recursive backtracker + rooms + circular halls + winding corridors)
     // -------------------------------------------------------------------------
     // opts (all optional): rooms [min, max], roomSize [min, max] (cells), halls [min, max]
-    // (circular), corridors [min, max] - bigger rooms and fewer corridors give a level of halls
+    // (circular), corridors [min, max] - bigger rooms and fewer corridors give a level of halls;
+    // bigRoom [w, h] - one great hall near the middle of the grid (kept out of `rooms`)
     function generate(opts = {}) {
         const o = Object.assign({ rooms: [10, 17], roomSize: [3, 7], halls: [5, 9], corridors: [8, 13] }, opts);
         rooms = [];
+        bigRoom = null;
         cells = [];
         for (let x = 0; x < SIZE; x++) {
             cells[x] = [];
@@ -82,6 +85,20 @@ const World = (() => {
                     if (z < rz + rh - 1) open(x, z, DIRS[1]);
                 }
             }
+        }
+
+        // One great hall near the middle
+        if (o.bigRoom) {
+            const [bw, bh] = o.bigRoom;
+            const bx = randInt(Math.floor((SIZE - bw) / 2) - 4, Math.floor((SIZE - bw) / 2) + 4);
+            const bz = randInt(Math.floor((SIZE - bh) / 2) - 4, Math.floor((SIZE - bh) / 2) + 4);
+            for (let x = bx; x < bx + bw; x++) {
+                for (let z = bz; z < bz + bh; z++) {
+                    if (x < bx + bw - 1) open(x, z, DIRS[2]);
+                    if (z < bz + bh - 1) open(x, z, DIRS[1]);
+                }
+            }
+            bigRoom = { x: bx, z: bz, w: bw, h: bh };
         }
 
         // Circular halls
@@ -134,6 +151,7 @@ const World = (() => {
     // Cells never reached stay `solid` (sealed flesh) and get no walls of their own.
     function generateJourney() {
         rooms = [];
+        bigRoom = null;
         cells = [];
         for (let x = 0; x < SIZE; x++) {
             cells[x] = [];
@@ -539,6 +557,7 @@ const World = (() => {
         get cells() { return cells; },
         get exits() { return exits; },
         get rooms() { return rooms; },
+        get bigRoom() { return bigRoom; },
         cellX, inBounds, center, canStep, openNeighbours, isOpenCorner,
         clearColliders, addBox, addCircle, resolve, overlaps, query,
         lineOfSight, updateFlow, pathDist, flowStep, fieldFrom, descend,

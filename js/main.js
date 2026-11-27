@@ -290,7 +290,8 @@
         },
         4: {
             num: 'IV', title: 'THE OBSERVATION WING', sub: 'Quiet on set. They only exist on camera.', objective: 'Find an exit. Keep recording.',
-            builder: () => Level4, spawn: () => Monsters.spawnWatchers(randInt(11, 13), 'unseen'),
+            builder: () => Level4,
+            spawn: () => { Monsters.spawnWatchers(randInt(11, 13), 'unseen'); if (level && level.audience) Monsters.spawnLurkers(level.audience); },
             music: null, bed: 'studio', steps: 'concrete', far: 50, dark: true, meter: 'camera', hint: HINT_CAMERA,
             ambient: [0x7a4a4a, 0x1a1010, 0.6], tint: new THREE.Color(1.02, 0.95, 0.95), exitFlash: [0.6, 1, 0.7],
             batteryAmount: 35, maxHunters: 5, reverb: 0.4, dust: 0.01, deathTitle: 'LOST IN THE STATIC'
@@ -1948,7 +1949,7 @@
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '3.1';
+    const BUILD = '3.2';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {

@@ -313,6 +313,13 @@ const Models = (() => {
         function openJaw(amount) {
             if (rig.jaw && rig.jaw.down) rig.jaw.bone.position.copy(rig.jaw.restPos).addScaledVector(rig.jaw.down, amount * jawOpen);
         }
+        // Every bone back to where Blender left it
+        function restPose() {
+            for (const k in rig) {
+                rig[k].bone.quaternion.copy(rig[k].rest);
+                rig[k].bone.position.copy(rig[k].restPos);
+            }
+        }
 
         const seed = Math.random() * 100;
         const tiltSign = Math.random() < 0.5 ? -1 : 1;
@@ -401,8 +408,122 @@ const Models = (() => {
                 }
                 openJaw(hunt * clamp(near, 0, 1) * (0.75 + Math.random() * 0.25) + (patient ? 0.35 : 0));
             },
-            pose
+            pose, restPose
         };
+    }
+
+    // A held pose: { boneName: [x, y, z] } on top of the rest pose
+    function applyPose(model, P) {
+        if (!model.pose) return;
+        if (model.restPose) model.restPose();
+        for (const k in P) model.pose(k, ...P[k]);
+    }
+
+    // Freeze a posed creature into plain, unskinned geometry in its own space (scale 1).
+    // Skinning is done here once, exactly as the GPU would do it, so a baked mannequin
+    // and a live creature in the same pose are indistinguishable.
+    function bakeModel(model) {
+        const root = model.root;
+        root.position.set(0, 0, 0);
+        root.rotation.set(0, 0, 0);
+        root.scale.setScalar(1);
+        root.updateMatrixWorld(true);
+        const parts = [];
+        const p = new THREE.Vector3(), n = new THREE.Vector3();
+        const acc = new THREE.Matrix4(), full = new THREE.Matrix4(), nm = new THREE.Matrix3();
+        const ae = acc.elements;
+        root.traverse((o) => {
+            if (!o.isMesh || !o.visible || o.material.transparent) return;
+            const g = o.geometry, pos = g.attributes.position, nor = g.attributes.normal, uv = g.attributes.uv;
+            const P = new Float32Array(pos.count * 3), N = new Float32Array(pos.count * 3);
+            let si = null, sw = null, bm = null;
+            if (o.isSkinnedMesh) {
+                o.skeleton.update();
+                si = g.attributes.skinIndex;
+                sw = g.attributes.skinWeight;
+                bm = o.skeleton.boneMatrices;
+            }
+            for (let i = 0; i < pos.count; i++) {
+                if (si) {
+                    ae.fill(0);
+                    const idx = [si.getX(i), si.getY(i), si.getZ(i), si.getW(i)];
+                    const wt = [sw.getX(i), sw.getY(i), sw.getZ(i), sw.getW(i)];
+                    for (let k = 0; k < 4; k++) {
+                        if (!wt[k]) continue;
+                        const b = idx[k] * 16;
+                        for (let e = 0; e < 16; e++) ae[e] += bm[b + e] * wt[k];
+                    }
+                    full.multiplyMatrices(o.matrixWorld, o.bindMatrixInverse).multiply(acc).multiply(o.bindMatrix);
+                } else {
+                    full.copy(o.matrixWorld);
+                }
+                p.fromBufferAttribute(pos, i).applyMatrix4(full);
+                P[i * 3] = p.x; P[i * 3 + 1] = p.y; P[i * 3 + 2] = p.z;
+                if (nor) {
+                    n.fromBufferAttribute(nor, i).applyMatrix3(nm.getNormalMatrix(full)).normalize();
+                    N[i * 3] = n.x; N[i * 3 + 1] = n.y; N[i * 3 + 2] = n.z;
+                }
+            }
+            parts.push({ P, N, uv: uv ? uv.array : null, index: g.index ? g.index.array : null, count: pos.count, mat: o.material });
+        });
+        return parts;
+    }
+
+    // A crowd of identical, posed creatures merged into one mesh per material.
+    // poses: [{ bone: [x, y, z] }]; people: [{ x, z, yaw, scale, pose }]
+    function createCrowd(variant, poses, people) {
+        const used = [...new Set(people.map((p) => p.pose))];
+        const baked = {};
+        for (const i of used) {
+            const m = createWatcher(1, variant);
+            applyPose(m, poses[i]);
+            baked[i] = bakeModel(m);
+        }
+        const group = new THREE.Group();
+        const byMat = new Map();
+        for (const person of people) {
+            for (const part of baked[person.pose]) {
+                if (!byMat.has(part.mat)) byMat.set(part.mat, []);
+                byMat.get(part.mat).push({ part, person });
+            }
+        }
+        const M = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
+        const UP = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3();
+        for (const [src, list] of byMat) {
+            let verts = 0, tris = 0;
+            for (const { part } of list) { verts += part.count; tris += part.index ? part.index.length : part.count; }
+            const P = new Float32Array(verts * 3), N = new Float32Array(verts * 3), U = new Float32Array(verts * 2);
+            const I = verts > 65535 ? new Uint32Array(tris) : new Uint16Array(tris);
+            let vo = 0, io = 0;
+            for (const { part, person } of list) {
+                q.setFromAxisAngle(UP, person.yaw);
+                M.compose(pos.set(person.x, 0, person.z), q, sc.setScalar(person.scale));
+                for (let i = 0; i < part.count; i++) {
+                    v.set(part.P[i * 3], part.P[i * 3 + 1], part.P[i * 3 + 2]).applyMatrix4(M);
+                    P[(vo + i) * 3] = v.x; P[(vo + i) * 3 + 1] = v.y; P[(vo + i) * 3 + 2] = v.z;
+                    v.set(part.N[i * 3], part.N[i * 3 + 1], part.N[i * 3 + 2]).applyQuaternion(q);
+                    N[(vo + i) * 3] = v.x; N[(vo + i) * 3 + 1] = v.y; N[(vo + i) * 3 + 2] = v.z;
+                    if (part.uv) { U[(vo + i) * 2] = part.uv[i * 2]; U[(vo + i) * 2 + 1] = part.uv[i * 2 + 1]; }
+                }
+                if (part.index) for (let k = 0; k < part.index.length; k++) I[io++] = part.index[k] + vo;
+                else for (let k = 0; k < part.count; k++) I[io++] = k + vo;
+                vo += part.count;
+            }
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(P, 3));
+            geo.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+            geo.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+            geo.setIndex(new THREE.BufferAttribute(I, 1));
+            geo.computeBoundingSphere();
+            // The same look as the live creature, minus the skinning
+            const mat = src.clone();
+            mat.skinning = false;
+            mat.onBeforeCompile = src.onBeforeCompile;
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.receiveShadow = true;
+            group.add(mesh);
+        }
+        return group;
     }
 
     function createWatcherProcedural(scale = 1, variant = 'watcher') {
@@ -1545,7 +1666,7 @@ const Models = (() => {
 
     return {
         pointUniforms, glowSprite, smokeMaterial, smokePoints, stoneMaterials, metalMaterial,
-        createWatcher, createAngel, createLamp, createBattery, createRelic, createNoteStand,
+        createWatcher, applyPose, createCrowd, createAngel, createLamp, createBattery, createRelic, createNoteStand,
         createExitDoor, createPortal, createViewModels, createEnvMap,
         createBrazier, createMonitor, createEye, createFigure
     };

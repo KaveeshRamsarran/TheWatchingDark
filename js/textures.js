@@ -1094,15 +1094,19 @@ const Textures = (() => {
     }
 
     // A lit sign: "ON AIR"
-    function onAir() {
-        if (cache.onAir) return cache.onAir;
-        const c = makeCanvas(256, 96), ctx = c.getContext('2d');
-        ctx.fillStyle = '#1a0202'; ctx.fillRect(0, 0, 256, 96);
-        ctx.strokeStyle = '#ff3020'; ctx.lineWidth = 6; ctx.strokeRect(6, 6, 244, 84);
+    // A studio light box: ON AIR, APPLAUSE...
+    function onAir(text = 'ON AIR') {
+        const key = 'onAir_' + text;
+        if (cache[key]) return cache[key];
+        const wide = text.length > 6;
+        const W = wide ? 384 : 256;
+        const c = makeCanvas(W, 96), ctx = c.getContext('2d');
+        ctx.fillStyle = '#1a0202'; ctx.fillRect(0, 0, W, 96);
+        ctx.strokeStyle = '#ff3020'; ctx.lineWidth = 6; ctx.strokeRect(6, 6, W - 12, 84);
         ctx.fillStyle = '#ff4a30'; ctx.font = 'bold 54px Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('ON AIR', 128, 50);
-        cache.onAir = toTexture(c, { repeat: false });
-        return cache.onAir;
+        ctx.fillText(text, W / 2, 50);
+        cache[key] = toTexture(c, { repeat: false });
+        return cache[key];
     }
 
     // Leaf-card atlas: left half a broadleaf cluster, right half a pine-needle spray

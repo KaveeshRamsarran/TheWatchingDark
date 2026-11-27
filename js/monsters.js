@@ -76,6 +76,35 @@ const Monsters = (() => {
         return null;
     }
 
+    // Level IV's audience: real Unseen standing among the mannequins, posed exactly like them.
+    // aud: { room: {x0, x1, z0, z1}, poses: [...], lurkers: [{ x, z, yaw, scale, pose }] }
+    function spawnLurkers(aud) {
+        for (const L of aud.lurkers) {
+            const model = Models.createWatcher(L.scale, 'unseen');
+            Models.applyPose(model, aud.poses[L.pose]);
+            // The mannequins cast no shadows, so neither may they
+            model.root.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+            model.root.position.set(L.x, 0, L.z);
+            model.root.rotation.y = L.yaw;
+            model.root.visible = false;
+            scene.add(model.root);
+            watchers.push({
+                model, variant: 'unseen',
+                type: { speed: 2.8, detect: 0, hear: 0, scale: L.scale },
+                lurk: { room: aud.room, pose: aud.poses[L.pose] },
+                held: true,
+                pos: model.root.position,
+                yaw: L.yaw,
+                cell: { x: World.cellX(L.x), z: World.cellX(L.z) },
+                target: new THREE.Vector3(L.x, 0, L.z),
+                prevCell: null,
+                aware: 0, stalker: false, flee: 0, frozen: true, unseen: 0, speed: 0, dist: Infinity,
+                stuck: 0, lastPos: new THREE.Vector3(L.x, 0, L.z), stuckTimer: 0, detour: 0, detourDir: new THREE.Vector3()
+            });
+        }
+        ensureFootVoices();
+    }
+
     function spawnWatchers(count, variant = 'watcher') {
         World.updateFlow(0, 0);
         const C = World.CELL;
@@ -219,9 +248,9 @@ const Monsters = (() => {
         if (directorTimer <= 0) {
             directorTimer = 1;
             const desired = Math.min(ctx.maxHunters || 5, 2 + Math.floor(ctx.levelTime / 70));
-            let active = watchers.filter((w) => w.aware > 0).length;
+            let active = watchers.filter((w) => w.aware > 0 && !w.lurk).length;
             if (active < desired) {
-                const idle = watchers.filter((w) => w.aware <= 0 && w.flee <= 0)
+                const idle = watchers.filter((w) => w.aware <= 0 && w.flee <= 0 && !w.lurk)
                     .map((w) => ({ w, d: World.pathDist(w.cell.x, w.cell.z) }))
                     .filter((e) => e.d > 0)
                     .sort((a, b) => a.d - b.d);
@@ -253,7 +282,7 @@ const Monsters = (() => {
                 visibleFrom(cam, w.pos, 0.35 * s);
             if (unseen) {
                 // The camera holds them - but only for so long
-                if (seen) w.filmed = (w.filmed || 0) + dt;
+                if (seen && (!w.lurk || w.woken || staredAt(w, cam))) w.filmed = (w.filmed || 0) + dt;
                 else if (!w.woken) w.filmed = Math.max(0, (w.filmed || 0) - dt * 0.35);
                 if (!w.woken && w.filmed > UNSEEN_WAKE) {
                     w.woken = true;
@@ -271,6 +300,36 @@ const Monsters = (() => {
                 }
             }
             w.frozen = seen && !w.woken;
+
+            // One of the audience: a mannequin like all the others, until you look away
+            if (w.lurk && !w.woken) {
+                const R = w.lurk.room;
+                const px = cam.position.x, pz = cam.position.z;
+                const inside = px > R.x0 && px < R.x1 && pz > R.z0 && pz < R.z1;
+                if (inside && !R.entered) { R.entered = true; AudioSys.sting(0.3); }
+                if (seen || !inside || ctx.hidden) {
+                    // Held in its pose (it is either out of sight or only now coming back into it)
+                    w.frozen = true;
+                    w.speed = 0;
+                    w.aware = 0;
+                    if (!w.held) { w.held = true; Models.applyPose(w.model, w.lurk.pose); }
+                    if (seen) w.model.animate(dt, 0, true, time, 0, 0);
+                } else {
+                    // Off camera it creeps toward you through the crowd, turning to face you
+                    w.frozen = false;
+                    w.held = false;
+                    w.aware = 1;
+                    moveWatcher(w, dt, cam, pd, false, 0.5);
+                    w.yaw = dampAngle(w.yaw, Math.atan2(dx, dz), 3, dt);
+                    if (w.dist < nearestHunter) { nearestHunter = w.dist; nearestHunterAt = at(w.pos, 1.6); }
+                }
+                w.model.root.rotation.y = w.yaw;
+                if (w.dist < 1.25 * s + 0.2 && !player.godMode && !ctx.hidden) {
+                    ctx.onKill('unseen', w);
+                    return;
+                }
+                continue;
+            }
 
             // Fire scares Watchers off (the Unseen don't care)
             if (!unseen && player.matchLit && w.dist < 15) {
@@ -351,6 +410,13 @@ const Monsters = (() => {
             AudioSys.staticBurst(1 - nearestHunter / staticRange, nearestHunterAt);
             staticTimer = rand(0.5, 1.3) * (0.5 + nearestHunter / staticRange);
         }
+    }
+
+    // Right in the middle of the viewfinder, and close
+    function staredAt(w, cam) {
+        if (w.dist > 10) return false;
+        tmp.set(w.pos.x - cam.position.x, 1.5 * w.type.scale - cam.position.y, w.pos.z - cam.position.z).normalize();
+        return tmp.dot(camDir) > 0.965;
     }
 
     const dir = new THREE.Vector3();
@@ -731,7 +797,7 @@ const Monsters = (() => {
     }
 
     return {
-        init, clear, spawnWatchers, spawnAngels, spawnDrowned, setStepSound,
+        init, clear, spawnWatchers, spawnLurkers, spawnAngels, spawnDrowned, setStepSound,
         updateWatchers, updateAngels, updateDrowned, silence,
         nearestWatcherDistance, nearestDistance,
         // Distance to the nearest hunting Watcher/Unseen that isn't being observed

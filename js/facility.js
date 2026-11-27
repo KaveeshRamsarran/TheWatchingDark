@@ -224,13 +224,16 @@ const Facility = (() => {
         // ---- Lamps (hanging bulbs or floor braziers) ---------------------------
         const lamps = [];
         const lampCells = [];
-        const lampCount = o.lampStyle === 'none' ? 0 : randInt(o.lampCount[0], o.lampCount[1]);
+        // Lamps the level insists on (lampAt: () => [{x, z}] cells), then the rest at random
+        const forced = o.lampStyle === 'none' || !o.lampAt ? [] : o.lampAt();
+        const lampCount = o.lampStyle === 'none' ? 0 : randInt(o.lampCount[0], o.lampCount[1]) + forced.length;
         for (let tries = 0; lamps.length < lampCount && tries < 2000; tries++) {
-            const x = randInt(1, S - 2), z = randInt(1, S - 2);
-            if (x < 3 && z < 3) continue;
-            if (lampCells.some((l) => Math.abs(l.x - x) + Math.abs(l.z - z) < 4)) continue;
+            const f = forced[lamps.length];
+            const x = f ? f.x : randInt(1, S - 2), z = f ? f.z : randInt(1, S - 2);
+            if (!f && x < 3 && z < 3) continue;
+            if (!f && lampCells.some((l) => Math.abs(l.x - x) + Math.abs(l.z - z) < 4)) continue;
             const px = x * C, pz = z * C;
-            const broken = Math.random() < o.lampBroken;
+            const broken = !f && Math.random() < o.lampBroken;
             const base = { cell: { x, z }, broken, level: 1, phase: Math.random() * 100, swing: Math.random() * TAU };
             if (o.lampStyle === 'brazier') {
                 if (World.overlaps(px, pz, 0.9)) continue;
