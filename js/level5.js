@@ -4,7 +4,11 @@
 // of the flesh - they stare at you, and roll away when you look back. Arms reach from the
 // walls. A woman stands in the corridors with her back to you. Every so often the great eye
 // above blinks, the world goes dark, and when it opens again something has changed.
-// At the heart there is no door. There is only the eye, waiting for you to look back.
+// At the heart there is no door. There is only the eye, waiting for you to look back -
+// and, if you read what the others left behind, a shaft of real daylight it hopes you won't notice.
+//   Look at the eye        -> ENDING: THE WATCHING DARK (you become what it sees with)
+//   Stand in the light,
+//   eyes down              -> ENDING: DAYLIGHT (it lets you go... for now)
 'use strict';
 
 const Level5 = (() => {
@@ -333,6 +337,83 @@ const Level5 = (() => {
         eyeLight.position.set(0, 1, 0);
         scene.add(eyeLight);
 
+        // ---- The light at the heart of the maze ---------------------------------------------
+        // "The light at the heart of the maze is real. I couldn't reach it. You can."
+        // Grey daylight falls through a wound in the flesh far above. Stand in it with your eyes
+        // down and it lifts you out. (In the other ending, the same lamp becomes a stranger's torch.)
+        const SHAFT_R = 1.7;
+        const shaftPos = new THREE.Vector3();
+        const shaft = new THREE.Group();
+        shaft.visible = false;
+        const shaftMat = new THREE.ShaderMaterial({
+            uniforms: { uTime: uniforms.uTime, uLevel: { value: 0 } },
+            vertexShader: /* glsl */`
+                varying vec2 vUv;
+                varying vec3 vN, vV;
+                void main() {
+                    vUv = uv;
+                    vec4 wp = modelMatrix * vec4(position, 1.0);
+                    vN = normalize(mat3(modelMatrix) * normal);
+                    vV = normalize(cameraPosition - wp.xyz);
+                    gl_Position = projectionMatrix * viewMatrix * wp;
+                }`,
+            fragmentShader: /* glsl */`
+                uniform float uTime, uLevel;
+                varying vec2 vUv;
+                varying vec3 vN, vV;
+                void main() {
+                    // Brightest through the middle of the column, soft at its edges
+                    float core = pow(abs(dot(normalize(vN), normalize(vV))), 1.6);
+                    float ends = smoothstep(0.0, 0.03, vUv.y) * (1.0 - smoothstep(0.85, 1.0, vUv.y) * 0.6);
+                    float motes = 0.7 + 0.3 * sin(vUv.y * 110.0 - uTime * 0.6 + vUv.x * 31.4) * sin(vUv.x * 62.8 + uTime * 0.25);
+                    gl_FragColor = vec4(vec3(0.8, 0.87, 0.95) * core * ends * motes * uLevel * 0.5, 1.0);
+                }`,
+            transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+        });
+        const shaftGeo = new THREE.CylinderGeometry(1.25, SHAFT_R + 0.2, 70, 24, 1, true);
+        shaftGeo.translate(0, 35, 0);
+        shaft.add(new THREE.Mesh(shaftGeo, shaftMat));
+        const shaftPool = new THREE.Mesh(
+            new THREE.PlaneGeometry(5.5, 5.5),
+            new THREE.MeshBasicMaterial({
+                map: Textures.lightPool(), color: 0xc4d0dc, transparent: true, opacity: 0,
+                blending: THREE.AdditiveBlending, depthWrite: false
+            })
+        );
+        shaftPool.rotation.x = -Math.PI / 2;
+        shaftPool.position.y = 0.06;
+        shaft.add(shaftPool);
+        // The wound in the flesh far above, and the sky through it
+        const opening = Models.glowSprite(0xe4ecf6, 16, 0.9, false);
+        opening.position.y = 68;
+        shaft.add(opening);
+        scene.add(shaft);
+        const shaftLight = new THREE.SpotLight(0xd4dfec, 0, 60, 0.075, 0.7, 1.0);
+        shaftLight.userData.volWeight = 0.7;
+        scene.add(shaftLight, shaftLight.target);
+
+        // Ending: a stranger with a flashlight, far above you (built now so nothing compiles later)
+        const newcomer = (() => {
+            const root = new THREE.Group();
+            const cloth = new THREE.MeshStandardMaterial({ color: 0x4a4d58, emissive: 0x0b0b0e, roughness: 0.9 });
+            const skin = new THREE.MeshStandardMaterial({ color: 0x9c8072, roughness: 0.8 });
+            const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.82, 8), cloth);
+            legs.position.y = 0.41;
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.21, 0.78, 10), cloth);
+            body.position.y = 1.2;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), skin);
+            head.position.y = 1.74;
+            const hair = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8, 0, TAU, 0, Math.PI * 0.55), cloth);
+            hair.position.y = 1.76;
+            root.add(legs, body, head, hair);
+            const lens = Models.glowSprite(0xfff2dc, 0.45, 0.9, false);
+            lens.position.set(0.24, 1.3, -0.34);
+            root.add(lens);
+            root.visible = false;
+            scene.add(root);
+            return { root, lens, goal: null, yaw: 0 };
+        })();
+
         // ---- The woman ----------------------------------------------------------------------
         const figure = Models.createFigure();
         figure.root.visible = false;
@@ -359,6 +440,8 @@ const Level5 = (() => {
         let beatTimer = 1.5, whisperTimer = rand(6, 12);
         let fig = { mode: 'idle', next: rand(16, 24), t: 0, seen: 0, lit: 0, lost: 0, wasSeen: false };
         let inHeart = false, gaze = 0, bed = null;
+        let ascend = 0, inLight = false, plead = 0, pleadIdx = 0, end = null;
+        const PLEAS = ['LOOK AT ME', 'SHE IS UP HERE', 'ELLIE IS WAITING FOR YOU', 'LOOK UP', 'YOU CAME ALL THIS WAY', 'PLEASE', 'JUST ONCE'];
         const climax = { started: false };
 
         const level = {
@@ -383,12 +466,20 @@ const Level5 = (() => {
             blackout: 0,       // the great blink
             flash: 0,          // request a red flash
             gaze: 0,           // final confrontation progress
+            showGaze: false,   // show the ring that fills while you stare
+            status: null,      // overrides the HUD status line when set
             objective: null,   // replaces the HUD objective when set
             completed: false,
+            whiteout: 0,       // 0..1 the screen goes to light (whiteColor)
+            whiteColor: new THREE.Color(0.93, 0.95, 1.0),
+            grade: null,       // { tint, saturation, exposure } overrides during the endings
+            ending: null,      // 'eye' | 'light' once an ending has begun
             // For debugging and automated tests
-            debugThings: { arms, reliefs, clusters, figure },
+            debugThings: { arms, reliefs, clusters, figure, shaftPos, heart },
+            debugEnd: () => end,
 
             update(dt, time, cam, player) {
+                if (end) return;
                 shell.update(dt, time, cam);
                 Facility.animatePickups(pickups, dt, time);
                 notes.update(dt, time, cam);
@@ -497,13 +588,39 @@ const Level5 = (() => {
                 if (!inHeart && hd < 3.2 * C && myField >= 0 && myField <= 4) {
                     inHeart = true;
                     hideFigure();
+                    placeShaft(player);
                     level.objective = 'Look at it.';
                     AudioSys.sting(0.6);
                     level.flash = 0.25;
                 }
                 if (inHeart) updateHeart(dt, time, cam, player);
             },
-            nearLight: shell.nearLight
+            nearLight: shell.nearLight,
+
+            // Run while main is in 'ending' mode: the level drives the camera itself
+            updateEnding(dt, time, cam, api) {
+                if (!end) return;
+                end.t += dt;
+                uniforms.uTime.value = time;
+                if (end.kind === 'eye') updateEyeEnding(dt, time, cam, api);
+                else updateLightEnding(dt, time, cam, api);
+            },
+
+            // Debug console: jump straight to an ending
+            forceEnding(kind, player) {
+                if (end) return;
+                if (!inHeart) { inHeart = true; hideFigure(); placeShaft(player); }
+                if (kind === 'light') {
+                    player.pos.set(shaftPos.x, 0, shaftPos.z);
+                } else {
+                    player.pos.set(heart.x + 12, 0, heart.z + 5);
+                    eye.group.position.set(heart.x, 20, heart.z);
+                }
+                tmp.subVectors(eye.group.position, tmp2.set(player.pos.x, 1.65, player.pos.z)).normalize();
+                player.yaw = Math.atan2(-tmp.x, -tmp.z);
+                player.pitch = kind === 'light' ? -0.4 : Math.asin(tmp.y);
+                beginEnding(kind);
+            }
         };
 
         function toEye(cam) {
@@ -745,29 +862,501 @@ const Level5 = (() => {
             }
         }
 
-        // ---- The heart: look at it --------------------------------------------------------
+        // ---- The heart: look at it... or don't ----------------------------------------------
+        // The shaft falls on the far side of the chamber from where you came in, so you have
+        // to cross under the eye to reach it.
+        function placeShaft(player) {
+            const base = Math.atan2(player.pos.z - heart.z, player.pos.x - heart.x) + Math.PI;
+            let found = false;
+            for (const off of [0, 0.35, -0.35, 0.7, -0.7, 1.1, -1.1, 1.5, -1.5, 2.0, -2.0]) {
+                for (const r of [16, 13, 10]) {
+                    const x = heart.x + Math.cos(base + off) * r, z = heart.z + Math.sin(base + off) * r;
+                    const cx = World.cellX(x), cz = World.cellX(z);
+                    if (World.isSolid(cx, cz) || exitField[cx * S + cz] < 0) continue;
+                    if (!World.lineOfSight(heart.x, heart.z, x, z)) continue;
+                    shaftPos.set(x, 0, z);
+                    found = true;
+                    break;
+                }
+                if (found) break;
+            }
+            if (!found) shaftPos.set(heart.x + 10, 0, heart.z);
+            shaft.position.copy(shaftPos);
+            shaft.visible = true;
+            shaftLight.position.set(shaftPos.x, 40, shaftPos.z);
+            shaftLight.target.position.copy(shaftPos);
+            shaftLight.target.updateMatrixWorld();
+        }
+
         function updateHeart(dt, time, cam, player) {
             level.stareDrain = 9;
             if (level.stare > 0.6) gaze = Math.min(1, gaze + dt / 6);
             else gaze = Math.max(0, gaze - dt * 0.1);
             level.gaze = gaze;
             heartLight.intensity = 0.6 + gaze * 2.5 + uniforms.uBeat.value * 1.5;
-            // They gather while you stare, and stand closer every time you look down
-            if (gaze > 0.04) {
-                const r = lerp(20, 3.2, gaze);
+
+            // The light: stand in it, eyes down, and it carries you up. The eye drags your head
+            // toward itself the whole time - you have to keep looking away.
+            inLight = Math.hypot(player.pos.x - shaftPos.x, player.pos.z - shaftPos.z) < SHAFT_R;
+            if (inLight) {
+                if (level.stare < 0.25) ascend = Math.min(1, ascend + dt / 7);
+                else ascend = Math.max(0, ascend - dt * 0.6);
+                toEye(cam);
+                const pull = (0.2 + ascend * 0.55) * dt;
+                const wantYaw = Math.atan2(-tmp2.x, -tmp2.z), wantPitch = Math.asin(clamp(tmp2.y, -1, 1));
+                const dy = Math.atan2(Math.sin(wantYaw - player.yaw), Math.cos(wantYaw - player.yaw));
+                player.yaw += clamp(dy, -pull, pull);
+                player.pitch += clamp(wantPitch - player.pitch, -pull, pull);
+                // It speaks through anything it can
+                plead -= dt;
+                if (ascend > 0.1 && plead <= 0) {
+                    plead = 1.7;
+                    level.objective = PLEAS[pleadIdx++ % PLEAS.length];
+                    AudioSys.whisper(rand(-1, 1), 0.55 + ascend * 0.4, randInt(3, 6));
+                }
+                level.status = "Don't look up. Don't look back.";
+            } else {
+                ascend = Math.max(0, ascend - dt * 0.12);
+                level.objective = 'Look at it.';
+                level.status = level.stare > 0.6 ? 'Keep looking. Do not look away.' : 'It is waiting for you to look back.';
+            }
+            level.showGaze = !inLight || gaze > 0.02;
+            level.whiteout = ascend * 0.32;
+            shaftMat.uniforms.uLevel.value = damp(shaftMat.uniforms.uLevel.value, 1 + ascend * 1.6, 2, dt);
+            shaftPool.material.opacity = 0.35 + ascend * 0.4;
+            shaftLight.intensity = 2.2 + ascend * 3;
+
+            // They gather while you stare - or while you try to leave - and stand closer every time
+            const crowd = Math.max(gaze, ascend);
+            if (crowd > 0.04) {
+                const r = lerp(20, inLight ? 2.6 : 3.2, crowd);
                 chorus.forEach((f, i) => {
                     const a = (i / chorus.length) * TAU + time * 0.02;
                     const x = player.pos.x + Math.cos(a) * r, z = player.pos.z + Math.sin(a) * r;
                     f.root.visible = true;
                     f.root.position.set(x, 0, z);
                     f.root.rotation.y = Math.atan2(player.pos.x - x, player.pos.z - z);
-                    f.headPivot.rotation.z = Math.sin(time * 0.3 + i) * 0.4 * gaze;
+                    f.headPivot.rotation.z = Math.sin(time * 0.3 + i) * 0.4 * crowd;
                 });
             } else chorus.forEach((f) => { f.root.visible = false; });
-            if (gaze >= 1 && !level.completed) {
-                level.completed = true;
-                chorus.forEach((f) => { f.root.visible = false; });
+
+            if (gaze >= 1) beginEnding('eye');
+            else if (ascend >= 1) beginEnding('light');
+        }
+
+        // =====================================================================================
+        // The endings. Main hands over the camera; everything here is scripted on end.t.
+        // =====================================================================================
+        const ease = (t) => t * t * (3 - 2 * t);
+        const span = (t, a, b) => clamp((t - a) / (b - a), 0, 1);
+        const camQ = new THREE.Quaternion(), camM = new THREE.Matrix4(), look = new THREE.Vector3();
+
+        function beginEnding(kind) {
+            if (end) return;
+            end = { kind, t: 0, beat: 0, flags: {} };
+            level.ending = kind;
+            level.objective = null;
+            level.status = null;
+            level.showGaze = false;
+        }
+        const once = (key) => (end.flags[key] ? false : (end.flags[key] = true));
+
+        // The heartbeat while the rest of the level is frozen
+        function endPulse(dt, bpm, vol) {
+            if (bpm > 0) {
+                end.beat -= dt;
+                if (end.beat <= 0) {
+                    end.beat = 60 / bpm;
+                    uniforms.uBeat.value = 1;
+                    if (vol > 0) AudioSys.thump(vol);
+                }
             }
+            uniforms.uBeat.value = Math.max(0, uniforms.uBeat.value - dt * 2.4);
+            const glow = 0.04 + uniforms.uBeat.value * 0.45;
+            if (wallMat) wallMat.emissiveIntensity = glow;
+            if (floorMat) floorMat.emissiveIntensity = glow * 0.45;
+            if (reliefMat) reliefMat.emissiveIntensity = glow * 0.35;
+        }
+
+        function aim(cam, target, rate, dt) {
+            camM.lookAt(cam.position, target, UP);
+            camQ.setFromRotationMatrix(camM);
+            cam.quaternion.slerp(camQ, rate >= 100 ? 1 : 1 - Math.exp(-rate * dt));
+        }
+
+        // ---- ENDING: THE WATCHING DARK ------------------------------------------------------------
+        // You look back. It pulls you in, the heart stops, and when your eye opens again you are
+        // looking down on the maze from above - at a stranger who has just come down the stairs.
+        function updateEyeEnding(dt, time, cam, api) {
+            const t = end.t;
+            if (once('start')) {
+                api.playerLights(false);
+                AudioSys.stopBeds();
+                bed = null;
+                AudioSys.sting(0.8);
+                AudioSys.thump(1);
+                hideFigure();
+                end.fov = cam.fov;
+                end.eyeFrom = eye.group.position.clone();
+            }
+            if (t < 3.4) {
+                // It pulls you in. The heart has stopped.
+                const k = ease(span(t, 0, 3.2));
+                endPulse(dt, 0, 0);
+                eye.group.position.lerpVectors(end.eyeFrom, cam.position, 0.4 * k);
+                lookM.lookAt(cam.position, eye.group.position, UP);
+                lookQ.setFromRotationMatrix(lookM);
+                eye.group.quaternion.slerp(lookQ, 1 - Math.exp(-4 * dt));
+                eye.setOpen(1.05 + k * 0.1);
+                eye.halo.material.opacity = 0.3 + k * 0.6;
+                aim(cam, eye.group.position, 2.5, dt);
+                cam.fov = lerp(end.fov, 16, k);
+                cam.updateProjectionMatrix();
+                level.stare = 0.4 + k * 0.6;
+                chorus.forEach((f) => { f.headPivot.rotation.x = damp(f.headPivot.rotation.x, -0.75, 3, dt); });
+                if (t > 3.1 && once('white')) {
+                    api.flash(1.7, 1, 0.96, 0.92);
+                    AudioSys.staticBurst(1, 0);
+                }
+                return;
+            }
+            level.stare = 0;
+            if (once('setup')) {
+                // Dark: become the eye
+                eye.group.visible = false;
+                floorEye.visible = false;
+                shaft.visible = false;
+                chorus.forEach((f) => { f.root.visible = false; });
+                cam.fov = 62;
+                cam.updateProjectionMatrix();
+                api.setFar(160);
+                if (scene.fog) scene.fog.density = 0.011;
+                newcomer.root.visible = true;
+                newcomer.root.position.set(level.spawn.x, 0, level.spawn.z);
+                newcomer.goal = null;
+                // The shaft's lamp becomes the stranger's flashlight
+                shaftLight.color.setHex(0xfff0d8);
+                shaftLight.angle = 0.42;
+                shaftLight.penumbra = 0.6;
+                shaftLight.distance = 26;
+                shaftLight.decay = 1.4;
+                shaftLight.intensity = 5;
+                shaftLight.userData.volWeight = 1;
+                end.nextBlink = 13.5;
+            }
+            if (t > 4.3 && once('c1')) api.caption('It closed its eye.', 2.4);
+            if (t > 7.0 && once('c2')) api.caption('And opened yours.', 2.6);
+
+            // ---- the view from above
+            updateNewcomer(dt, time, cam, api);
+            endPulse(dt, t > 9.6 ? 32 : 0, 0.28);   // its heart is yours now
+            const np = newcomer.root.position;
+            const h = lerp(52, 20, ease(span(t, 9.6, 21.5)));
+            cam.position.set(np.x + 4 + Math.sin(time * 0.21) * 1.5, h, np.z + 7 + Math.cos(time * 0.17) * 1.5);
+            look.set(np.x, 0.6, np.z);
+            aim(cam, look, end.flags.aimed ? 2.4 : 100, dt);
+            end.flags.aimed = true;
+            if (t > 9.6) level.stare = 0.18 + Math.sin(time * 0.7) * 0.06;   // the edges of your sight swim
+
+            let bo = t < 4.4 ? ease(span(t, 3.3, 4.3)) : 1 - ease(span(t, 9.6, 11.8));
+            // You blink now
+            if (t > end.nextBlink && t < 20) {
+                const b = t - end.nextBlink;
+                if (b > 0.35) end.nextBlink = t + rand(3.2, 5);
+                else bo = Math.max(bo, 1 - Math.abs(b / 0.35 - 0.5) * 2);
+            }
+            if (t > 22.3) bo = Math.max(bo, ease(span(t, 22.3, 23)));
+            level.blackout = bo;
+
+            if (t > 23.4 && once('c3')) api.caption('IT IS NOT WATCHING ANYMORE.', 2.8);
+            if (t > 26.6 && once('c4')) api.caption('YOU ARE.', 2.6);
+            if (t > 30 && once('done')) api.finish('eye');
+        }
+
+        const ncDir = new THREE.Vector3();
+        function updateNewcomer(dt, time, cam, api) {
+            const t = end.t, nc = newcomer, p = nc.root.position;
+            let beamYaw;
+            if (t < 20.2) {
+                // Creeping forward along the only way there is, sweeping the light
+                if (!nc.goal || Math.hypot(nc.goal.x - p.x, nc.goal.z - p.z) < 0.5) {
+                    const nx = World.descend(exitField, World.cellX(p.x), World.cellX(p.z));
+                    nc.goal = nx ? new THREE.Vector3(nx.x * C + rand(-0.8, 0.8), 0, nx.z * C + rand(-0.8, 0.8)) : null;
+                }
+                if (nc.goal) {
+                    ncDir.subVectors(nc.goal, p).setY(0);
+                    const d = ncDir.length();
+                    if (d > 0.01) {
+                        const speed = 1.5 * (0.75 + 0.35 * Math.sin(time * 1.3));
+                        p.addScaledVector(ncDir, Math.min(d, speed * dt) / d);
+                        const want = Math.atan2(-ncDir.x, -ncDir.z);
+                        nc.yaw += Math.atan2(Math.sin(want - nc.yaw), Math.cos(want - nc.yaw)) * Math.min(1, dt * 4);
+                    }
+                }
+                nc.root.rotation.y = nc.yaw;
+                beamYaw = nc.yaw + Math.sin(time * 0.9) * 0.55;
+                look.set(p.x - Math.sin(beamYaw) * 7, 0.1, p.z - Math.cos(beamYaw) * 7);
+            } else {
+                // It stops. It turns. It points the light straight up at you.
+                const k = ease(span(t, 20.2, 21.8));
+                const want = Math.atan2(-(cam.position.x - p.x), -(cam.position.z - p.z));
+                nc.yaw += Math.atan2(Math.sin(want - nc.yaw), Math.cos(want - nc.yaw)) * Math.min(1, dt * 3);
+                nc.root.rotation.y = nc.yaw;
+                const fx = p.x - Math.sin(nc.yaw) * 7, fz = p.z - Math.cos(nc.yaw) * 7;
+                look.set(lerp(fx, cam.position.x, k), lerp(0.1, cam.position.y, k), lerp(fz, cam.position.z, k));
+                nc.lens.scale.setScalar(0.45 + k * 4.5);
+                if (t > 21.9 && once('caught')) {
+                    api.flash(2.4, 1, 1, 0.94);
+                    AudioSys.sting(1);
+                    AudioSys.staticBurst(1, 0);
+                }
+            }
+            nc.lens.position.set(0.24, 1.3, -0.34);
+            nc.root.updateMatrixWorld();
+            nc.lens.getWorldPosition(shaftLight.position);
+            shaftLight.target.position.copy(look);
+            shaftLight.target.updateMatrixWorld();
+        }
+
+        // ---- ENDING: DAYLIGHT -------------------------------------------------------------------
+        // You never looked up. The light lifts you out past the closing eye, the women watching
+        // you go, until everything is white - and then grey sky, cold grass, dawn.
+        function updateLightEnding(dt, time, cam, api) {
+            const t = end.t;
+            if (once('start')) {
+                api.playerLights(false);
+                AudioSys.stopBeds();
+                bed = null;
+                end.bed = AudioSys.startBed('light');
+                AudioSys.wail(1, -0.6);
+                AudioSys.wail(0.9, 0.6, 0.3);
+                AudioSys.sting(0.7);
+                end.from = cam.position.clone();
+                cam.getWorldDirection(camDir);
+                end.yaw = Math.atan2(-camDir.x, -camDir.z);
+                end.pitch = Math.asin(clamp(camDir.y, -1, 1));
+                level.objective = null;
+            }
+            if (!end.flags.swap) {
+                // ---- rising through the light
+                const rise = Math.pow(span(t, 0.5, 10), 1.8);
+                const toC = ease(span(t, 0, 1.5));
+                cam.position.set(lerp(end.from.x, shaftPos.x, toC), end.from.y + rise * 46, lerp(end.from.z, shaftPos.z, toC));
+                const pitch = t < 3.5 ? lerp(end.pitch, -1.25, ease(span(t, 0, 1.4))) : lerp(-1.25, 1.45, ease(span(t, 3.5, 7.5)));
+                cam.rotation.set(pitch, end.yaw + t * 0.04, 0);
+                endPulse(dt, lerp(170, 0, span(t, 0, 5)), t < 5 ? 0.55 : 0);   // it panics, then stops
+                eye.setOpen(1 - ease(span(t, 0.5, 5.5)));
+                eye.halo.material.opacity = 0.4 * (1 - span(t, 0.5, 5.5));
+                chorus.forEach((f) => {
+                    f.headPivot.rotation.x = damp(f.headPivot.rotation.x, -1.0, 2, dt);
+                    f.root.rotation.y = Math.atan2(shaftPos.x - f.root.position.x, shaftPos.z - f.root.position.z);
+                });
+                shaftMat.uniforms.uLevel.value = 2.6 + span(t, 0, 8) * 2;
+                shaftLight.intensity = 5 + span(t, 0, 8) * 6;
+                if (end.bed) end.bed.set(span(t, 0, 8));
+                level.whiteout = Math.max(0.32, ease(span(t, 4.5, 9)));
+                if (t > 9.2) {
+                    // Gone. Build the morning while the screen is white.
+                    end.flags.swap = true;
+                    const epi = buildEpilogue();
+                    end.epi = epi;
+                    api.swapScene(epi.scene, epi.owned);
+                    api.setFar(520);
+                    cam.fov = 62;
+                    cam.updateProjectionMatrix();
+                    level.grade = { tint: new THREE.Color(1.0, 0.98, 0.96), saturation: 0.86, exposure: 1.0 };
+                }
+                return;
+            }
+
+            // ---- the morning
+            if (t > 9.6 && once('c1')) api.caption('You climbed until the red turned grey,', 3.0);
+            if (t > 13.0 && once('c2')) api.caption('and the grey turned into sky.', 3.0);
+            if (t > 14 && once('bed')) {
+                if (end.bed) end.bed.stop();
+                end.bed = AudioSys.startBed('wind');
+            }
+            level.whiteout = 1 - ease(span(t, 16, 19.5));
+            end.epi.uniforms.uTime.value = time;
+            end.epi.grass.uniforms.uTime.value = time;
+            end.epi.grass.far.uniforms.uTime.value = time;
+            // Lying in the grass, looking up; then sitting up to look at where you came out
+            const k = ease(span(t, 20, 25));
+            const breath = Math.sin(time * 1.5) * 0.012;
+            cam.position.set(0, lerp(0.32, 1.12, k) + breath, lerp(0.4, 0, k));
+            cam.rotation.set(lerp(1.3, 0.1, k) + breath * 0.5, lerp(0.35, -0.06, k), lerp(0.22, 0, k));
+
+            // Something in the clouds
+            const se = end.epi.eye;
+            if (t > 26.5 && t < 30.4) {
+                se.group.visible = true;
+                const a = 0.5 * Math.min(span(t, 26.5, 27.5), 1 - span(t, 29.6, 30.3));
+                se.ball.material.opacity = a;
+                se.lids.opacity = a;
+                se.setOpen(ease(span(t, 27, 28)) * (1 - ease(span(t, 29, 29.6))));
+                if (t > 27.6 && once('thump')) AudioSys.thump(0.45);
+                if (t > 28.2 && once('whisper')) AudioSys.whisper(0, 0.35, 3);
+            } else se.group.visible = false;
+
+            level.blackout = ease(span(t, 31, 32.2));
+            if (t > 32.6 && once('c3')) api.caption('Some nights, when the clouds hang low, you can feel it looking for you.', 4.4);
+            if (t > 37.6 && once('done')) {
+                if (end.bed) end.bed.stop();
+                api.finish('light');
+            }
+        }
+
+        // The surface at dawn: grey sky, bare trees, the stairwell you came out of
+        function buildEpilogue() {
+            const sc = new THREE.Scene();
+            const owned = [];
+            const eu = { uTime: { value: 0 } };
+            sc.fog = new THREE.Fog(0x8a8078, 24, 210);
+            const sky = new THREE.Mesh(new THREE.SphereGeometry(440, 32, 16), new THREE.ShaderMaterial({
+                uniforms: eu,
+                vertexShader: /* glsl */`
+                    varying vec3 vDir;
+                    void main() {
+                        vDir = normalize(position);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }`,
+                fragmentShader: /* glsl */`
+                    uniform float uTime;
+                    varying vec3 vDir;
+                    float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+                    float n(vec2 p) {
+                        vec2 i = floor(p), f = fract(p);
+                        f = f * f * (3.0 - 2.0 * f);
+                        return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y);
+                    }
+                    float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * n(p); p *= 2.03; a *= 0.5; } return s; }
+                    void main() {
+                        vec3 d = normalize(vDir);
+                        float e = clamp(d.y, 0.0, 1.0);
+                        vec3 zen = vec3(0.46, 0.52, 0.6), hor = vec3(0.78, 0.66, 0.55);
+                        vec3 col = mix(hor, zen, pow(e, 0.5));
+                        vec3 sunDir = normalize(vec3(-0.15, 0.05, -1.0));
+                        float s = max(dot(d, sunDir), 0.0);
+                        col += vec3(1.0, 0.72, 0.45) * (pow(s, 6.0) * 0.4 + pow(s, 300.0) * 2.0);
+                        // A low lid of overcast, thinning toward the horizon
+                        vec2 uv = d.xz / (d.y + 0.12) * 0.7 + vec2(uTime * 0.004, uTime * 0.002);
+                        float f = fbm(uv);
+                        float c = smoothstep(0.3, 0.72, f);
+                        // Heavy grey undersides, lit warm only near the sun and the horizon
+                        vec3 cloud = mix(vec3(0.13, 0.135, 0.15), vec3(0.3, 0.3, 0.32), smoothstep(0.45, 0.9, f));
+                        cloud = mix(cloud, vec3(0.78, 0.6, 0.46), pow(1.0 - e, 6.0) * 0.8 + pow(s, 5.0) * 0.6);
+                        col = mix(col, cloud, c * smoothstep(0.0, 0.1, d.y) * 0.92);
+                        col = mix(col, hor * 0.85, smoothstep(0.04, -0.06, d.y));
+                        gl_FragColor = vec4(col, 1.0);
+                    }`,
+                side: THREE.BackSide, depthWrite: false
+            }));
+            sky.renderOrder = -1;
+            sc.add(sky);
+
+            // A wide green meadow, wet with dew
+            const fs = repeated(Textures.grassField(), 300, owned);
+            const ground = new THREE.Mesh(Grass.tintGround(new THREE.PlaneGeometry(900, 900, 90, 90), 0.02, 0.3), new THREE.MeshStandardMaterial({
+                map: fs.map, normalMap: fs.normalMap, roughnessMap: fs.roughnessMap, roughness: 1, color: 0xc4d4a8,
+                normalScale: new THREE.Vector2(0.8, 0.8), vertexColors: true
+            }));
+            ground.rotation.x = -Math.PI / 2;
+            sc.add(ground);
+            // Real blades all around you, thinning out into the meadow texture further off
+            const meadow = { base: 0x22381a, tip: 0x6f9a40, dry: 0x9a9258, dryAmount: 0.25, wind: 0.12, height: 0.52 };
+            const grass = Grass.createField(Object.assign({
+                tile: 36, density: L ? 6 : 10, blades: L ? 8 : 12, fade: [14, 18]
+            }, meadow));
+            grass.update(0, new THREE.Vector3());
+            grass.setClearings([{ x: 0, z: 0.3, r: 0.75 }]);   // flattened where you lay
+            sc.add(grass.mesh);
+            // ...and a sparser layer of wider clumps carrying it on toward the trees
+            const farGrass = Grass.createField(Object.assign({
+                tile: 128, density: L ? 0.45 : 0.65, blades: L ? 10 : 14, spread: 1.6, fade: [50, 63], fadeIn: [13, 17]
+            }, meadow));
+            farGrass.update(0, new THREE.Vector3());
+            farGrass.uniforms.uHeight.value = 0.6;
+            sc.add(farGrass.mesh);
+            grass.far = farGrass;
+
+            // Bare trees and pines standing in the mist
+            const bark = Textures.bark();
+            const barkMat = new THREE.MeshStandardMaterial({ map: bark.map, normalMap: bark.normalMap, roughness: 1, color: 0x6c665e });
+            const leafMat = new THREE.MeshStandardMaterial({
+                map: Textures.leafAtlas(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85, color: 0x4e5a4a
+            });
+            const kinds = Assets.ok && Assets.has('tree_0') ? [2, 3, 4, 5, 4, 5].map((i) => Assets.tree(i)).filter(Boolean) : [];
+            const trunkGeo = new THREE.CylinderGeometry(0.12, 0.3, 9, 7);
+            trunkGeo.translate(0, 4.5, 0);
+            for (let i = 0, tries = 0; i < (L ? 28 : 52) && tries < 400; tries++) {
+                const a = rand(0, TAU), r = rand(14, 170);
+                const x = Math.cos(a) * r, z = Math.sin(a) * r;
+                if (Math.hypot(x - 7.5, z + 10) < 7) continue;
+                i++;
+                const s = rand(0.9, 1.6), ry = rand(0, TAU);
+                if (kinds.length) {
+                    const k = pick(kinds);
+                    const m = new THREE.Mesh(k.trunk.clone(), barkMat);
+                    m.position.set(x, 0, z);
+                    m.scale.setScalar(s);
+                    m.rotation.y = ry;
+                    sc.add(m);
+                    if (k.leaves) {
+                        const lm = new THREE.Mesh(k.leaves.clone(), leafMat);
+                        lm.position.copy(m.position);
+                        lm.scale.copy(m.scale);
+                        lm.rotation.y = ry;
+                        sc.add(lm);
+                    }
+                } else {
+                    const m = new THREE.Mesh(trunkGeo, barkMat);
+                    m.position.set(x, 0, z);
+                    m.scale.setScalar(s);
+                    sc.add(m);
+                }
+            }
+
+            // The stairwell hatch you crawled out of. Its EXIT sign is still lit.
+            const conc = Textures.concreteWall();
+            const concMat = new THREE.MeshStandardMaterial({ map: conc.map, normalMap: conc.normalMap, roughness: 1, color: 0x8a8884 });
+            const hatch = new THREE.Group();
+            const box = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.9, 3.2), concMat);
+            box.position.y = 1.45;
+            const doorway = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.15), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+            doorway.position.set(0, 1.08, 1.605);
+            const door = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.15, 0.07), new THREE.MeshStandardMaterial({ color: 0x1c1d1c, roughness: 0.75 }));
+            door.geometry.translate(0.65, 0, 0);
+            door.position.set(-0.65, 1.08, 1.62);
+            door.rotation.y = -1.9;
+            const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.27), new THREE.MeshBasicMaterial({ map: Textures.exitSign(), color: 0xb8ffc8 }));
+            sign.position.set(0, 2.45, 1.61);
+            hatch.add(box, doorway, door, sign);
+            hatch.position.set(7.5, 0, -10);
+            hatch.rotation.y = -0.64;
+            sc.add(hatch);
+
+            sc.add(new THREE.HemisphereLight(0xaab3c0, 0x3a3229, 0.9));
+            const sun = new THREE.DirectionalLight(0xffcf9c, 1.0);
+            sun.position.set(-15, 10, -100);
+            sc.add(sun);
+
+            // ...and the eye, in the clouds
+            const se = Models.createEye();
+            se.group.scale.setScalar(60);
+            se.group.position.set(-40, 110, -330);
+            se.group.lookAt(0, 1.2, 0);
+            se.ball.material.transparent = true;
+            se.ball.material.opacity = 0;
+            const lids = se.group.children[1].material;
+            lids.color.setHex(0x7e8086);
+            lids.transparent = true;
+            lids.opacity = 0;
+            se.lids = lids;
+            se.halo.visible = false;
+            se.setOpen(0);
+            se.group.visible = false;
+            sc.add(se.group);
+            return { scene: sc, owned, eye: se, uniforms: eu, grass };
         }
 
         return level;

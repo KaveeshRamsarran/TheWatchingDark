@@ -38,7 +38,8 @@ ALTERNATIVE: Direct File Access
   ESC             Pause menu (settings, resume, quit)
   ALT+ENTER       Toggle fullscreen (also on the title screen, pause menu & settings)
   Z               God mode (testing: invulnerable, no-clip, fly)
-  `  (backquote)  Debug console: jump to any level, god mode, refills
+  `  (backquote)  Debug console: jump to any level, god mode, refills,
+                  "ending eye" / "ending light" to watch an ending
                   (also in the pause menu; type help for commands)
 
 
@@ -148,6 +149,8 @@ MONSTERS
       Sometimes she is behind you.
     - An eye hangs in the void above. Staring at it shreds your sanity.
       When it blinks, the world goes dark - and changes.
+    - At the heart, the game tells you to look at it. You don't have to.
+      There are two endings (spoilers below, under LEVEL 5).
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -159,8 +162,8 @@ LEVEL 1: THE MAZE
   hanging lamps and scrawled warnings. Find a green EXIT door.
 
 LEVEL 2: THE LOST FOREST
-  A moonlit hedge maze drowned in fog so thick you can barely see a few
-  metres - only the Angels' halos glimmer through it. Reach the pillar
+  A moonlit hedge maze in a meadow of long grass, drowned in fog so thick
+  you can barely see a few metres - only the Angels' halos glimmer through it. Reach the pillar
   of golden light.
 
 LEVEL 3: THE FLOODED BASEMENT
@@ -176,6 +179,17 @@ LEVEL 5: THE WATCHING DARK
   toward the heart beneath the eye. A heartbeat shakes the walls, faster
   the deeper you go. At the heart there is no door - only the eye,
   waiting for you to look back.
+
+  THE TWO ENDINGS (spoilers)
+    THE WATCHING DARK - hold the eye's gaze until the ring fills. It
+      pulls you in, and when your eye opens again you are looking down
+      on the maze from above, at a stranger with a flashlight.
+    DAYLIGHT - the notes say the light at the heart is real. A shaft of
+      grey daylight falls on the far side of the chamber. Stand in it and
+      keep your eyes down: the eye drags your head up toward it and
+      pleads with you through the HUD, the women close in - don't look.
+      Hold out and the light carries you up to the surface at dawn.
+    The end screen counts how many endings you've found.
 
 NOTES
   30 notes are scattered through the five levels, telling the story of
@@ -199,6 +213,7 @@ Graphics
   ✓ Rigged, skinned Watcher and gnarled forest trees modelled in Blender
   ✓ Detailed first-person flashlight with knurled grip and reflector
   ✓ Moonlight shadows, drifting ground fog
+  ✓ Fields of real grass blades that sway in the wind (Level 2, the ending)
   ✓ Heading-up minimap that reveals only where you've been
 
 Performance
@@ -224,6 +239,7 @@ Settings
   style.css         All styling
   js/util.js        Math, tileable noise, geometry helpers
   js/textures.js    Procedural texture generation
+  js/grass.js       Instanced, wind-swept grass that follows the camera
   js/audio.js       Music, sound effects, positional voices
   js/postfx.js      Volumetric light, ambient occlusion, FXAA, bloom,
                     tone mapping and screen effects

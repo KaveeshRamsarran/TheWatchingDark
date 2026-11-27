@@ -221,61 +221,117 @@ const AudioSys = (() => {
         drone = null;
     }
 
+    // ---- Little building blocks for the one-shots below ------------------------
+    // A short burst of filtered noise: the body of every click, rattle and thud
+    function burst(t, dest, { type = 'bandpass', freq = 3000, q = 1, gain = 0.3, attack = 0.001, decay = 0.02 }) {
+        const src = noise();
+        const f = ctx.createBiquadFilter();
+        f.type = type;
+        f.frequency.value = freq;
+        f.Q.value = q;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(Math.max(gain, 0.0002), t + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+        src.connect(f);
+        f.connect(g);
+        g.connect(dest);
+        src.start(t, Math.random() * 1.5, attack + decay + 0.02);
+    }
+
+    // A decaying partial: bells, pings, the ring of a plastic body
+    function ping(t, dest, freq, gain, decay, attack = 0.002, type = 'sine') {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.setValueAtTime(freq, t);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(Math.max(gain, 0.0002), t + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+        o.connect(g);
+        g.connect(dest);
+        o.start(t);
+        o.stop(t + attack + decay + 0.03);
+        return o;
+    }
+
+    function bus(pan = 0, wet = 0) {
+        const b = ctx.createGain();
+        out(b, pan, wet);
+        return b;
+    }
+
+    // Your own heartbeat, heard from the inside: a muffled lub-dub you feel in your chest
     function heartbeat(rate = 1, volume = 0.15) {
-        if (!ctx || ctx.state !== 'running') return;
-        const t = ctx.currentTime;
-        for (let i = 0; i < 2; i++) {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            const start = t + i * 0.16 / rate;
-            const dur = 0.1 / rate;
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(i === 0 ? 100 : 82, start);
-            gain.gain.setValueAtTime(0.0001, t);
-            gain.gain.setValueAtTime(volume * (i === 0 ? 1 : 0.7), start);
-            gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
-            osc.connect(gain);
-            gain.connect(sfxGain);
-            osc.start(start);
-            osc.stop(start + dur + 0.02);
-        }
-    }
-
-    function click() {
-        if (!ensureContext()) return;
-        const t = ctx.currentTime;
-        const osc = ctx.createOscillator(), gain = ctx.createGain(), filter = ctx.createBiquadFilter();
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(800, t);
-        osc.frequency.exponentialRampToValueAtTime(200, t + 0.02);
-        filter.type = 'lowpass';
-        filter.frequency.value = 1000;
-        gain.gain.setValueAtTime(0.3, t);
-        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.04);
-        osc.connect(filter);
-        filter.connect(gain);
-        gain.connect(sfxGain);
-        osc.start(t);
-        osc.stop(t + 0.05);
-    }
-
-    function pickup(relic = false) {
-        if (!ensureContext()) return;
-        const t = ctx.currentTime;
-        const notes = relic ? [523, 659, 784] : [400];
-        notes.forEach((f, i) => {
-            const osc = ctx.createOscillator(), gain = ctx.createGain();
-            const st = t + i * 0.08;
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(f, st);
-            osc.frequency.exponentialRampToValueAtTime(f * 2, st + 0.1);
-            gain.gain.setValueAtTime(0.3, st);
-            gain.gain.exponentialRampToValueAtTime(0.01, st + 0.3);
-            osc.connect(gain);
-            gain.connect(sfxGain);
-            osc.start(st);
-            osc.stop(st + 0.32);
+        if (!live()) return;
+        const t0 = ctx.currentTime + 0.01;
+        const chest = ctx.createGain();
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 240;
+        lp.Q.value = 0.6;
+        chest.connect(lp);
+        out(lp, 0, 0);
+        const gap = 0.3 / Math.sqrt(rate);   // lub to dub closes up as it races
+        [[0, 1, 56], [gap, 0.6, 70]].forEach(([dt, k, f]) => {
+            const t = t0 + dt;
+            const a = volume * k * 2.4;
+            const o = ping(t, chest, f, a, 0.19, 0.012);
+            o.frequency.exponentialRampToValueAtTime(f * 0.55, t + 0.15);
+            // A second harmonic so it still carries on small speakers
+            const o2 = ping(t, chest, f * 2, a * 0.3, 0.09, 0.01, 'triangle');
+            o2.frequency.exponentialRampToValueAtTime(f * 1.1, t + 0.09);
+            // The valves' soft knock
+            burst(t, chest, { type: 'lowpass', freq: 170, q: 0.7, gain: a * 0.9, attack: 0.004, decay: 0.07 });
         });
+    }
+
+    // A rubber-capped tail switch: the press clicks in, then the spring snaps back.
+    // Off sounds duller than on; with no battery left it clicks and nothing happens.
+    function flashlight(on = true, dead = false) {
+        if (!ensureContext()) return;
+        const t = ctx.currentTime + 0.005;
+        const b = bus(0.15, 0.04);   // in your right hand
+        const hi = on && !dead ? 1 : 0.8;
+        burst(t, b, { type: 'lowpass', freq: 900, gain: 0.1, attack: 0.002, decay: 0.03 });
+        burst(t + 0.006, b, { freq: 4200 * hi, q: 3, gain: 0.42, attack: 0.0008, decay: 0.012 });
+        ping(t + 0.006, b, 2350 * hi, 0.05, 0.025);
+        const r = t + rand(0.075, 0.1);
+        burst(r, b, { freq: 5200 * hi, q: 4, gain: dead ? 0.12 : 0.22, attack: 0.0006, decay: 0.009 });
+        ping(r, b, 3100 * hi, 0.025, 0.018);
+    }
+    const click = () => flashlight(true);
+
+    // Picking something up: your hand closing on it, then what it is
+    function pickup(kind = 'item') {
+        if (kind === true) kind = 'relic';
+        if (!ensureContext()) return;
+        const t = ctx.currentTime + 0.005;
+        const b = bus(0, 0.12);
+        burst(t, b, { freq: 1600, q: 0.6, gain: 0.05, attack: 0.03, decay: 0.12 });   // a sleeve's swish
+        if (kind === 'matches') {
+            // A matchbox shaken once: the sticks rattle in the cardboard
+            burst(t + 0.04, b, { type: 'lowpass', freq: 650, gain: 0.12, attack: 0.003, decay: 0.05 });
+            for (let i = 0; i < 10; i++) {
+                const ti = t + 0.05 + Math.random() * 0.13 + (i > 5 ? 0.13 : 0);
+                burst(ti, b, { freq: rand(2200, 4400), q: 6, gain: rand(0.08, 0.2), attack: 0.0006, decay: rand(0.006, 0.014) });
+            }
+        } else if (kind === 'battery') {
+            // A battery slid home: metal on metal, then the cap clicks shut
+            [2730, 4110, 6050].forEach((f, i) => ping(t + 0.05, b, f, 0.06 / (i + 1), 0.09 - i * 0.02));
+            burst(t + 0.05, b, { freq: 5000, q: 2, gain: 0.16, attack: 0.0006, decay: 0.01 });
+            burst(t + 0.21, b, { freq: 3200, q: 3, gain: 0.3, attack: 0.0008, decay: 0.014 });
+            burst(t + 0.21, b, { type: 'lowpass', freq: 700, gain: 0.12, attack: 0.002, decay: 0.03 });
+        } else if (kind === 'relic') {
+            // Something holy: a struck singing bowl, its tail shimmering away in the reverb
+            const w = bus(0, 0.9);
+            const f = 311;
+            [[1, 0.14, 3.2], [1.004, 0.08, 3.0], [2.71, 0.06, 2.2], [5.18, 0.03, 1.4], [8.4, 0.012, 0.9]]
+                .forEach(([m, a, d]) => ping(t + 0.06, w, f * m, a, d, 0.004));
+            ping(t + 0.06, w, f * 2, 0.04, 1.6, 0.35);   // an octave breathing in behind it
+        } else {
+            burst(t + 0.05, b, { freq: 2400, q: 2, gain: 0.2, attack: 0.001, decay: 0.02 });
+        }
     }
 
     function batteryDead() {
@@ -954,6 +1010,51 @@ const AudioSys = (() => {
                 drone.gain.setTargetAtTime(0.09 + v * 0.2, ctx.currentTime, 0.3);
                 lp.frequency.setTargetAtTime(170 + v * 900, ctx.currentTime, 0.3);
             };
+        } else if (kind === 'light') {
+            // A soft, cold chord: the first sound down here that isn't alive
+            const pad = ctx.createGain();
+            pad.connect(master);
+            const send = ctx.createGain();
+            send.gain.value = 0.7;
+            pad.connect(send);
+            send.connect(reverbIn);
+            lfo(0.09, 0.25, pad.gain, 0.75);
+            for (const f of [220, 277.18, 329.63, 440, 659.25]) {
+                const o = keep(ctx.createOscillator());
+                o.type = 'sine';
+                o.frequency.value = f;
+                o.detune.value = rand(-6, 6);
+                const g = ctx.createGain();
+                g.gain.value = f > 500 ? 0.006 : 0.012;
+                o.connect(g);
+                g.connect(pad);
+                o.start();
+            }
+            intensity = (v) => pad.gain.setTargetAtTime(0.75 + v * 1.2, ctx.currentTime, 0.5);
+        } else if (kind === 'wind') {
+            // Open air at dawn: slow gusts and a thin hiss through bare branches
+            const src = keep(brown());
+            const bp = ctx.createBiquadFilter();
+            bp.type = 'bandpass';
+            bp.Q.value = 0.7;
+            lfo(0.06, 220, bp.frequency, 420);
+            const gust = ctx.createGain();
+            lfo(0.045, 0.05, gust.gain, 0.08);
+            src.connect(bp);
+            bp.connect(gust);
+            gust.connect(master);
+            const hiss = keep(noise());
+            hiss.loop = true;
+            const hp = ctx.createBiquadFilter();
+            hp.type = 'highpass';
+            hp.frequency.value = 2800;
+            const hg = ctx.createGain();
+            lfo(0.07, 0.002, hg.gain, 0.003);
+            hiss.connect(hp);
+            hp.connect(hg);
+            hg.connect(master);
+            src.start();
+            hiss.start();
         }
         const bed = {
             set(v) { if (intensity) intensity(v); },
@@ -1017,7 +1118,7 @@ const AudioSys = (() => {
         playMusic, stopMusic, pauseMusic,
         createVoice, stopAllVoices, destroyAllVoices,
         playMatch, playJumpscare,
-        startDrone, stopDrone, heartbeat, click, pickup, batteryDead, staticBurst, suspendAll,
+        startDrone, stopDrone, heartbeat, click, flashlight, pickup, batteryDead, staticBurst, suspendAll,
         splash, drip, clicks, wail, groan, thump, whisper, squelch, fleshStep, sting, flick, camBeep,
         setReverb, startBed, stopBeds,
         retryBlocked, unlock,

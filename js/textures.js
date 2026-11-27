@@ -493,6 +493,35 @@ const Textures = (() => {
         return cache.forestFloor;
     }
 
+    // A grassy meadow seen from above: thin blade strokes crossing every way over a dark green mat
+    function grassField() {
+        if (cache.grassField) return cache.grassField;
+        const size = 512;
+        const maps = buildMaps(size, (u, v, o) => {
+            // Strokes in four directions: long along the blade, thin across it
+            const d1 = Noise.fbm(u, v, 160, 2, 0.5, 20);
+            const d2 = Noise.fbm(u + 0.37, v + 0.11, 20, 2, 0.5, 160);
+            const d3 = Noise.fbm(u + v, v - u + 1, 120, 2, 0.5, 16);
+            const d4 = Noise.fbm(u + v + 0.5, v - u + 1.3, 16, 2, 0.5, 120);
+            const blade = Math.max(
+                smoothstep(0.5, 0.78, d1), smoothstep(0.5, 0.78, d2),
+                smoothstep(0.52, 0.8, d3), smoothstep(0.52, 0.8, d4)
+            );
+            const lush = Noise.fbm(u, v, 6, 3);
+            const dry = smoothstep(0.62, 0.8, Noise.fbm(u + 0.5, v + 0.2, 5, 3)) * 0.7;
+            const gap = (1 - blade) * smoothstep(0.55, 0.75, Noise.fbm(u, v, 24, 2));
+            const k = 0.42 + blade * 0.75 + lush * 0.2;
+            let r = 30 * k, g = 62 * k, b = 18 * k;
+            r = lerp(r, 98 * k, dry); g = lerp(g, 92 * k, dry); b = lerp(b, 42 * k, dry);
+            r = lerp(r, 22, gap * 0.6); g = lerp(g, 30, gap * 0.6); b = lerp(b, 14, gap * 0.6);
+            o.r = clamp(r, 0, 255); o.g = clamp(g, 0, 255); o.b = clamp(b, 0, 255);
+            o.h = blade * 0.8 + lush * 0.2 - gap * 0.2;
+            o.ro = 0.9 + gap * 0.08;
+        }, 1.6);
+        cache.grassField = mapsToTextures(maps);
+        return cache.grassField;
+    }
+
     function stone() {
         if (cache.stone) return cache.stone;
         const size = 256;
@@ -979,7 +1008,7 @@ const Textures = (() => {
     return {
         setRenderer, makeCanvas, toTexture, skin, leafAtlas, knurl,
         concreteWall, woodFloor, concreteFloor, ceilingTiles, waterNormal, staticNoise, eyeball, flesh,
-        hedge, bark, forestFloor, stone,
+        hedge, bark, forestFloor, grassField, stone,
         glow, lightPool, fogPuff, flame, decal, exitSign, paper, angelFace, feather
     };
 })();

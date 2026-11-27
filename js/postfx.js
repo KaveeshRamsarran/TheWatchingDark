@@ -14,10 +14,10 @@ const PostFX = (() => {
     let rtAO = null, rtAO2 = null, rtVol = null, rtVol2 = null;
     let quadScene, quadCam, quad;
     let brightMat, blurMat, finalMat, aoMat, volMat, smoothMat;
-    let blackTex, whiteTex;
+    let blackTex, whiteTex, noiseTex;
     let bloomEnabled = true;
     let hasDepth = false;
-    const features = { ao: false, volumetric: false, volSteps: 16 };
+    const features = { ao: false, volumetric: false, volSteps: 16, volDiv: 2 };
     const size = { w: 1, h: 1 };
     const MAX_LIGHTS = 6;
     const frame = { camera: null, lights: [], fogDensity: 0.05, density: 0.05 };
@@ -59,6 +59,27 @@ const PostFX = (() => {
         return t;
     }
 
+    // Value noise for the drifting dust, as a texture: G holds R shifted by (37, 17), so one
+    // filtered lookup gives two neighbouring z-slices of 3D noise (instead of eight hashes)
+    function makeNoiseTexture() {
+        const N = 64, data = new Uint8Array(N * N * 4), r = new Uint8Array(N * N);
+        for (let i = 0; i < r.length; i++) r[i] = Math.floor(Math.random() * 256);
+        for (let y = 0; y < N; y++) {
+            for (let x = 0; x < N; x++) {
+                const i = (y * N + x) * 4;
+                data[i] = r[y * N + x];
+                data[i + 1] = r[((y + 17) % N) * N + ((x + 37) % N)];
+                data[i + 3] = 255;
+            }
+        }
+        const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.magFilter = tex.minFilter = THREE.LinearFilter;
+        tex.generateMipmaps = false;
+        tex.needsUpdate = true;
+        return tex;
+    }
+
     function init(r) {
         renderer = r;
         const gl2 = renderer.capabilities.isWebGL2;
@@ -79,6 +100,7 @@ const PostFX = (() => {
 
         blackTex = solid(0);
         whiteTex = solid(255);
+        noiseTex = makeNoiseTexture();
 
         quadScene = new THREE.Scene();
         quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -173,7 +195,7 @@ const PostFX = (() => {
             defines: { MAX_LIGHTS, MAX_STEPS: 32 },
             uniforms: {
                 tDepth: { value: null }, projInv: { value: new THREE.Matrix4() }, camWorld: { value: new THREE.Matrix4() },
-                camPos: { value: new THREE.Vector3() }, time: { value: 0 }, steps: { value: 16 },
+                camPos: { value: new THREE.Vector3() }, time: { value: 0 }, steps: { value: 16 }, tNoise: { value: null },
                 density: { value: 0.05 }, fogDensity: { value: 0.05 }, maxDist: { value: 32 },
                 lightCount: { value: 0 },
                 lPos: { value: Array.from({ length: MAX_LIGHTS }, () => new THREE.Vector4()) },
@@ -204,12 +226,13 @@ const PostFX = (() => {
                 uniform vec4 lDir[MAX_LIGHTS];   // xyz direction, w cos(outer angle) (< -1.5 = point light)
                 uniform vec4 lCol[MAX_LIGHTS];   // rgb colour x intensity, w cos(inner angle)
                 varying vec2 vUv;
-                float h3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-                float noise3(vec3 p) {
-                    vec3 i = floor(p), f = fract(p);
+                uniform sampler2D tNoise;
+                float noise3(vec3 x) {
+                    vec3 p = floor(x), f = fract(x);
                     f = f * f * (3.0 - 2.0 * f);
-                    return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
-                               mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+                    vec2 uv = p.xy + vec2(37.0, 17.0) * p.z + f.xy;
+                    vec2 s = texture2D(tNoise, (uv + 0.5) / 64.0).rg;
+                    return mix(s.r, s.g, f.z);
                 }
                 void main() {
                     float d = texture2D(tDepth, vUv).x;
@@ -218,12 +241,27 @@ const PostFX = (() => {
                     vec3 ray = wp - camPos;
                     float len = min(length(ray), maxDist);
                     vec3 rd = normalize(ray);
-                    float stepLen = len / steps;
+                    // Only march the stretch of the ray that passes within reach of some light
+                    float tA = len, tB = 0.0;
+                    for (int l = 0; l < MAX_LIGHTS; l++) {
+                        if (l >= lightCount) break;
+                        vec3 oc = lPos[l].xyz - camPos;
+                        float b = dot(oc, rd);
+                        float disc = b * b - dot(oc, oc) + lPos[l].w * lPos[l].w;
+                        if (disc <= 0.0) continue;
+                        float s = sqrt(disc);
+                        tA = min(tA, max(b - s, 0.0));
+                        tB = max(tB, min(b + s, len));
+                    }
+                    if (tB <= tA) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+                    // Steps scale with that stretch: a short one needs only a few
+                    float n = clamp(ceil((tB - tA) / 0.45), 4.0, steps);
+                    float stepLen = (tB - tA) / n;
                     float jitter = ign(gl_FragCoord.xy + fract(time * 7.0) * 61.0);
                     vec3 acc = vec3(0.0);
                     for (int i = 0; i < MAX_STEPS; i++) {
-                        if (float(i) >= steps) break;
-                        float t = (float(i) + jitter) * stepLen;
+                        if (float(i) >= n) break;
+                        float t = tA + (float(i) + jitter) * stepLen;
                         vec3 p = camPos + rd * t;
                         // Dust drifts slowly through the air
                         float dust = 0.5 + 0.5 * noise3(p * 0.55 + vec3(0.0, -time * 0.06, time * 0.04));
@@ -425,6 +463,7 @@ const PostFX = (() => {
     function setSize(canvasW, canvasH, scale) {
         const w = Math.max(2, Math.floor(canvasW * scale));
         const h = Math.max(2, Math.floor(canvasH * scale));
+        size.args = [canvasW, canvasH, scale];
         if (w === size.w && h === size.h) return;
         size.w = w;
         size.h = h;
@@ -433,7 +472,10 @@ const PostFX = (() => {
         rtA.setSize(bw, bh);
         rtB.setSize(bw, bh);
         const hw = Math.max(2, Math.floor(w / 2)), hh = Math.max(2, Math.floor(h / 2));
-        for (const t of [rtAO, rtAO2, rtVol, rtVol2]) t.setSize(hw, hh);
+        for (const t of [rtAO, rtAO2]) t.setSize(hw, hh);
+        // The light in the air is soft: it can be marched at a third of the resolution
+        const vw = Math.max(2, Math.floor(w / features.volDiv)), vh = Math.max(2, Math.floor(h / features.volDiv));
+        for (const t of [rtVol, rtVol2]) t.setSize(vw, vh);
         finalMat.uniforms.resolution.value.set(canvasW, canvasH);
         finalMat.uniforms.sceneTexel.value.set(1 / w, 1 / h);
     }
@@ -497,6 +539,7 @@ const PostFX = (() => {
             v.camPos.value.setFromMatrixPosition(camera.matrixWorld);
             v.time.value = time;
             v.steps.value = features.volSteps;
+            v.tNoise.value = noiseTex;
             v.density.value = frame.density;
             v.fogDensity.value = frame.fogDensity;
             v.maxDist.value = Math.min(36, camera.far);
@@ -562,7 +605,14 @@ const PostFX = (() => {
         get uniforms() { return finalMat.uniforms; },
         setBloom(on) { bloomEnabled = on; },
         // ao / volumetric on or off, and how many steps the volumetric march takes
-        setFeatures(f) { Object.assign(features, f); },
+        setFeatures(f) {
+            const div = features.volDiv;
+            Object.assign(features, f);
+            if (features.volDiv !== div && size.args) {
+                size.w = 0;   // force the targets to resize
+                setSize(...size.args);
+            }
+        },
         get supported() { return hasDepth; },
         get bloomThreshold() { return brightMat.uniforms.threshold; }
     };

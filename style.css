@@ -897,6 +897,33 @@ kbd {
 .victory .end-title { color: var(--gold); text-shadow: 0 0 30px rgba(255, 200, 90, 0.6), 0 0 80px rgba(200, 140, 30, 0.5); }
 
 .end-message { margin-top: 1.2rem; font-family: var(--type); font-size: 1.2rem; color: #c8b8a8; }
+
+/* The two endings */
+.end-label { margin-bottom: 0.8rem; font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.4em; color: var(--muted); }
+.end-screen.victory .end-message { max-width: 40rem; padding: 0 16px; line-height: 1.6; }
+.end-hint { margin-top: 1rem; font-family: var(--type); font-style: italic; font-size: 0.95rem; color: #8a7d72; min-height: 1.2em; }
+.end-screen.victory.ending-eye { background: radial-gradient(ellipse at center, rgba(70, 6, 8, 0.88), rgba(0, 0, 0, 0.98) 70%); }
+.end-screen.victory.ending-eye .end-title { color: #ff2a24; text-shadow: 0 0 30px rgba(255, 0, 0, 0.6), 0 0 80px rgba(160, 0, 0, 0.5); }
+.end-screen.victory.ending-light { background: radial-gradient(ellipse at center, rgba(96, 100, 110, 0.85), rgba(8, 9, 12, 0.98) 72%); }
+.end-screen.victory.ending-light .end-title { color: #e8edf4; text-shadow: 0 0 30px rgba(210, 225, 245, 0.55), 0 0 80px rgba(150, 170, 200, 0.4); animation: none; }
+
+#ending-caption {
+    position: fixed;
+    left: 0; right: 0; top: 50%;
+    transform: translateY(-50%);
+    padding: 0 24px;
+    text-align: center;
+    font-family: var(--type);
+    font-size: clamp(1.1rem, 2.6vw, 1.9rem);
+    letter-spacing: 0.06em;
+    color: #e6dcd2;
+    text-shadow: 0 0 18px rgba(0, 0, 0, 0.9), 0 0 4px rgba(0, 0, 0, 0.9);
+    opacity: 0;
+    transition: opacity 1.1s ease;
+    pointer-events: none;
+    z-index: 60;
+}
+#ending-caption.show { opacity: 1; }
 #survival-time { margin-top: 0.6rem; font-family: var(--type); color: var(--muted); }
 
 .end-stats {

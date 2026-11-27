@@ -99,7 +99,7 @@ const Level2 = (() => {
         const barkTex = Textures.bark();
         await nextFrame();
         progress('Burying the path...', 0.4);
-        const groundTex = Textures.forestFloor();
+        const groundTex = Textures.grassField();
         await nextFrame();
         progress('Carving the stone...', 0.5);
         const stoneMats = Models.stoneMaterials();
@@ -169,12 +169,13 @@ const Level2 = (() => {
         // ---- Ground ------------------------------------------------------------
         const span = S * C + 80;
         const mid = (S - 1) * C / 2;
-        const groundRep = repeated(groundTex, span / 6, owned);
+        // A meadow floor: grass texture, with broad lusher and drier stretches so it never tiles visibly
+        const groundRep = repeated(groundTex, span / 4, owned);
         const ground = new THREE.Mesh(
-            new THREE.PlaneGeometry(span, span),
+            Grass.tintGround(new THREE.PlaneGeometry(span, span, 64, 64), 0.035),
             new THREE.MeshStandardMaterial({
                 map: groundRep.map, normalMap: groundRep.normalMap, roughnessMap: groundRep.roughnessMap,
-                roughness: 1, color: 0x9a948a
+                roughness: 1, color: 0x8a9c78, vertexColors: true
             })
         );
         ground.rotation.x = -Math.PI / 2;
@@ -480,6 +481,15 @@ const Level2 = (() => {
             }
         }
 
+        // ---- Grass: real blades everywhere you can see (the fog hides where they stop)
+        const grass = Grass.createField({
+            tile: 30, density: L ? 4.5 : 11, blades: L ? 7 : 12, height: 0.48, fade: [10.5, 14.5], wind: 0.07,
+            base: 0x1c3212, tip: 0x5e9434
+        });
+        levelRoot.add(grass.mesh);
+        // Keep it short around the pickups so they are never lost in it
+        grass.setClearings(pickups.map((p) => ({ x: p.pos.x, z: p.pos.z, r: 0.9 })));
+
         // ---- Exit portal -----------------------------------------------------------
         const ex = World.exits[0];
         const portal = Models.createPortal();
@@ -536,6 +546,7 @@ const Level2 = (() => {
             pickups, notes, exits,
             hasCeiling: false,
             flashlightAllowed: false,
+            shadowEvery: 2,   // only the moon casts shadows here, and it barely moves
 
             update(dt, time, cam) {
                 // Moon shadow frustum follows the player, snapped to texels to avoid shimmer
@@ -544,6 +555,7 @@ const Level2 = (() => {
                 moon.target.position.set(tx, 0, tz);
                 moon.position.set(tx + 30, 70, tz + 18);
                 moon.target.updateMatrixWorld();
+                grass.update(time, cam.position);
 
                 for (const s of fogSprites) {
                     const dx = s.position.x - cam.position.x, dz = s.position.z - cam.position.z;

@@ -30,11 +30,11 @@
         low: { pixelRatio: 1, scale: 0.6, minScale: 0.4, bloom: false, shadows: false, shadowSize: 512, ao: false, volumetric: false },
         medium: {
             pixelRatio: Math.min(dpr, 1.25), scale: 0.8, minScale: 0.45, bloom: true, shadows: true, shadowSize: 1024,
-            ao: true, volumetric: true, volSteps: 16
+            ao: true, volumetric: true, volSteps: 12, volDiv: 3
         },
         high: {
             pixelRatio: Math.min(dpr, 1.5), scale: 1.0, minScale: 0.5, bloom: true, shadows: true, shadowSize: 2048,
-            ao: true, volumetric: true, volSteps: 24, lampShadows: true
+            ao: true, volumetric: true, volSteps: 20, volDiv: 2, lampShadows: true
         }
     };
     // When the frame rate can't be held, effects go in this order (the tier number)
@@ -58,7 +58,7 @@
     const applyEffects = () => {
         const q = effectiveQuality();
         PostFX.setBloom(q.bloom);
-        PostFX.setFeatures({ ao: q.ao, volumetric: q.volumetric, volSteps: q.volSteps || 16 });
+        PostFX.setFeatures({ ao: q.ao, volumetric: q.volumetric, volSteps: q.volSteps || 12, volDiv: q.volDiv || 3 });
     };
 
     // =========================================================================
@@ -251,7 +251,7 @@
             num: 'II', title: 'THE LOST FOREST', sub: 'They move when you look at them.', objective: "Reach the golden light. Don't stare.",
             builder: () => Level2, spawn: () => Monsters.spawnAngels(randInt(14, 17), player.pos),
             music: ['level2', 0.9 / 0.3], steps: 'grass', far: 34, dark: false, meter: 'relic', hint: HINT_FOREST,
-            ambient: null, tint: new THREE.Color(0.9, 0.97, 1.06), exitFlash: [1, 0.85, 0.5], exposure: 1.05, saturation: 0.62,
+            ambient: null, tint: new THREE.Color(0.9, 0.97, 1.06), exitFlash: [1, 0.85, 0.5], exposure: 1.05, saturation: 0.72,
             // The fog is thick: Angels only notice your gaze once you could actually see them
             angelSight: 15, haloFar: 32, reverb: 0.25, dust: 0.01, deathTitle: 'CONSUMED BY LIGHT'
         },
@@ -283,6 +283,7 @@
     const cfg = () => LEVEL_INFO[state.levelId];
 
     function teardown() {
+        clearCaption();
         Monsters.clear();
         AudioSys.stopBeds();
         AudioSys.destroyAllVoices();
@@ -619,6 +620,8 @@
             if (!state.fixedQuality) adaptQuality(rawDt);
         } else if (state.mode === 'dying' || state.mode === 'transition') {
             updateCamera(dt);
+        } else if (state.mode === 'ending' && level.updateEnding) {
+            level.updateEnding(dt, state.time, camera, endingApi);
         }
         const t1 = performance.now();
 
@@ -641,6 +644,10 @@
 
     function update(dt) {
         state.levelTime += dt;
+        if (pendingEnding && level.forceEnding) {
+            level.forceEnding(pendingEnding, player);
+            pendingEnding = null;
+        }
         if (player.relicTime > 0) player.relicTime = Math.max(0, player.relicTime - dt);
 
         updatePlayer(dt);
@@ -668,6 +675,7 @@
         if (state.mode !== 'playing') return;
 
         level.update(dt, state.time, camera, player);
+        if (level.ending) { startEnding(); return; }
         if (level.objective && level.objective !== state.objective) {
             state.objective = level.objective;
             HUD.setObjective('LEVEL ' + info.num, level.objective);
@@ -939,11 +947,11 @@
         }
         if (player.battery <= 0 && !player.flashlightOn) {
             HUD.toast('NO BATTERY', 'bad');
-            AudioSys.click();
+            AudioSys.flashlight(false, true);
             return;
         }
         player.flashlightOn = !player.flashlightOn;
-        AudioSys.click();
+        AudioSys.flashlight(player.flashlightOn);
         if (cfg().matchNoise) {
             player.noise = Math.max(player.noise, 8);
             player.noisePos.copy(player.pos);
@@ -999,18 +1007,18 @@
                 const amt = cfg().batteryAmount || 50;
                 p.battery = Math.min(100, p.battery + amt);
                 HUD.toast(`+${amt}% ${level.camcorder ? 'CAMERA ' : ''}BATTERY`, 'good');
-                AudioSys.pickup(false);
+                AudioSys.pickup('battery');
             } else if (it.type === 'relic') {
                 p.sanity = Math.min(100, p.sanity + 30);
                 p.relicTime = 10;
                 HUD.toast('SACRED RELIC — THE ANGELS FALTER', 'gold');
-                AudioSys.pickup(true);
+                AudioSys.pickup('relic');
                 state.flash = 0.35;
                 state.flashColor.setRGB(1, 0.85, 0.5);
             } else if (it.type === 'matches') {
                 p.matches += 2;
                 HUD.toast('+2 MATCHES', 'warm');
-                AudioSys.pickup(false);
+                AudioSys.pickup('matches');
             }
         }
 
@@ -1196,11 +1204,10 @@
         }
         const id = level.id;
         const hunter = Monsters.nearestHunter;
-        HUD.setGaze(level.gaze || 0, level.objective === 'Look at it.');
+        HUD.setGaze(level.gaze || 0, !!level.showGaze);
         let status = '';
-        if (level.gaze !== undefined && level.objective === 'Look at it.') {
-            status = level.stare > 0.6 ? 'Keep looking. Do not look away.' : 'It is waiting for you to look back.';
-        } else if (level.stare > 0.3) status = "DON'T LOOK UP.";
+        if (level.status) status = level.status;
+        else if (level.stare > 0.3) status = "DON'T LOOK UP.";
         else if (level.grabbed) status = 'Something is holding on to you...';
         else if (level.watched > 0.5) status = 'So many of them are looking at you...';
         else if (state.angelState.looked > 0) status = 'Look away. LOOK AWAY.';
@@ -1248,25 +1255,40 @@
         }
 
         const stare = level.stare || 0;
-        u.exposure.value = settings.brightness * (info.exposure || 1.0) * (1 + lens * 1.7);
+        const grade = level.grade || info;
+        u.exposure.value = settings.brightness * (grade.exposure || 1.0) * (1 + lens * 1.7);
         u.vignette.value = 0.5 + fear * 0.4 + lens * 0.25;
         u.grain.value = 0.045 + fear * 0.07 + lens * 0.05;
         u.aberration.value = smoothstep(0.45, 1, fear) * 1.1 + charge * 1.6 + tear * 1.5 + stare * 1.2;
         u.warp.value = smoothstep(0.6, 1, fear) * (0.7 + 0.3 * Math.sin(state.time * 1.3)) + charge * 0.25 + stare * 0.5;
         u.pulse.value = state.beat * Math.max(smoothstep(0.5, 1, fear), (state.beatIntensity || 0) > 0.7 ? 0.5 : 0);
-        u.flash.value = state.flash;
-        u.flashColor.value.copy(state.flashColor);
+        if ((level.whiteout || 0) > state.flash) {
+            u.flash.value = level.whiteout;
+            u.flashColor.value.copy(level.whiteColor);
+        } else {
+            u.flash.value = state.flash;
+            u.flashColor.value.copy(state.flashColor);
+        }
         u.blackout.value = blackout;
-        u.saturation.value = info.saturation !== undefined ? info.saturation : 0.8 - fear * 0.25;
-        u.tint.value.copy(info.tint);
+        u.saturation.value = grade.saturation !== undefined ? grade.saturation : 0.8 - fear * 0.25;
+        u.tint.value.copy(grade.tint || info.tint);
         u.nightVision.value = lens;
         u.interference.value = tear;
 
         const fog = scene.fog;
         const fogDensity = !fog ? 0 : fog.isFogExp2 ? fog.density : 3 / Math.max(1, fog.far);
         PostFX.setFrame(camera, gatherLights(), fogDensity, info.dust || 0.012);
+        // A level whose shadows change slowly (Level II's moon) may redraw them every few frames
+        const every = (level && level.shadowEvery) || 1;
+        renderer.shadowMap.autoUpdate = every <= 1;
+        if (every > 1 && ++shadowFrame >= every) {
+            shadowFrame = 0;
+            renderer.shadowMap.needsUpdate = true;
+        }
         PostFX.render(scene, camera, state.time);
     }
+
+    let shadowFrame = 0;
 
     // The lights whose beams hang in the dusty air: the flashlight first, then the nearest others
     const volLights = Array.from({ length: 6 }, () => ({ pos: new THREE.Vector3(), dir: new THREE.Vector3(), color: new THREE.Color(), range: 0, cosOuter: 0, cosInner: 1 }));
@@ -1299,7 +1321,7 @@
             v.color.copy(l.color).multiplyScalar(l.intensity);
             // Without a shadow map nothing stops a light's glow at the walls, so keep those faint
             v.shadow = renderer.shadowMap.enabled && l.castShadow ? l.shadow : null;
-            v.weight = l === rig.flashlight ? 1 : l.isSpotLight ? 0.25 : 0.5;
+            v.weight = l.userData.volWeight !== undefined ? l.userData.volWeight : l === rig.flashlight ? 1 : l.isSpotLight ? 0.25 : 0.5;
             if (l.isSpotLight) {
                 l.target.getWorldPosition(targetWorld);
                 v.dir.subVectors(targetWorld, v.pos).normalize();
@@ -1388,14 +1410,119 @@
         }
     }
 
-    function victory() {
-        $('victory-title').textContent = 'YOU LOOKED BACK';
-        $('victory-message').textContent = 'The eye closed. For the first time since you came down here, nothing is watching you.';
+    // =========================================================================
+    // The endings (Level V hands back control when its cinematic is over)
+    // =========================================================================
+    const ENDINGS = {
+        eye: {
+            label: 'ENDING I OF II',
+            title: 'THE WATCHING DARK',
+            message: 'You looked back, and the eye let go. It needed a new one. Far above, someone has just found ' +
+                'the stairs down, a flashlight shaking in their hand. You are in no hurry. You can watch them for as long as it takes.',
+            hint: 'Helena said the light at the heart was real.'
+        },
+        light: {
+            label: 'ENDING II OF II',
+            title: 'DAYLIGHT',
+            message: 'You never looked up. The light carried you out of the dark and left you in the cold grass at dawn, ' +
+                "alive, with your mother's words still in your head: don't look up, don't look back.",
+            hint: 'It is still down there, waiting for someone to look back.'
+        }
+    };
+    let pendingEnding = null;
+    let captionTimer = null;
+
+    function clearCaption() {
+        clearTimeout(captionTimer);
+        $('ending-caption').classList.remove('show');
+    }
+
+    // What a level's ending script may do while it holds the camera
+    const endingApi = {
+        caption(text, seconds) {
+            const el = $('ending-caption');
+            el.textContent = text;
+            el.classList.add('show');
+            clearTimeout(captionTimer);
+            captionTimer = setTimeout(() => el.classList.remove('show'), seconds * 1000);
+        },
+        flash(amount, r, g, b) {
+            state.flash = amount;
+            state.flashColor.setRGB(r, g, b);
+        },
+        playerLights(on) {
+            player.flashlightOn = on;
+            player.matchLit = false;
+            if (!rig) return;
+            if (!on) {
+                rig.flashlight.intensity = 0;
+                if (rig.spill) rig.spill.intensity = 0;
+                rig.match.intensity = 0;
+            }
+            rig.vm.torch.visible = on;
+            rig.vm.match.visible = on;
+        },
+        setFar(far) {
+            camera.far = far;
+            camera.updateProjectionMatrix();
+        },
+        // Replace the world entirely (the old one is freed; the camera moves across)
+        swapScene(next, owned) {
+            Monsters.clear();
+            scene.remove(camera);
+            disposeObject(scene);
+            if (level.ownedTextures) level.ownedTextures.forEach((t) => t.dispose());
+            level.ownedTextures = owned || [];
+            renderer.renderLists.dispose();
+            scene = next;
+            scene.add(camera);
+            lightsScanned = -1;
+        },
+        finish(kind) { showEnding(kind); }
+    };
+
+    function startEnding() {
+        state.mode = 'ending';
+        closeNote();
+        HUD.showHud(false);
+        HUD.setGaze(0, false);
+        HUD.setPrompt('');
+        Monsters.silence();
+        AudioSys.stopAllVoices();
+        TouchControls.reset();
+        if (rig && rig.footsteps) rig.footsteps.set(0);
+        player.sanity = 100;
+        player.vel.set(0, 0, 0);
+        for (const k of Object.keys(keys)) keys[k] = false;
+    }
+
+    function endingsFound(add) {
+        let found = [];
+        try { found = JSON.parse(localStorage.getItem('twdEndings') || '[]'); } catch (e) { /* storage unavailable */ }
+        if (add && !found.includes(add)) {
+            found.push(add);
+            try { localStorage.setItem('twdEndings', JSON.stringify(found)); } catch (e) { /* ignore */ }
+        }
+        return found;
+    }
+
+    function showEnding(kind) {
+        const E = ENDINGS[kind] || ENDINGS.eye;
+        const found = endingsFound(kind);
+        clearCaption();
+        $('victory-label').textContent = E.label;
+        $('victory-title').textContent = E.title;
+        $('victory-message').textContent = E.message;
+        $('victory-hint').textContent = found.length < Object.keys(ENDINGS).length ? E.hint : '';
+        const screen = $('victory-screen');
+        screen.classList.remove('ending-eye', 'ending-light');
+        screen.classList.add('ending-' + kind);
         state.mode = 'victory';
         Monsters.silence();
         AudioSys.stopAllVoices();
         AudioSys.stopMusic();
         AudioSys.stopDrone();
+        AudioSys.stopBeds();
         HUD.showHud(false);
         if (isLocked()) document.exitPointerLock();
         const total = (performance.now() - state.stats.runStart) / 1000;
@@ -1403,9 +1530,11 @@
         $('victory-stats').innerHTML =
             `<span>Matches used <b>${state.stats.matchesUsed}</b></span>` +
             `<span>Notes found <b>${state.stats.notes.size}/${Lore.total()}</b></span>` +
-            `<span>Deaths <b>${state.stats.deaths}</b></span>`;
-        $('victory-screen').classList.add('show');
+            `<span>Deaths <b>${state.stats.deaths}</b></span>` +
+            `<span>Endings found <b>${found.length}/${Object.keys(ENDINGS).length}</b></span>`;
+        screen.classList.add('show');
     }
+    const victory = () => showEnding('eye');
 
     function startRun() {
         AudioSys.ensureContext();
@@ -1537,6 +1666,7 @@
         'god [on|off]  toggle invulnerable no-clip flying (also the Z key)',
         'heal          refill sanity, stamina, battery and matches',
         'fps [on|off]  frame rate, timings, resolution and effects tier',
+        'ending <eye|light>  play one of the two endings',
         'menu          quit to the title screen',
         'clear         clear this log'
     ];
@@ -1555,6 +1685,17 @@
                 return debugLog('God mode ' + (player.godMode ? 'ON' : 'OFF'), 'ok');
             case 'heal': case 'refill':
                 return refillAll();
+            case 'ending': {
+                const kind = /^(light|day|daylight|2)$/.test(arg || '') ? 'light' : 'eye';
+                pendingEnding = kind;
+                debugLog(`Ending: ${ENDINGS[kind].title}`, 'ok');
+                if (level && level.id === LAST_LEVEL && (state.mode === 'playing' || state.mode === 'paused')) {
+                    $('debug-console').classList.remove('active');
+                    if (state.mode === 'paused') resume();
+                    return;
+                }
+                return jumpToLevel(LAST_LEVEL);
+            }
             case 'fps':
                 setShowFps(arg === 'on' ? true : arg === 'off' ? false : !stats.show);
                 return debugLog('FPS readout ' + (stats.show ? 'ON' : 'OFF'), 'ok');
@@ -1654,7 +1795,7 @@
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '2.4';
+    const BUILD = '2.5';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {
