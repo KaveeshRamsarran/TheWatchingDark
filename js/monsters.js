@@ -290,7 +290,7 @@ const Monsters = (() => {
             }
 
             if (w.dist < 1.25 * s + 0.2 && !player.godMode) {
-                ctx.onKill(unseen ? 'unseen' : 'watcher');
+                ctx.onKill(unseen ? 'unseen' : 'watcher', w);
                 return;
             }
         }
@@ -472,7 +472,7 @@ const Monsters = (() => {
 
             // They only take you if they heard you a moment ago - hold still and they pass by
             if (d.dist < 0.95 * d.scale + 0.15 && time - d.heardAt < 1.5 && !player.godMode) {
-                ctx.onKill('drowned');
+                ctx.onKill('drowned', d);
                 return;
             }
         }
@@ -648,7 +648,7 @@ const Monsters = (() => {
             }
 
             if (a.dist < 2.3 && !player.godMode) {
-                ctx.onKill('angel');
+                ctx.onKill('angel', a);
                 return;
             }
         }

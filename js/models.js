@@ -357,7 +357,7 @@ const Models = (() => {
         }
 
         return {
-            root, eyeMat, eyeGlows, headGroup: headBone, rigged: true,
+            root, eyeMat, eyeGlows, headGroup: headBone, rigged: true, openJaw,
             // speed: units/sec; frozen: holds the current pose; hunt: 0..1; near: 0..1 (how close)
             animate(dt, speed, frozen, time, hunt = 0, near = 0) {
                 if (info.crawl && own) { crawl(dt, speed, time, hunt, near); return; }

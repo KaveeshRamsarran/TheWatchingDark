@@ -284,6 +284,9 @@
 
     function teardown() {
         clearCaption();
+        Deaths.cancel();
+        state.deathFx = null;
+        HUD.clearFlashWord();
         Monsters.clear();
         AudioSys.stopBeds();
         AudioSys.destroyAllVoices();
@@ -618,6 +621,10 @@
             // Reading a note stops the world: nothing moves, nothing drains, until you close it
             if (!state.note) update(dt);
             if (!state.fixedQuality) adaptQuality(rawDt);
+        } else if (state.mode === 'dying' && Deaths.active) {
+            // Something caught you: the death scene holds the camera
+            Deaths.update(dt, state.time);
+            if (Deaths.active) updateLights(dt);
         } else if (state.mode === 'dying' || state.mode === 'transition') {
             updateCamera(dt);
         } else if (state.mode === 'ending' && level.updateEnding) {
@@ -1274,6 +1281,24 @@
         u.tint.value.copy(grade.tint || info.tint);
         u.nightVision.value = lens;
         u.interference.value = tear;
+        // A death scene pushes the picture further than play ever does
+        const fx = state.deathFx;
+        if (fx) {
+            if (fx.aberration) u.aberration.value = Math.max(u.aberration.value, fx.aberration);
+            if (fx.warp) u.warp.value = Math.max(u.warp.value, fx.warp);
+            if (fx.pulse) u.pulse.value = Math.max(u.pulse.value, fx.pulse);
+            if (fx.interference) u.interference.value = Math.max(u.interference.value, fx.interference);
+            if (fx.blackout) u.blackout.value = Math.max(u.blackout.value, fx.blackout);
+            if (fx.flash && fx.flash > u.flash.value) {
+                u.flash.value = fx.flash;
+                u.flashColor.value.copy(fx.flashColor);
+            }
+            if (fx.grade) {
+                u.tint.value.copy(fx.grade.tint);
+                u.saturation.value = fx.grade.saturation;
+                u.exposure.value = settings.brightness * fx.grade.exposure;
+            }
+        }
 
         const fog = scene.fog;
         const fogDensity = !fog ? 0 : fog.isFogExp2 ? fog.density : 3 / Math.max(1, fog.far);
@@ -1347,7 +1372,8 @@
         sanity: 'Your mind shattered in the darkness...'
     };
 
-    function die(cause) {
+    // killer: the monster that caught you - it plays out the kill before the jumpscare
+    function die(cause, killer) {
         if (state.mode !== 'playing') return;
         state.mode = 'dying';
         state.stats.deaths++;
@@ -1356,9 +1382,19 @@
         AudioSys.stopAllVoices();
         AudioSys.stopBeds();
         HUD.showHud(false);
-        if (isLocked()) document.exitPointerLock();
+        HUD.clearFlashWord();
+        for (const k of Object.keys(keys)) keys[k] = false;
+        state.deathFx = { flashColor: new THREE.Color() };
+        const scene = killer && Deaths.start(cause, killer, {
+            camera, player, rig, fx: state.deathFx, onDone: () => jumpscare(cause)
+        });
+        if (!scene) jumpscare(cause);
+    }
 
-        // Same jumpscare as always: image + scream, two seconds
+    function jumpscare(cause) {
+        if (state.mode !== 'dying') return;
+        if (isLocked()) document.exitPointerLock();
+        // Then the jumpscare: image + scream
         const js = $('jumpscare-screen');
         const angelic = cause === 'angel' || (cause === 'sanity' && level.id === 2);
         $('jumpscare-image').src = angelic ? 'images/angel.jpg' : 'images/monster.png';
@@ -1369,6 +1405,8 @@
 
         setTimeout(() => {
             js.style.display = 'none';
+            if (state.mode !== 'dying') return;
+            state.deathFx = null;
             state.mode = 'dead';
             AudioSys.stopMusic();
             $('death-title').textContent = LEVEL_INFO[level.id].deathTitle;
@@ -1536,13 +1574,92 @@
     }
     const victory = () => showEnding('eye');
 
+    // =========================================================================
+    // The intro: why you are here
+    // =========================================================================
+    const INTRO = [
+        { text: 'Two years ago, your mother, Dr. Helena Marsh, took a research post at a government facility out past the reservoir.' },
+        { text: 'Her letters stopped after the first winter.' },
+        { text: 'They told you the site had been decommissioned. Everyone reassigned. Nobody could tell you where.' },
+        { text: 'Your little sister Ellie never believed them. Three weeks ago she drove out there to bring Mum home.' },
+        { text: 'She never came back.' },
+        { text: 'At 3:14 this morning, your phone rang. Ellie\'s number.' },
+        {
+            cls: 'voicemail', sfx: 'static', hold: 7200,
+            text: '<span class="vm-label">&#9679; VOICEMAIL &middot; 0:21</span>' +
+                '...they only move when you\'re not looking. Don\'t look away. Don\'t <span class="static">[static]</span> ' +
+                'there\'s more of them every time the lights go out...<br><br>' +
+                'Don\'t come here. <span class="static">[static]</span> Please. Please come here.<br><br>' +
+                '<span class="static">[breathing]</span>'
+        },
+        { text: 'The gate was open. The power was still on.' },
+        { text: 'At the bottom of the stairs, a door was waiting for you.', sfx: 'beat' },
+        { cls: 'final', text: 'DON\'T BLINK.', hold: 2600, sfx: 'sting' }
+    ];
+    let intro = null;
+
+    function playIntro(done) {
+        const el = $('intro'), txt = $('intro-text');
+        state.mode = 'intro';
+        el.classList.add('show');
+        AudioSys.startDrone();
+        let i = -1, timer = null, swap = null;
+        const next = () => {
+            clearTimeout(timer);
+            clearTimeout(swap);
+            i++;
+            if (i >= INTRO.length) return finish();
+            const c = INTRO[i];
+            txt.classList.remove('in');
+            const gap = i === 0 ? 400 : 900;
+            swap = setTimeout(() => {
+                txt.className = c.cls || '';
+                txt.innerHTML = c.text;
+                void txt.offsetWidth;
+                txt.classList.add('in');
+                if (c.sfx === 'static') AudioSys.staticBurst(0.9, 0);
+                if (c.sfx === 'beat') AudioSys.heartbeat(1, 0.3);
+                if (c.sfx === 'sting') AudioSys.sting(0.6);
+            }, gap);
+            const words = c.text.replace(/<[^>]+>/g, '').split(/\s+/).length;
+            timer = setTimeout(next, gap + (c.hold || 1800 + words * 260));
+        };
+        const finish = () => {
+            clearTimeout(timer);
+            clearTimeout(swap);
+            intro = null;
+            el.classList.remove('show');
+            txt.className = '';
+            txt.innerHTML = '';
+            AudioSys.stopDrone();
+            done();
+        };
+        intro = { next, finish };
+        next();
+    }
+
+    // Space / click moves the story on; Escape or SKIP jumps straight in. Either way the
+    // keypress or click is a gesture, so the mouse can be captured on the way into the game.
+    function introInput(skip) {
+        if (!intro) return;
+        if (skip) intro.finish();
+        else intro.next();
+        if (!intro) requestLock();
+    }
+    $('intro').addEventListener('click', (e) => {
+        if (e.target.id === 'intro-skip') return;
+        introInput(false);
+    });
+    $('intro-skip').addEventListener('click', (e) => { e.stopPropagation(); introInput(true); });
+
     function startRun() {
         AudioSys.ensureContext();
+        AudioSys.unlock();
         Menu.stop();
         state.stats = { runStart: performance.now(), deaths: 0, matchesUsed: 0, notes: new Set() };
         $('start-screen').classList.add('hidden');
-        requestLock();
-        loadLevel(1);
+        if (touchMode) enterImmersive();
+        playIntro(() => loadLevel(1));
     }
 
     function retry() {
@@ -1634,6 +1751,7 @@
             return;
         }
         debugResume = false;
+        if (intro) { const it = intro; intro = null; $('intro').classList.remove('show'); AudioSys.stopDrone(); void it; }
         $('debug-console').classList.remove('active');
         ['death-screen', 'victory-screen'].forEach((id) => $(id).classList.remove('show'));
         $('pause-menu').classList.remove('active');
@@ -1667,6 +1785,7 @@
         'heal          refill sanity, stamina, battery and matches',
         'fps [on|off]  frame rate, timings, resolution and effects tier',
         'ending <eye|light>  play one of the two endings',
+        'scare  let the nearest monster catch you (watch its death scene)',
         'menu          quit to the title screen',
         'clear         clear this log'
     ];
@@ -1685,6 +1804,21 @@
                 return debugLog('God mode ' + (player.godMode ? 'ON' : 'OFF'), 'ok');
             case 'heal': case 'refill':
                 return refillAll();
+            case 'scare': {
+                if (!level || state.mode !== 'playing' && state.mode !== 'paused') { debugLog('Not in a level.', 'err'); return; }
+                const near = (list) => list.slice().sort((a, b) => a.dist - b.dist)[0];
+                let killer = null, cause = null;
+                if (Monsters.drowned.length) { killer = near(Monsters.drowned); cause = 'drowned'; }
+                else if (Monsters.watchers.length) { killer = near(Monsters.watchers); cause = killer.variant === 'unseen' ? 'unseen' : 'watcher'; }
+                else if (Monsters.angels.length) { killer = near(Monsters.angels); cause = 'angel'; }
+                if (!killer) { debugLog('Nothing here to catch you.', 'err'); return; }
+                if (arg === 'angel' && Monsters.angels.length) { killer = near(Monsters.angels); cause = 'angel'; }
+                $('debug-console').classList.remove('active');
+                if (state.mode === 'paused') resume();
+                debugLog(`Caught by: ${cause}`, 'ok');
+                die(cause, killer);
+                return;
+            }
             case 'ending': {
                 const kind = /^(light|day|daylight|2)$/.test(arg || '') ? 'light' : 'eye';
                 pendingEnding = kind;
@@ -1759,6 +1893,12 @@
             if (e.code === 'Escape') { e.preventDefault(); closeDebug(); }
             return; // typing in the console never moves the player
         }
+        if (state.mode === 'intro') {
+            if (e.repeat) return;
+            if (e.code === 'Escape') introInput(true);
+            else if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE') { e.preventDefault(); introInput(false); }
+            return;
+        }
         keys[e.code] = true;
         if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
         if (state.mode === 'paused' && e.code === 'Escape') {
@@ -1795,7 +1935,7 @@
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '2.6';
+    const BUILD = '2.7';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {

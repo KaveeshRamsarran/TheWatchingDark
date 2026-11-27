@@ -119,6 +119,7 @@
         <div id="match-counter-message"></div>
         <div id="perf-hud"></div>
         <div id="subliminal"><img alt="" id="subliminal-image"></div>
+        <div id="flash-word" aria-hidden="true"></div>
 
         <div id="note-screen">
             <div id="note-content">
@@ -163,6 +164,13 @@
                 <p class="ios-tip" id="ios-tip">For fullscreen: tap <b>Share</b> then <b>Add to Home Screen</b>, and play from the icon</p>
             </div>
             <div id="build-tag"></div>
+        </div>
+
+        <!-- The story so far: why you are here -->
+        <div id="intro">
+            <div id="intro-text"></div>
+            <div id="intro-hint">SPACE / CLICK &nbsp;continue &nbsp;&middot;&nbsp; ESC &nbsp;skip</div>
+            <button id="intro-skip" class="btn">SKIP</button>
         </div>
 
         <!-- Jumpscare (unchanged: same image, same scream) -->
@@ -349,6 +357,7 @@
     <script src="js/level4.js"></script>
     <script src="js/level5.js"></script>
     <script src="js/monsters.js"></script>
+    <script src="js/deaths.js"></script>
     <script src="js/hud.js"></script>
     <script src="js/touch.js"></script>
     <script src="js/menu.js"></script>

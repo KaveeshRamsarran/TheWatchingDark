@@ -442,6 +442,11 @@ const Level5 = (() => {
         let inHeart = false, gaze = 0, bed = null;
         let ascend = 0, inLight = false, plead = 0, pleadIdx = 0, end = null;
         const PLEAS = ['LOOK AT ME', 'SHE IS UP HERE', 'ELLIE IS WAITING FOR YOU', 'LOOK UP', 'YOU CAME ALL THIS WAY', 'PLEASE', 'JUST ONCE'];
+        // Words it throws at you in the heart, flashed in the middle of your sight
+        const FLASH_WORDS = ['LOOK UP', 'WATCH ME', 'STARE AT ME', 'LOOK AT ME', 'SEE ME', 'I SEE YOU', 'OPEN YOUR EYES',
+            "DON'T LOOK AWAY", 'KEEP LOOKING', 'LOOK UP', 'WATCH ME', 'STAY', 'BE MY EYES'];
+        const FLASH_LIGHT = ['LOOK UP', 'LOOK UP', 'LOOK AT ME', 'SHE IS UP HERE', 'TURN AROUND', 'LOOK BACK', 'PLEASE', 'JUST ONCE', 'LOOK UP'];
+        let flashTimer = 2;
         const climax = { started: false };
 
         const level = {
@@ -922,6 +927,16 @@ const Level5 = (() => {
             }
             level.showGaze = !inLight || gaze > 0.02;
             level.whiteout = ascend * 0.32;
+
+            // Words flash at the centre of your sight - faster the deeper it has you
+            const press = Math.max(gaze, ascend, level.stare || 0);
+            flashTimer -= dt;
+            if (flashTimer <= 0) {
+                flashTimer = lerp(1.9, 0.3, press) * rand(0.6, 1.4);
+                const pool = inLight ? FLASH_LIGHT : FLASH_WORDS;
+                HUD.flashWord(pick(pool), lerp(0.12, 0.32, press) * rand(0.8, 1.2), press);
+                if (Math.random() < 0.35 + press * 0.4) AudioSys.whisper(rand(-0.6, 0.6), 0.3 + press * 0.4, randInt(1, 3));
+            }
             shaftMat.uniforms.uLevel.value = damp(shaftMat.uniforms.uLevel.value, 1 + ascend * 1.6, 2, dt);
             shaftPool.material.opacity = 0.35 + ascend * 0.4;
             shaftLight.intensity = 2.2 + ascend * 3;

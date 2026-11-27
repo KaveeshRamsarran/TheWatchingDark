@@ -24,7 +24,8 @@ const HUD = (() => {
         cam: $('camcorder'), camTime: $('cam-time'), camBatt: $('cam-batt-fill'), camBattPct: $('cam-batt-pct'),
         crouch: $('crouch-indicator'),
         gaze: $('gaze-ring'),
-        sub: $('subliminal'), subImg: $('subliminal-image')
+        sub: $('subliminal'), subImg: $('subliminal-image'),
+        flash: $('flash-word')
     };
     const last = {};
     const mctx = el.minimap.getContext('2d');
@@ -149,6 +150,26 @@ const HUD = (() => {
         el.sub.classList.add('show');
         clearTimeout(subTimer);
         subTimer = setTimeout(() => el.sub.classList.remove('show'), 60);
+    }
+
+    // A word thrown at the centre of your sight for a split second (intensity 0..1)
+    let flashTimer = null;
+    function flashWord(text, seconds = 0.2, intensity = 0.5) {
+        const f = el.flash;
+        f.textContent = text;
+        const jx = (Math.random() - 0.5) * (4 + intensity * 14), jy = (Math.random() - 0.5) * (4 + intensity * 12);
+        const rot = (Math.random() - 0.5) * (2 + intensity * 8);
+        const sc = 0.9 + Math.random() * 0.15 + intensity * 0.2;
+        f.style.transform = `translate(calc(-50% + ${jx}vw), calc(-50% + ${jy}vh)) rotate(${rot}deg) scale(${sc})`;
+        f.style.setProperty('--glitch', (2 + intensity * 10) + 'px');
+        f.classList.toggle('red', Math.random() < 0.35 + intensity * 0.5);
+        f.classList.add('show');
+        clearTimeout(flashTimer);
+        flashTimer = setTimeout(() => f.classList.remove('show'), seconds * 1000);
+    }
+    function clearFlashWord() {
+        clearTimeout(flashTimer);
+        el.flash.classList.remove('show');
     }
 
     function setHint(html) {
@@ -340,7 +361,7 @@ const HUD = (() => {
 
     return {
         update, setObjective, setStatus, setPrompt, toast, matchFlash, setLookWarning, setGodMode, setCrosshair,
-        setHint, setCamcorder, setGaze, subliminal,
+        setHint, setCamcorder, setGaze, subliminal, flashWord, clearFlashWord,
         openNote, closeNote, levelCard, showLoading, showHud,
         resetMap, reveal, drawMap
     };

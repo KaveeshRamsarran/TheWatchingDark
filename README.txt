@@ -8,6 +8,14 @@ crumbles in darkness. Your only salvation: light, speed, and survival instinct.
 
 Five nightmarish levels await. Can you escape?
 
+THE STORY
+  Two years ago your mother, Dr. Helena Marsh, took a research post at a
+  government facility out past the reservoir. Her letters stopped. Three
+  weeks ago your little sister Ellie went after her, and never came back.
+  Then, at 3:14 this morning, a voicemail from Ellie's number...
+  (A short intro tells it when you start a new game - SPACE / click to
+  move it on, ESC or SKIP to go straight in.)
+
 
 ═══════════════════════════════════════════════════════════════════
   GETTING STARTED
@@ -39,7 +47,8 @@ ALTERNATIVE: Direct File Access
   ALT+ENTER       Toggle fullscreen (also on the title screen, pause menu & settings)
   Z               God mode (testing: invulnerable, no-clip, fly)
   `  (backquote)  Debug console: jump to any level, god mode, refills,
-                  "ending eye" / "ending light" to watch an ending
+                  "ending eye" / "ending light" to watch an ending,
+                  "scare" to be caught by the nearest monster
                   (also in the pause menu; type help for commands)
 
 
@@ -162,7 +171,17 @@ MONSTERS
     - An eye hangs in the void above. Staring at it shreds your sanity.
       When it blinks, the world goes dark - and changes.
     - At the heart, the game tells you to look at it. You don't have to.
-      There are two endings (spoilers below, under LEVEL 5).
+      Words flash across your sight - LOOK UP, WATCH ME, STARE AT ME -
+      faster the deeper it has you. There are two endings (spoilers below,
+      under LEVEL 5).
+
+  WHEN THEY CATCH YOU
+    You see it happen - each creature plays out its own kill before the
+    scream: the Watcher wrenches you round to face it and unhinges its
+    jaw; the Angel comes down to you and you fall into its eye; the
+    Drowned drags you down to the water, rears up face to face and pulls
+    you under; and when an Unseen gets you, the camcorder drops to the
+    floor and keeps recording as it crouches down to the lens.
 
 
 ═══════════════════════════════════════════════════════════════════
@@ -269,6 +288,7 @@ Settings
   js/level5.js      Level 5: living walls, wall eyes, arms, the woman,
                     the great blink and the final gaze
   js/monsters.js    Watcher, Angel, Drowned & Unseen behaviour
+  js/deaths.js      The death scenes: each monster's kill, played in-engine
   js/hud.js         HUD, minimap, notes, loading screen
   js/menu.js        Title screen background & menu music
   js/lore.js        Note texts
