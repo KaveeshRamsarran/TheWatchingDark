@@ -186,6 +186,37 @@ const Deaths = (() => {
             }
         },
 
+        // ---------------------------------------------------------------- your own mind
+        sanity: {
+            noKiller: true,
+            setup(s) {
+                AudioSys.whisper(-0.7, 0.8, 8);
+                AudioSys.whisper(0.7, 0.8, 8);
+                if (s.env.rig) s.env.rig.vm.match.visible = false;
+            },
+            update(s, dt, time) {
+                const { cam, fx } = s.env;
+                const t = s.t;
+                // Your knees give; the world bends away and the dark closes in from the edges
+                const sink = ease(span(t, 0.1, 1.7));
+                cam.position.copy(s.from.pos);
+                cam.position.y = lerp(s.from.pos.y, 0.55, sink);
+                cam.quaternion.copy(s.q0);
+                cam.rotateX(-0.45 * sink);
+                cam.rotateZ(0.55 * sink + Math.sin(t * 2.7) * 0.06);
+                cam.fov = lerp(s.from.fov, 100, ease(span(t, 0.3, 2.3)));
+                cam.updateProjectionMatrix();
+                fx.warp = 0.6 + span(t, 0, 2.2) * 1.6;
+                fx.aberration = 1 + span(t, 0, 2.2) * 3;
+                fx.pulse = 0.9;
+                if (t > 0.8 && once('beat')) AudioSys.heartbeat(2, 0.4);
+                if (t > 1.35 && once('beat2')) AudioSys.heartbeat(2.6, 0.5);
+                if (t > 1.8 && once('beat3')) AudioSys.heartbeat(3.2, 0.55);
+                fx.blackout = Math.pow(span(t, 0.7, 2.3), 1.4);
+                return t > 2.45;
+            }
+        },
+
         // ---------------------------------------------------------------- the Unseen
         unseen: {
             setup(s) {
@@ -252,12 +283,14 @@ const Deaths = (() => {
     };
 
     function start(cause, killer, env) {
-        if (!killer || !killer.model || !SCENES[cause]) return false;
+        const sc = SCENES[cause];
+        if (!sc) return false;
+        if (!sc.noKiller && (!killer || !killer.model)) return false;
         if (cause === 'angel' && !killer.model.body) return false;
         const cam = env.camera;
         cam.updateMatrixWorld();
         S = {
-            cause, k: killer, m: killer.model, t: 0, flags: {},
+            cause, k: killer, m: killer ? killer.model : null, t: 0, flags: {},
             env: { cam, fx: env.fx, player: env.player, rig: env.rig, onDone: env.onDone },
             from: { pos: cam.position.clone(), fov: cam.fov },
             q0: cam.quaternion.clone()

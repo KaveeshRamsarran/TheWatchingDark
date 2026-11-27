@@ -1385,26 +1385,22 @@
         HUD.clearFlashWord();
         for (const k of Object.keys(keys)) keys[k] = false;
         state.deathFx = { flashColor: new THREE.Color() };
-        const scene = killer && Deaths.start(cause, killer, {
+        const scene = Deaths.start(cause, killer, {
             camera, player, rig, fx: state.deathFx, onDone: () => jumpscare(cause)
         });
         if (!scene) jumpscare(cause);
     }
 
+    // The end of a death scene: the scream, a cut to black, then the death screen
     function jumpscare(cause) {
         if (state.mode !== 'dying') return;
         if (isLocked()) document.exitPointerLock();
-        // Then the jumpscare: image + scream
-        const js = $('jumpscare-screen');
-        const angelic = cause === 'angel' || (cause === 'sanity' && level.id === 2);
-        $('jumpscare-image').src = angelic ? 'images/angel.jpg' : 'images/monster.png';
-        js.style.display = 'flex';
         AudioSys.playJumpscare();
+        if (state.deathFx) state.deathFx.blackout = 1;
         state.fadeTarget = 1;
         HUD.setCamcorder(false);
 
         setTimeout(() => {
-            js.style.display = 'none';
             if (state.mode !== 'dying') return;
             state.deathFx = null;
             state.mode = 'dead';
@@ -1416,7 +1412,7 @@
                 `<span>Survived <b>${formatTime(state.levelTime)}</b></span>` +
                 `<span>Notes <b>${state.stats.notes.size}/${Lore.total()}</b></span>`;
             $('death-screen').classList.add('show');
-        }, 2000);
+        }, 1400);
     }
 
     function completeLevel() {
@@ -1935,7 +1931,7 @@
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '2.7';
+    const BUILD = '2.8';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {

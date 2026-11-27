@@ -228,6 +228,7 @@ const Lore = {
                 <p>The entities on this wing do not reflect visible light. <strong>You cannot see them with your eyes.</strong> They exist only on film.</p>
                 <p>Raise the camcorder (hold <kbd>RIGHT MOUSE</kbd> or press <kbd>Q</kbd>). Through the night-vision lens you will see them - pale, still and very close.</p>
                 <p><strong>While they are on camera, they cannot move.</strong> The moment you lower it, they can. Keep them in frame and back away.</p>
+                <p><strong>But never hold one on camera for long.</strong> They get used to the lens. Once one has, it walks toward you whether you film it or not - and it does not stop.</p>
                 <p>The camera drains its battery while raised. Spare cells are stocked around the wing.</p>
                 <p>If you hear static, one of them is near. <em>Raise the camera.</em></p>
                 <p class="note-signature">- Observation Wing Supervisor</p>`

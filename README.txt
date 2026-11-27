@@ -153,6 +153,9 @@ MONSTERS
     - Exist only on camera: invisible to the naked eye
     - Through the night-vision camcorder they freeze in frame; lower it
       and they move. Static (and a tearing picture) means one is close
+    - But don't film one for too long: they get used to the lens. Its head
+      starts to twitch - then it walks toward you even on camera, and it
+      never stops. Glance, don't stare.
     - The camera drains its battery while raised; spare cells are
       scattered around (+35%)
 

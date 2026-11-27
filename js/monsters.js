@@ -22,6 +22,10 @@ const Monsters = (() => {
     const camDir = new THREE.Vector3();
     const camRight = new THREE.Vector3();
 
+    // Film one of the Unseen for this long (seconds, in total) and it gets used to the lens:
+    // from then on it walks at you even on camera, and it never stops
+    const UNSEEN_WAKE = 3.5;
+
     const WATCHER_TYPES = [
         { speed: 3.7, detect: 4, hear: 7, scale: 0.86 },   // fast, less perceptive
         { speed: 2.5, detect: 6, hear: 10, scale: 1.22 },  // slow, very perceptive
@@ -242,7 +246,27 @@ const Monsters = (() => {
             const seen = (!unseen || lensUp) && w.dist < 36 &&
                 (inFrustum(frustum, w.pos, 1.5 * s, 0.75 * s) || inFrustum(frustum, w.pos, 2.4 * s, 0.6 * s)) &&
                 visibleFrom(cam, w.pos, 0.35 * s);
-            w.frozen = seen;
+            if (unseen) {
+                // The camera holds them - but only for so long
+                if (seen) w.filmed = (w.filmed || 0) + dt;
+                else if (!w.woken) w.filmed = Math.max(0, (w.filmed || 0) - dt * 0.35);
+                if (!w.woken && w.filmed > UNSEEN_WAKE) {
+                    w.woken = true;
+                    tmp.set(w.pos.x - cam.position.x, 0, w.pos.z - cam.position.z).normalize();
+                    AudioSys.staticBurst(1, tmp.dot(camRight));
+                    AudioSys.sting(0.45);
+                }
+                // Getting used to the lens: its head starts to twitch on camera before it moves
+                if (!w.woken && seen && w.filmed > UNSEEN_WAKE * 0.55 && w.model.pose && Math.random() < dt * 4) {
+                    const k = rand(-0.5, 0.5);
+                    w.model.pose('head', rand(-0.2, 0.2), k * 0.4, k);
+                }
+                if (w.woken) {
+                    w.aware = Math.max(w.aware, 60);
+                    w.stalker = true;
+                }
+            }
+            w.frozen = seen && !w.woken;
 
             // Fire scares Watchers off (the Unseen don't care)
             if (!unseen && player.matchLit && w.dist < 15) {
@@ -258,9 +282,13 @@ const Monsters = (() => {
             if (w.aware <= 0) w.stalker = false;
             if (w.flee > 0) w.flee -= dt;
 
-            if (seen) {
+            if (w.frozen) {
                 w.unseen = 0;
                 w.speed = 0;
+            } else if (seen) {
+                // Awake, and on camera: it keeps walking at you - slowly, but it never stops
+                w.unseen = 0;
+                moveWatcher(w, dt, cam, pd, heard, clamp(0.32 + (w.filmed - UNSEEN_WAKE) * 0.025, 0.32, 0.6));
             } else {
                 w.unseen += dt;
                 moveWatcher(w, dt, cam, pd, heard);
@@ -272,9 +300,9 @@ const Monsters = (() => {
                 const ty = w.aware > 0 && w.flee <= 0 && w.dist < 14 ? Math.atan2(dx, dz) : Math.atan2(w.target.x - w.pos.x, w.target.z - w.pos.z);
                 faceYaw = ty;
             }
-            if (!seen) w.yaw = dampAngle(w.yaw, faceYaw, 8, dt);
+            if (!w.frozen) w.yaw = dampAngle(w.yaw, faceYaw, 8, dt);
             w.model.root.rotation.y = w.yaw;
-            w.model.animate(dt, w.speed, seen, time, w.aware > 0 && w.flee <= 0 ? 1 : 0, 1 - w.dist / 9);
+            w.model.animate(dt, w.speed, w.frozen, time, w.aware > 0 && w.flee <= 0 ? 1 : 0, 1 - w.dist / 9);
 
             // Eyes burn brighter when hunting
             const hunting = w.aware > 0 && w.flee <= 0;
@@ -283,7 +311,7 @@ const Monsters = (() => {
             const eyeFade = 1 - smoothstep(18, 34, w.dist);
             for (const g of w.model.eyeGlows) g.material.opacity = (hunting ? 0.95 : 0.45) * eyeFade;
 
-            if (hunting && !seen && w.dist < nearestHunter) {
+            if (hunting && !w.frozen && w.dist < nearestHunter) {
                 nearestHunter = w.dist;
                 tmp.set(w.pos.x - cam.position.x, 0, w.pos.z - cam.position.z).normalize();
                 nearestHunterPan = tmp.dot(camRight);
@@ -309,7 +337,7 @@ const Monsters = (() => {
     }
 
     const dir = new THREE.Vector3();
-    function moveWatcher(w, dt, cam, pd, heard) {
+    function moveWatcher(w, dt, cam, pd, heard, speedScale = 1) {
         const C = World.CELL;
         const hunting = w.aware > 0;
         let speed;
@@ -339,6 +367,7 @@ const Monsters = (() => {
             }
             speed = w.type.speed * 0.42;
         }
+        speed *= speedScale;
 
         dir.set(w.target.x - w.pos.x, 0, w.target.z - w.pos.z);
         const len = dir.length();
