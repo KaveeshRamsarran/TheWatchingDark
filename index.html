@@ -88,7 +88,7 @@
             </div>
 
             <div id="inventory">
-                <div class="inv-label">MATCHES <kbd>SPACE</kbd></div>
+                <div class="inv-label">MATCHES <kbd id="match-key">SPACE</kbd></div>
                 <div id="match-row"><div id="match-slots"></div><span id="match-extra"></span></div>
                 <div class="inv-hint" id="inv-hint"><kbd>F</kbd> flashlight &nbsp; <kbd>C</kbd> crouch &nbsp; <kbd>E</kbd> read &nbsp; <kbd>SHIFT</kbd> sprint</div>
             </div>
@@ -120,6 +120,7 @@
         <div id="perf-hud"></div>
         <div id="subliminal"><img alt="" id="subliminal-image"></div>
         <div id="flash-word" aria-hidden="true"></div>
+        <div id="hide-view" aria-hidden="true"></div>
 
         <div id="note-screen">
             <div id="note-content">
@@ -127,7 +128,7 @@
                 <h2 id="note-title"></h2>
                 <p class="note-date" id="note-date"></p>
                 <div class="note-text" id="note-text"></div>
-                <p class="note-close desktop-only"><kbd>E</kbd> close &nbsp;·&nbsp; time stands still while you read</p>            </div>
+                <p class="note-close desktop-only"><kbd id="note-close-key">E</kbd> close &nbsp;·&nbsp; time stands still while you read</p>            </div>
         </div>
 
         <div id="level-card">
@@ -211,16 +212,13 @@
                 <p class="panel-hint">They are still out there.</p>
                 <div class="stack">
                     <button id="pause-resume" class="btn primary">RESUME</button>
+                    <button id="pause-journal" class="btn">JOURNAL</button>
                     <button id="pause-settings" class="btn">SETTINGS</button>
                     <button class="btn fullscreen-toggle"><span class="fs-label">FULLSCREEN</span></button>
                     <button id="pause-debug" class="btn">DEBUG CONSOLE</button>
                     <button id="pause-quit" class="btn">QUIT TO MENU</button>
                 </div>
-                <div class="controls-mini">
-                    <span><kbd>WASD</kbd> move</span><span><kbd>SHIFT</kbd> sprint</span><span><kbd>F</kbd> flashlight</span>
-                    <span><kbd>SPACE</kbd> match</span><span><kbd>C</kbd> crouch</span><span><kbd>RMB</kbd> camera</span>
-                    <span><kbd>E</kbd> read</span><span><kbd>ESC</kbd> pause</span><span><kbd>`</kbd> debug</span>
-                </div>
+                <div class="controls-mini" id="controls-mini"></div>
             </div>
         </div>
 
@@ -250,6 +248,11 @@
                     <div class="slider-container"><input type="range" id="brightness" min="60" max="180" value="100"><span class="slider-value" id="brightness-value">100%</span></div>
                 </div>
 
+                <div class="setting-section">KEYS</div>
+                <p class="setting-note">Click an action, then press the key you want. Arrow keys always move too.</p>
+                <div id="keybinds" class="keybinds"></div>
+                <button id="keys-reset" class="btn small">RESET KEYS</button>
+
                 <div class="setting-section">DISPLAY</div>
                 <button class="btn small fullscreen-toggle wide"><span class="fs-label">FULLSCREEN</span></button>
 
@@ -262,6 +265,19 @@
                 <p class="setting-note">Resolution scales automatically to keep the frame rate smooth.</p>
 
                 <button id="settings-reset" class="btn small">RESET TO DEFAULTS</button>
+            </div>
+        </div>
+
+        <!-- =========================== JOURNAL =========================== -->
+        <div id="journal-panel" class="modal">
+            <div class="panel journal">
+                <button id="journal-close" class="close-btn" aria-label="Close">&times;</button>
+                <h2 class="panel-title">JOURNAL</h2>
+                <p class="panel-hint" id="journal-count"></p>
+                <div class="journal-body">
+                    <div class="journal-list" id="journal-list"></div>
+                    <div class="journal-page" id="journal-page"></div>
+                </div>
             </div>
         </div>
 

@@ -306,9 +306,21 @@ def build_crew_gear():
     })
 
 
+def build_locker():
+    """A tall steel locker with vent slots in the door - big enough to hide in."""
+    metal = [box((0.64, 0.56, 1.96), (0, 0, 0.99), bev=0.012),
+             box((0.6, 0.03, 1.86), (0, -0.29, 1.0), bev=0.008)]
+    dark = []
+    for z in (1.72, 1.66, 1.6, 1.54, 0.34, 0.28, 0.22):
+        dark.append(box((0.4, 0.02, 0.022), (0, -0.305, z), bev=0.004))
+    chrome = [box((0.03, 0.04, 0.2), (0.22, -0.32, 1.08), bev=0.008), cyl(0.03, 0.02, (0.22, -0.315, 1.3), rot=(math.pi / 2, 0, 0), verts=10)]
+    prop("Locker", {"Metal": metal, "Dark": dark, "Chrome": chrome})
+
+
 def build_props():
     reset()
     PROPS.clear()
+    build_locker()
     build_tank()
     build_specimen()
     build_living()
@@ -322,7 +334,7 @@ def build_props():
             groups.setdefault(o.name.split("_")[0], []).append(o)
         sets = [("tanks", ["Tank", "Specimen", "SpecimenHead"]), ("living", ["Sofa", "Armchair", "CoffeeTable", "FloorLamp", "TVSet"]),
                 ("kitchen", ["Fridge", "Counter", "KitchenTable", "KitchenChair"]), ("bedroom", ["Bed", "Nightstand", "Wardrobe"]),
-                ("crew", ["StudioCamera", "StageLight", "DirectorChair", "BoomMic"])]
+                ("crew", ["StudioCamera", "StageLight", "DirectorChair", "BoomMic", "Locker"])]
         for label, names in sets:
             for o in PROPS:
                 o.hide_render = True

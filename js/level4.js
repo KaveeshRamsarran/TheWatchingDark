@@ -126,6 +126,19 @@ const Level4 = (() => {
             }
         });
 
+        // Places to hide: wardrobes on the sets, lockers backstage.
+        // in: where you stand inside; out: where you step back out; yaw: looking out of the door
+        const hideSpots = [];
+        const addHide = (x, z, ry, kind) => {
+            const fx = Math.sin(ry), fz = Math.cos(ry);
+            hideSpots.push({
+                kind,
+                in: new THREE.Vector3(x + fx * 0.36, 0, z + fz * 0.36),   // eye to the slats of the door
+                out: new THREE.Vector3(x + fx * 1.05, 0, z + fz * 1.05),
+                yaw: Math.atan2(-fx, -fz)
+            });
+        };
+
         // ---- Build each set ------------------------------------------------------------------
         const mannequins = [];
         const maxMannequins = L ? 6 : 14;
@@ -218,6 +231,7 @@ const Level4 = (() => {
                 prop('Nightstand', -1.3, -2.05, f, 0.3);
                 prop('Nightstand', 0.9, -2.05, f, 0.3);
                 prop('Wardrobe', 2.6, -1.0, f - Math.PI / 2, 0.55);
+                { const p = at(2.6, -1.0); addHide(p.x, p.z, f - Math.PI / 2, 'wardrobe'); }
             }
             // The crew's gear, aimed at the set
             prop('StudioCamera', 0.7, 4.3, faceTo(0.7, 4.3, 0, -0.6), 0.55);
@@ -282,6 +296,30 @@ const Level4 = (() => {
             signs.push(sign);
         });
 
+        // ---- Steel lockers along the backstage corridors ------------------------------------------
+        const inRoom = (cx, cz) => World.rooms.some((r) => cx >= r.x && cx < r.x + r.w && cz >= r.z && cz < r.z + r.h);
+        const lockerCount = randInt(9, 13);
+        let lockers = 0;
+        for (let tries = 0; lockers < lockerCount && tries < 500 && Props.has('Locker'); tries++) {
+            const seg = pick(shell.wallSegments);
+            const side = pick(seg.sides);
+            const nx = seg.horizontal ? 0 : side, nz = seg.horizontal ? side : 0;
+            const along = rand(-2.3, 2.3);
+            const x = seg.x + nx * (Facility.WALL_T / 2 + 0.3) + (seg.horizontal ? along : 0);
+            const z = seg.z + nz * (Facility.WALL_T / 2 + 0.3) + (seg.horizontal ? 0 : along);
+            const cx = World.cellX(x), cz = World.cellX(z);
+            if (!World.inBounds(cx, cz) || inRoom(cx, cz) || (cx < 2 && cz < 2)) continue;
+            if (World.exits.some((e) => Math.abs(e.x - cx) + Math.abs(e.z - cz) < 2)) continue;
+            if (World.overlaps(x + nx * 0.1, z + nz * 0.1, 0.22) || World.overlaps(x + nx * 1.1, z + nz * 1.1, 0.5)) continue;
+            if (hideSpots.some((h) => h.in.distanceToSquared(new THREE.Vector3(x, 0, z)) < 64)) continue;
+            const ry = Math.atan2(nx, nz);
+            batch.add('Locker', x, 0, z, ry, 1, null);
+            World.addBox(x - 0.38, x + 0.38, z - 0.38, z + 0.38);
+            addHide(x, z, ry, 'locker');
+            lockers++;
+        }
+        mats.Metal = Props.material('Metal', { color: 0x5a6a62, roughness: 0.5, metalness: 0.6 });
+
         batch.flush(shell.root, mats);
 
         progress('Plugging in the monitors...', 0.84);
@@ -342,7 +380,8 @@ const Level4 = (() => {
             hasCeiling: true,
             flashlightAllowed: false,
             camcorder: true,
-            debugThings: { sets, mannequins, signs },
+            hideSpots,
+            debugThings: { sets, mannequins, signs, hideSpots },
 
             update(dt, time, cam) {
                 shell.update(dt, time, cam);

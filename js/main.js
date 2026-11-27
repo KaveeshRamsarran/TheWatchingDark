@@ -232,9 +232,35 @@
     // =========================================================================
     // Level loading
     // =========================================================================
-    const HINT_DEFAULT = '<kbd>F</kbd> flashlight &nbsp; <kbd>C</kbd> crouch &nbsp; <kbd>E</kbd> read &nbsp; <kbd>SHIFT</kbd> sprint';
-    const HINT_FOREST = '<kbd>C</kbd> crouch &nbsp; <kbd>E</kbd> read &nbsp; <kbd>SHIFT</kbd> sprint';
-    const HINT_CAMERA = '<kbd>RMB</kbd>/<kbd>Q</kbd> camera &nbsp; <kbd>C</kbd> crouch &nbsp; <kbd>E</kbd> read &nbsp; <kbd>SHIFT</kbd> sprint';
+    // ---- Key bindings (rebindable in Settings, saved between sessions) -----------------
+    const KEY_ACTIONS = [
+        ['forward', 'Move forward', 'KeyW'], ['back', 'Move back', 'KeyS'], ['left', 'Move left', 'KeyA'], ['right', 'Move right', 'KeyD'],
+        ['sprint', 'Sprint', 'ShiftLeft'], ['crouch', 'Crouch', 'KeyC'], ['flashlight', 'Flashlight', 'KeyF'],
+        ['match', 'Light a match', 'Space'], ['interact', 'Read / hide', 'KeyE'], ['camera', 'Camcorder', 'KeyQ'], ['journal', 'Journal', 'KeyJ']
+    ];
+    const DEFAULT_BINDS = Object.fromEntries(KEY_ACTIONS.map(([a, , k]) => [a, k]));
+    const binds = Object.assign({}, DEFAULT_BINDS);
+    try { Object.assign(binds, JSON.parse(localStorage.getItem('twdKeys') || '{}')); } catch (e) { /* storage unavailable */ }
+    const saveBinds = () => { try { localStorage.setItem('twdKeys', JSON.stringify(binds)); } catch (e) { /* ignore */ } };
+    const KEY_NAMES = {
+        Space: 'SPACE', ShiftLeft: 'SHIFT', ShiftRight: 'R-SHIFT', ControlLeft: 'CTRL', ControlRight: 'R-CTRL', AltLeft: 'ALT', AltRight: 'R-ALT',
+        Tab: 'TAB', CapsLock: 'CAPS', Enter: 'ENTER', Backspace: 'BKSP', ArrowUp: '\u2191', ArrowDown: '\u2193', ArrowLeft: '\u2190',
+        ArrowRight: '\u2192', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', BracketLeft: '[', BracketRight: ']',
+        Backslash: '\\', Minus: '-', Equal: '='
+    };
+    function keyLabel(code) {
+        if (!code) return '?';
+        if (code.startsWith('Key')) return code.slice(3);
+        if (code.startsWith('Digit')) return code.slice(5);
+        if (code.startsWith('Numpad')) return 'NUM ' + code.slice(6);
+        return KEY_NAMES[code] || code.toUpperCase();
+    }
+    const kb = (a) => `<kbd>${keyLabel(binds[a])}</kbd>`;
+    const isDown = (a) => !!keys[binds[a]];
+
+    const HINT_DEFAULT = () => `${kb('flashlight')} flashlight &nbsp; ${kb('crouch')} crouch &nbsp; ${kb('interact')} read &nbsp; ${kb('sprint')} sprint &nbsp; ${kb('journal')} journal`;
+    const HINT_FOREST = () => `${kb('crouch')} crouch &nbsp; ${kb('interact')} read &nbsp; ${kb('sprint')} sprint &nbsp; ${kb('journal')} journal`;
+    const HINT_CAMERA = () => `<kbd>RMB</kbd>/${kb('camera')} camera &nbsp; ${kb('crouch')} crouch &nbsp; ${kb('interact')} read / hide &nbsp; ${kb('sprint')} sprint`;
 
     // Per-level presentation and rules.
     //  dark:  sanity drains in darkness (lamps, matches and light restore it)
@@ -243,14 +269,14 @@
         1: {
             num: 'I', title: 'THE MAZE', sub: 'They move when you look away.', objective: 'Find an exit. Follow the green light.',
             builder: () => Level1, spawn: () => Monsters.spawnWatchers(randInt(14, 17)),
-            music: ['ost', 0.05 / 0.3], steps: 'concrete', far: 55, dark: true, meter: 'battery', hint: HINT_DEFAULT,
+            music: null, bed: 'maze', steps: 'concrete', far: 55, dark: true, meter: 'battery', hint: HINT_DEFAULT,
             ambient: [0x23252e, 0x080605, 0.13], tint: new THREE.Color(1.03, 0.97, 0.9), exitFlash: [0.6, 1, 0.7],
             reverb: 0.45, dust: 0.012, deathTitle: 'CONSUMED BY DARKNESS'
         },
         2: {
             num: 'II', title: 'THE LOST FOREST', sub: 'They move when you look at them.', objective: "Reach the golden light. Don't stare.",
             builder: () => Level2, spawn: () => Monsters.spawnAngels(randInt(14, 17), player.pos),
-            music: ['level2', 0.9 / 0.3], steps: 'grass', far: 34, dark: false, meter: 'relic', hint: HINT_FOREST,
+            music: null, bed: 'forest', steps: 'grass', far: 34, dark: false, meter: 'relic', hint: HINT_FOREST,
             ambient: null, tint: new THREE.Color(0.9, 0.97, 1.06), exitFlash: [1, 0.85, 0.5], exposure: 1.05, saturation: 0.72,
             // The fog is thick: Angels only notice your gaze once you could actually see them
             angelSight: 15, haloFar: 32, reverb: 0.25, dust: 0.01, deathTitle: 'CONSUMED BY LIGHT'
@@ -265,7 +291,7 @@
         4: {
             num: 'IV', title: 'THE OBSERVATION WING', sub: 'Quiet on set. They only exist on camera.', objective: 'Find an exit. Keep recording.',
             builder: () => Level4, spawn: () => Monsters.spawnWatchers(randInt(11, 13), 'unseen'),
-            music: ['ost', 0.035 / 0.3], steps: 'concrete', far: 50, dark: true, meter: 'camera', hint: HINT_CAMERA,
+            music: null, bed: 'studio', steps: 'concrete', far: 50, dark: true, meter: 'camera', hint: HINT_CAMERA,
             ambient: [0x7a4a4a, 0x1a1010, 0.6], tint: new THREE.Color(1.02, 0.95, 0.95), exitFlash: [0.6, 1, 0.7],
             batteryAmount: 35, maxHunters: 5, reverb: 0.4, dust: 0.01, deathTitle: 'LOST IN THE STATIC'
         },
@@ -284,6 +310,10 @@
 
     function teardown() {
         clearCaption();
+        state.hidden = null;
+        state.nearHide = null;
+        $('hide-view').classList.remove('show');
+        closeJournal();
         Deaths.cancel();
         state.deathFx = null;
         HUD.clearFlashWord();
@@ -359,6 +389,11 @@
         camera.updateProjectionMatrix();
         updateCamera(0);
 
+        state.hidden = null;
+        state.nearHide = null;
+        $('hide-view').classList.remove('show');
+        // The monsters' footsteps are your own, only heavier
+        Monsters.setStepSound(info.steps || 'concrete');
         info.spawn();
 
         // Audio for the level
@@ -370,7 +405,7 @@
         if (info.bed) rig.bed = AudioSys.startBed(info.bed);
         // The concrete recording is about twice as loud as the others
         rig.footsteps = info.steps ? AudioSys.createVoice(info.steps, { base: info.steps === 'concrete' ? 0.55 : 1 }) : null;
-        rig.phantoms = info.dark ? [0, 1, 2, 3].map(() => AudioSys.createVoice('footsteps')) : [];
+        rig.phantoms = info.dark ? [0, 1, 2, 3].map(() => AudioSys.createVoice(info.steps || 'concrete', { rate: 0.82, pitch: false })) : [];
         rig.ambience = AudioSys.createVoice('ambience2', { loop: false, base: 0.15 });
 
         HUD.showLoading(true, 'Compiling shaders...', 0.98);
@@ -383,7 +418,7 @@
         HUD.setObjective('LEVEL ' + info.num, info.objective);
         state.objective = info.objective;
         HUD.setGaze(0);
-        HUD.setHint(info.hint);
+        HUD.setHint(typeof info.hint === 'function' ? info.hint() : info.hint);
         HUD.setCamcorder(false);
         HUD.setGodMode(player.godMode);
         state.levelTime = 0;
@@ -633,6 +668,8 @@
         const t1 = performance.now();
 
         if (state.mode !== 'paused' && state.mode !== 'loading' && state.mode !== 'dead' && state.mode !== 'victory') {
+            camera.updateMatrixWorld();
+            AudioSys.setListener(camera);
             render(dt);
         }
         const t2 = performance.now();
@@ -670,7 +707,7 @@
         const info = cfg();
         const ctx = {
             cam: camera, frustum, player, time: state.time, levelTime: state.levelTime,
-            angelState: state.angelState, onKill: die,
+            angelState: state.angelState, onKill: die, hidden: !!state.hidden,
             lens: player.lens, maxHunters: info.maxHunters, angelCollide: !!info.angelCollide,
             angelSight: info.angelSight, haloFar: info.haloFar, waterDepth: level.waterDepth
         };
@@ -706,12 +743,27 @@
 
     function updatePlayer(dt) {
         const p = player;
+        // Hiding: you can't move, only look a little - out through the slats
+        if (state.hidden) {
+            const s = state.hidden;
+            p.vel.set(0, 0, 0);
+            p.sprinting = false;
+            p.noise = 0;
+            const dy = Math.atan2(Math.sin(p.yaw - s.yaw), Math.cos(p.yaw - s.yaw));
+            p.yaw = s.yaw + clamp(dy, -0.75, 0.75);
+            p.pitch = clamp(p.pitch, -0.45, 0.35);
+            p.stamina = Math.min(100, p.stamina + 12 * dt);
+            p.pos.copy(s.in);
+            if (rig && rig.footsteps) rig.footsteps.set(0);
+            updateCamcorder(dt);   // you can still film through the slats
+            return;
+        }
         const reading = !!state.note;
         let mz = 0, mx = 0;
-        if (keys.KeyW || keys.ArrowUp) mz += 1;
-        if (keys.KeyS || keys.ArrowDown) mz -= 1;
-        if (keys.KeyD || keys.ArrowRight) mx += 1;
-        if (keys.KeyA || keys.ArrowLeft) mx -= 1;
+        if (isDown('forward') || keys.ArrowUp) mz += 1;
+        if (isDown('back') || keys.ArrowDown) mz -= 1;
+        if (isDown('right') || keys.ArrowRight) mx += 1;
+        if (isDown('left') || keys.ArrowLeft) mx -= 1;
         // Touch joystick: analog, so a light push walks slowly
         const stick = TouchControls.move;
         let analog = 1;
@@ -725,7 +777,7 @@
         if (p.stamina <= 0) p.exhausted = true;
         if (p.exhausted && p.stamina > 30) p.exhausted = false;
         // On touch, pushing the joystick out to its edge runs
-        const wantsSprint = keys.ShiftLeft || keys.ShiftRight || stick.sprint;
+        const wantsSprint = isDown('sprint') || stick.sprint;
         p.sprinting = wantsSprint && moving && !p.exhausted && p.sanity > 20 && !p.godMode && !reading;
         if (p.sprinting) p.crouch = false;
         p.crouchAmt = damp(p.crouchAmt, p.crouch ? 1 : 0, 10, dt);
@@ -965,6 +1017,155 @@
         }
     }
 
+    // One button for everything you can do to the world: read, hide, step out
+    function interact() {
+        if (state.note) closeNote();
+        else if (state.hidden) unhide();
+        else if (state.nearNote) openNote(state.nearNote);
+        else if (state.nearHide) hide(state.nearHide);
+    }
+
+    function hide(spot) {
+        state.hidden = spot;
+        state.nearHide = null;
+        player.pos.copy(spot.in);
+        player.yaw = spot.yaw;
+        player.pitch = 0;
+        player.vel.set(0, 0, 0);
+        player.crouch = false;
+        player.sprinting = false;
+        player.noise = 0;
+        $('hide-view').classList.add('show');
+        AudioSys.thump(0.16);
+        AudioSys.flashlight(false);
+    }
+
+    function unhide() {
+        const s = state.hidden;
+        if (!s) return;
+        state.hidden = null;
+        player.pos.copy(s.out);
+        $('hide-view').classList.remove('show');
+        AudioSys.thump(0.14);
+        AudioSys.flashlight(true);
+    }
+
+    // ---- The journal: every note you've found, by level -----------------------------
+    function openJournal() {
+        if (state.mode === 'playing') pause();
+        if (state.mode !== 'paused') return;
+        buildJournal();
+        $('journal-panel').classList.add('active');
+    }
+    const journalOpen = () => $('journal-panel').classList.contains('active');
+    function closeJournal() { $('journal-panel').classList.remove('active'); }
+
+    function buildJournal() {
+        const list = $('journal-list');
+        list.innerHTML = '';
+        let found = 0, total = 0, first = null;
+        const notes = (state.stats && state.stats.notes) || new Set();
+        for (let n = 1; n <= LAST_LEVEL; n++) {
+            const entries = Lore['level' + n] || [];
+            if (!entries.length) continue;
+            const h = document.createElement('div');
+            h.className = 'journal-level';
+            h.textContent = `${LEVEL_INFO[n].num}  \u00b7  ${LEVEL_INFO[n].title}`;
+            list.appendChild(h);
+            for (const e of entries) {
+                total++;
+                if (notes.has(e.title)) {
+                    found++;
+                    const b = document.createElement('button');
+                    b.className = 'journal-entry';
+                    const t = document.createElement('span');
+                    t.textContent = e.title;
+                    const d = document.createElement('small');
+                    d.textContent = e.date || '';
+                    b.append(t, d);
+                    b.addEventListener('click', () => showJournalPage(e, b));
+                    list.appendChild(b);
+                    if (!first) first = [e, b];
+                } else {
+                    const m = document.createElement('div');
+                    m.className = 'journal-missing';
+                    m.textContent = '\u2014 a missing page \u2014';
+                    list.appendChild(m);
+                }
+            }
+        }
+        $('journal-count').textContent = `${found} of ${total} pages found`;
+        if (first) showJournalPage(first[0], first[1]);
+        else $('journal-page').innerHTML = '<p class="journal-empty">Nothing yet. Read the notes left by those who came before you.</p>';
+    }
+
+    function showJournalPage(e, btn) {
+        document.querySelectorAll('.journal-entry.active').forEach((b) => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        const page = $('journal-page');
+        page.innerHTML = '';
+        const h = document.createElement('h3');
+        h.textContent = e.title;
+        const d = document.createElement('p');
+        d.className = 'note-date';
+        d.textContent = e.date || '';
+        const body = document.createElement('div');
+        body.className = 'note-text';
+        body.innerHTML = e.html;   // the game's own lore text
+        page.append(h, d, body);
+        page.scrollTop = 0;
+    }
+
+    // ---- Key rebinding (Settings) -----------------------------------------------------
+    let rebinding = null;
+    function renderKeybinds() {
+        const box = $('keybinds');
+        if (!box) return;
+        box.innerHTML = '';
+        for (const [a, label] of KEY_ACTIONS) {
+            const row = document.createElement('div');
+            row.className = 'keybind';
+            const l = document.createElement('span');
+            l.textContent = label;
+            const b = document.createElement('button');
+            b.className = 'keybind-btn' + (rebinding === a ? ' listening' : '');
+            b.textContent = rebinding === a ? 'PRESS A KEY' : keyLabel(binds[a]);
+            b.addEventListener('click', (ev) => { ev.stopPropagation(); rebinding = a; renderKeybinds(); });
+            row.append(l, b);
+            box.appendChild(row);
+        }
+    }
+    function finishRebind(code) {
+        const a = rebinding;
+        rebinding = null;
+        if (a && code !== 'Escape' && code !== 'Backquote') {
+            // A key already in use swaps places with the old one
+            const other = Object.keys(binds).find((k) => k !== a && binds[k] === code);
+            if (other) binds[other] = binds[a];
+            binds[a] = code;
+            saveBinds();
+            refreshKeyHints();
+        }
+        renderKeybinds();
+    }
+    function refreshKeyHints() {
+        if (level && LEVEL_INFO[state.levelId]) {
+            const h = LEVEL_INFO[state.levelId].hint;
+            HUD.setHint(typeof h === 'function' ? h() : h);
+        }
+        const mini = $('controls-mini');
+        if (mini) {
+            mini.innerHTML = `<span>${kb('forward')}${kb('left')}${kb('back')}${kb('right')} move</span><span>${kb('sprint')} sprint</span>` +
+                `<span>${kb('flashlight')} flashlight</span><span>${kb('match')} match</span><span>${kb('crouch')} crouch</span>` +
+                `<span><kbd>RMB</kbd> camera</span><span>${kb('interact')} read / hide</span><span>${kb('journal')} journal</span>` +
+                `<span><kbd>ESC</kbd> pause</span><span><kbd>\`</kbd> debug</span>`;
+        }
+        const mk = $('match-key');
+        if (mk) mk.textContent = keyLabel(binds.match);
+        const nk = $('note-close-key');
+        if (nk) nk.textContent = keyLabel(binds.interact);
+    }
+
     function toggleCrouch() {
         player.crouch = !player.crouch;
         if (player.crouch) player.sprinting = false;
@@ -975,6 +1176,12 @@
     // -------------------------------------------------------------------------
     function updateSanity(dt) {
         const p = player;
+        if (state.hidden) {
+            // Cramped and dark, but nothing can find you: it wears on you slowly
+            p.sanity = clamp(p.sanity + (p.lens > 0.5 ? 1 : -2.5) * dt, 0, 100);
+            if (p.sanity <= 0 && !p.godMode) die('sanity');
+            return;
+        }
         if (cfg().dark) {
             const nearest = Monsters.nearestDistance();
             if (p.matchLit) p.sanity += 12 * dt;
@@ -1039,13 +1246,30 @@
             if (nd > 3.5 || nearestNote !== state.note) closeNote();
             HUD.setPrompt('');
         } else if (nearestNote && nd < 2.4) {
-            HUD.setPrompt(touchMode ? 'Tap to read the note' : '<kbd>E</kbd> Read note');
+            HUD.setPrompt(touchMode ? 'Tap to read the note' : `${kb('interact')} Read note`);
             HUD.setCrosshair('interact');
         } else {
             HUD.setPrompt('');
             HUD.setCrosshair('');
         }
         state.nearNote = nd < 2.4 ? nearestNote : null;
+
+        // Places to hide (wardrobes, lockers)
+        state.nearHide = null;
+        if (state.hidden) {
+            HUD.setPrompt(touchMode ? 'Tap to step out' : `${kb('interact')} Step out`);
+        } else if (!state.nearNote && !state.note && level.hideSpots) {
+            let best = null, bd = 1.3;
+            for (const h of level.hideSpots) {
+                const d = Math.hypot(h.out.x - p.pos.x, h.out.z - p.pos.z);
+                if (d < bd) { bd = d; best = h; }
+            }
+            if (best) {
+                state.nearHide = best;
+                HUD.setPrompt(touchMode ? 'Tap to hide' : `${kb('interact')} Hide`);
+                HUD.setCrosshair('interact');
+            }
+        }
 
         // Exits (the final level ends on its own terms)
         if (level.completed) {
@@ -1878,6 +2102,13 @@
     });
 
     window.addEventListener('keydown', (e) => {
+        // Waiting for a new key binding: this key is it
+        if (rebinding) {
+            e.preventDefault();
+            e.stopPropagation();
+            finishRebind(e.code);
+            return;
+        }
         // The debug console gets first look at every key
         if (e.code === 'Backquote') {
             e.preventDefault();
@@ -1896,41 +2127,27 @@
         }
         keys[e.code] = true;
         if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
-        if (state.mode === 'paused' && e.code === 'Escape') {
-            requestLock();
+        if (state.mode === 'paused' && (e.code === 'Escape' || (e.code === binds.journal && journalOpen()))) {
+            if (journalOpen()) closeJournal();
+            else if (e.code === 'Escape') requestLock();
             return;
         }
         if (state.mode !== 'playing' || e.repeat) return;
-        switch (e.code) {
-            case 'Space':
-                if (!player.godMode) lightMatch();
-                break;
-            case 'KeyF':
-                toggleFlashlight();
-                break;
-            case 'KeyC':
-                toggleCrouch();
-                break;
-            case 'KeyQ':
-                if (level && level.camcorder) player.lensToggle = !player.lensToggle;
-                break;
-            case 'KeyE':
-                if (state.note) closeNote();
-                else if (state.nearNote) openNote(state.nearNote);
-                break;
-            case 'KeyZ':
-                setGodMode(!player.godMode);
-                break;
-            case 'Escape':
-                if (state.note) closeNote();
-                break;
-        }
+        const c = e.code;
+        if (c === binds.match) { if (!player.godMode && !state.hidden) lightMatch(); }
+        else if (c === binds.flashlight) toggleFlashlight();
+        else if (c === binds.crouch) { if (!state.hidden) toggleCrouch(); }
+        else if (c === binds.camera) { if (level && level.camcorder) player.lensToggle = !player.lensToggle; }
+        else if (c === binds.interact) interact();
+        else if (c === binds.journal) { if (!state.note) openJournal(); }
+        else if (c === 'KeyZ') setGodMode(!player.godMode);
+        else if (c === 'Escape') { if (state.note) closeNote(); }
     });
     window.addEventListener('keyup', (e) => { keys[e.code] = false; });
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '2.9';
+    const BUILD = '3.0';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {
@@ -1970,7 +2187,7 @@
     // Tap the "read note" prompt to read it
     $('prompt').addEventListener('touchend', (e) => {
         e.preventDefault();
-        if (state.mode === 'playing' && !state.note && state.nearNote) openNote(state.nearNote);
+        if (state.mode === 'playing' && !state.note && (state.nearNote || state.nearHide || state.hidden)) interact();
     }, { passive: false });
     // Tap anywhere on an open note to close it (a drag scrolls instead)
     let noteTouch = null;
@@ -2055,7 +2272,12 @@
     $('victory-menu-button').addEventListener('click', toMenu);
     $('pause-resume').addEventListener('click', () => { requestLock(); if (state.debug) resume(); });
     $('pause-quit').addEventListener('click', toMenu);
-    $('pause-settings').addEventListener('click', () => $('settings-panel').classList.add('active'));
+    $('pause-settings').addEventListener('click', () => { renderKeybinds(); $('settings-panel').classList.add('active'); });
+    $('pause-journal').addEventListener('click', openJournal);
+    $('journal-close').addEventListener('click', closeJournal);
+    $('keys-reset').addEventListener('click', () => { Object.assign(binds, DEFAULT_BINDS); saveBinds(); refreshKeyHints(); renderKeybinds(); });
+    renderKeybinds();
+    refreshKeyHints();
     $('settings-icon').addEventListener('click', () => $('settings-panel').classList.add('active'));
     $('howto-button').addEventListener('click', () => $('howto-panel').classList.add('active'));
     $('howto-close').addEventListener('click', () => $('howto-panel').classList.remove('active'));

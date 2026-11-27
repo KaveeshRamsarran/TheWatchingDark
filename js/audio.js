@@ -82,18 +82,64 @@ const AudioSys = (() => {
         else music.play().catch(() => { blockedMusic = true; });
     }
 
+    // ---- Directional (3D) audio ----------------------------------------------------
+    // The listener follows the camera every frame. Any sound can be given a world position
+    // ({x, y, z}) instead of a left/right pan: it is then placed with HRTF panning, so you
+    // can hear what is behind you, above you, or just round the corner.
+    const lis = { x: 0, y: 1.6, z: 0, fx: 0, fy: 0, fz: -1, rx: 1, rz: 0 };
+    const isPos = (p) => !!p && typeof p === 'object';
+    function setListener(cam) {
+        if (!ctx) return;
+        const e = cam.matrixWorld.elements;
+        lis.x = e[12]; lis.y = e[13]; lis.z = e[14];
+        lis.fx = -e[8]; lis.fy = -e[9]; lis.fz = -e[10];
+        const len = Math.hypot(lis.fx, lis.fz) || 1;
+        lis.rx = -lis.fz / len; lis.rz = lis.fx / len;
+        const L = ctx.listener;
+        if (L.positionX) {
+            L.positionX.value = lis.x; L.positionY.value = lis.y; L.positionZ.value = lis.z;
+            L.forwardX.value = lis.fx; L.forwardY.value = lis.fy; L.forwardZ.value = lis.fz;
+            L.upX.value = e[4]; L.upY.value = e[5]; L.upZ.value = e[6];
+        } else if (L.setPosition) {
+            L.setPosition(lis.x, lis.y, lis.z);
+            L.setOrientation(lis.fx, lis.fy, lis.fz, e[4], e[5], e[6]);
+        }
+    }
+    // A plain left/right pan becomes a point in front of the listener
+    function panToPos(pan) {
+        const k = clamp(pan, -1, 1), f = Math.sqrt(1 - k * k);
+        return { x: lis.x + lis.rx * k * 2 + lis.fx * f * 2, y: lis.y, z: lis.z + lis.rz * k * 2 + lis.fz * f * 2 };
+    }
+    function placePanner(p, at) {
+        if (p.positionX) { p.positionX.value = at.x; p.positionY.value = at.y; p.positionZ.value = at.z; }
+        else p.setPosition(at.x, at.y, at.z);
+    }
+    function makePanner(at) {
+        const p = ctx.createPanner();
+        p.panningModel = 'HRTF';
+        p.distanceModel = 'linear';     // loudness is already shaped by each sound; this is direction only
+        p.rolloffFactor = 0;
+        p.refDistance = 1;
+        p.maxDistance = 10000;
+        placePanner(p, at);
+        return p;
+    }
+
     // ---- Looping voices (footsteps, chimes, ambience) ------------------------
-    function createVoice(key, { loop = true, base = 1 } = {}) {
+    // rate: playback speed; pitch: false lets a slower rate drop the pitch (heavier steps)
+    function createVoice(key, { loop = true, base = 1, rate = 1, pitch = true } = {}) {
         const el = new Audio(FILES[key]);
         el.loop = loop;
         el.preload = 'auto';
+        el.playbackRate = rate;
+        if (!pitch) { el.preservesPitch = false; el.mozPreservesPitch = false; el.webkitPreservesPitch = false; }
         const voice = {
             el, base, level: 0, pan: 0, gain: null, panner: null, playing: false,
             apply() {
                 const v = clamp(this.level * this.base, 0, 1);
                 if (this.gain) {
                     this.gain.gain.value = v * settings.sfx;
-                    if (this.panner) this.panner.pan.value = clamp(this.pan, -1, 1);
+                    if (this.panner) placePanner(this.panner, isPos(this.pan) ? this.pan : panToPos(this.pan || 0));
                 } else {
                     el.volume = clamp(v * settings.sfx, 0, 1);
                 }
@@ -130,13 +176,9 @@ const AudioSys = (() => {
             try {
                 const src = ctx.createMediaElementSource(el);
                 voice.gain = ctx.createGain();
-                if (ctx.createStereoPanner) {
-                    voice.panner = ctx.createStereoPanner();
-                    src.connect(voice.panner);
-                    voice.panner.connect(voice.gain);
-                } else {
-                    src.connect(voice.gain);
-                }
+                voice.panner = makePanner(panToPos(0));
+                src.connect(voice.panner);
+                voice.panner.connect(voice.gain);
                 voice.gain.connect(ctx.destination);
                 el.volume = 1;
             } catch (e) {
@@ -373,7 +415,11 @@ const AudioSys = (() => {
         src.connect(low);
         band.connect(gain);
         low.connect(gain);
-        if (ctx.createStereoPanner) {
+        if (isPos(pan)) {
+            const p = makePanner(pan);
+            gain.connect(p);
+            p.connect(sfxGain);
+        } else if (ctx.createStereoPanner) {
             const p = ctx.createStereoPanner();
             p.pan.value = clamp(pan, -1, 1);
             gain.connect(p);
@@ -468,7 +514,11 @@ const AudioSys = (() => {
     function out(node, pan = 0, wet = 0.3) {
         ensureReverb();
         let tail = node;
-        if (pan && ctx.createStereoPanner) {
+        if (isPos(pan)) {
+            const p = makePanner(pan);
+            node.connect(p);
+            tail = p;
+        } else if (pan && ctx.createStereoPanner) {
             const p = ctx.createStereoPanner();
             p.pan.value = clamp(pan, -1, 1);
             node.connect(p);
@@ -950,6 +1000,7 @@ const AudioSys = (() => {
             return o;
         };
         let intensity = null;
+        const events = [];
         if (kind === 'water') {
             const src = keep(brown());
             const lp = ctx.createBiquadFilter();
@@ -1056,9 +1107,166 @@ const AudioSys = (() => {
             src.start();
             hiss.start();
         }
+        else if (kind === 'maze') {
+            // Level I: deep concrete. A sub drone under the floor, the breathing of old air
+            // ducts, a mains hum from lamps that are mostly dead, and metal settling far away.
+            const lp = ctx.createBiquadFilter();
+            lp.type = 'lowpass';
+            lp.frequency.value = 130;
+            lp.Q.value = 2.2;
+            const drone = ctx.createGain();
+            drone.gain.value = 0.075;
+            lp.connect(drone);
+            drone.connect(master);
+            const send = ctx.createGain();
+            send.gain.value = 0.35;
+            drone.connect(send);
+            send.connect(reverbIn);
+            for (const [f, type] of [[36.7, 'sawtooth'], [37.0, 'sawtooth'], [55.0, 'triangle'], [73.4, 'sine']]) {
+                const o = keep(ctx.createOscillator());
+                o.type = type;
+                o.frequency.value = f;
+                o.connect(lp);
+                o.start();
+            }
+            lfo(0.035, 45, lp.frequency, 130);
+            const air = keep(brown());
+            const alp = ctx.createBiquadFilter();
+            alp.type = 'lowpass';
+            alp.frequency.value = 320;
+            const ag = ctx.createGain();
+            air.connect(alp);
+            alp.connect(ag);
+            ag.connect(master);
+            lfo(0.09, 0.03, ag.gain, 0.05);
+            air.start();
+            for (const [f, g] of [[50, 0.006], [100, 0.004], [150, 0.0015]]) {
+                const o = keep(ctx.createOscillator());
+                o.frequency.value = f;
+                const og = ctx.createGain();
+                og.gain.value = g;
+                o.connect(og);
+                og.connect(master);
+                o.start();
+            }
+            events.push(() => creak(master, rand(260, 900), rand(0.04, 0.09)));
+            intensity = (v) => drone.gain.setTargetAtTime(0.075 + v * 0.12, ctx.currentTime, 0.4);
+        } else if (kind === 'forest') {
+            // Level II: night wind through the trees and leaves, and very far off - or inside
+            // your head - a choir holding one wrong chord.
+            const src = keep(brown());
+            const bp = ctx.createBiquadFilter();
+            bp.type = 'bandpass';
+            bp.Q.value = 0.6;
+            lfo(0.05, 260, bp.frequency, 480);
+            const gust = ctx.createGain();
+            lfo(0.04, 0.05, gust.gain, 0.085);
+            src.connect(bp);
+            bp.connect(gust);
+            gust.connect(master);
+            src.start();
+            const leaves = keep(noise());
+            leaves.loop = true;
+            const hp = ctx.createBiquadFilter();
+            hp.type = 'highpass';
+            hp.frequency.value = 2600;
+            const lg = ctx.createGain();
+            lfo(0.11, 0.004, lg.gain, 0.005);
+            leaves.connect(hp);
+            hp.connect(lg);
+            lg.connect(master);
+            leaves.start();
+            const choir = ctx.createGain();
+            const cs = ctx.createGain();
+            cs.gain.value = 0.9;
+            choir.connect(cs);
+            cs.connect(reverbIn);
+            choir.connect(master);
+            lfo(0.025, 0.4, choir.gain, 0.6);
+            for (const f of [196, 233.1, 277.2, 392, 466.2]) {
+                const o = keep(ctx.createOscillator());
+                o.type = 'triangle';
+                o.frequency.value = f;
+                o.detune.value = rand(-9, 9);
+                const g = ctx.createGain();
+                g.gain.value = f > 300 ? 0.0025 : 0.004;
+                lfo(rand(0.05, 0.12), 0.0015, g.gain, g.gain.value);
+                o.connect(g);
+                g.connect(choir);
+                o.start();
+            }
+            events.push(() => crack(master));
+            intensity = (v) => choir.gain.setTargetAtTime(0.6 + v * 1.4, ctx.currentTime, 0.6);
+        } else if (kind === 'studio') {
+            // Level IV: dead air on a soundstage. Mains buzz from the rigs, tape hiss, a low
+            // drone, and a projector somewhere still flickering a reel nobody is watching.
+            for (const [f, g] of [[60, 0.007], [120, 0.005], [180, 0.002], [240, 0.001]]) {
+                const o = keep(ctx.createOscillator());
+                o.frequency.value = f;
+                const og = ctx.createGain();
+                og.gain.value = g;
+                o.connect(og);
+                og.connect(master);
+                o.start();
+            }
+            const hiss = keep(noise());
+            hiss.loop = true;
+            const hp = ctx.createBiquadFilter();
+            hp.type = 'highpass';
+            hp.frequency.value = 4200;
+            const hg = ctx.createGain();
+            hg.gain.value = 0.004;
+            hiss.connect(hp);
+            hp.connect(hg);
+            hg.connect(master);
+            hiss.start();
+            const lp = ctx.createBiquadFilter();
+            lp.type = 'lowpass';
+            lp.frequency.value = 160;
+            const drone = ctx.createGain();
+            drone.gain.value = 0.05;
+            lp.connect(drone);
+            drone.connect(master);
+            for (const [f, type] of [[49, 'sawtooth'], [49.3, 'sawtooth'], [73.4, 'sine']]) {
+                const o = keep(ctx.createOscillator());
+                o.type = type;
+                o.frequency.value = f;
+                o.connect(lp);
+                o.start();
+            }
+            lfo(0.04, 50, lp.frequency, 160);
+            // The projector: a fluttering whirr, 18 frames a second, drifting in and out
+            const pj = keep(noise());
+            pj.loop = true;
+            const pbp = ctx.createBiquadFilter();
+            pbp.type = 'bandpass';
+            pbp.frequency.value = 1300;
+            pbp.Q.value = 1.4;
+            const flutter = ctx.createGain();
+            lfo(18, 0.004, flutter.gain, 0.004);
+            const swell = ctx.createGain();
+            lfo(0.03, 0.8, swell.gain, 0.6);
+            pj.connect(pbp);
+            pbp.connect(flutter);
+            flutter.connect(swell);
+            swell.connect(master);
+            pj.start();
+            events.push(() => relay(master));
+            intensity = (v) => drone.gain.setTargetAtTime(0.05 + v * 0.1, ctx.currentTime, 0.4);
+        }
+        // Occasional sounds out in the dark (a creak, a crack, a relay)
+        let eventTimer = null;
+        if (events.length) {
+            const tick = () => {
+                if (live()) pick(events)();
+                eventTimer = setTimeout(tick, rand(6000, 15000));
+            };
+            eventTimer = setTimeout(tick, rand(3000, 8000));
+        }
         const bed = {
             set(v) { if (intensity) intensity(v); },
             stop() {
+                clearTimeout(eventTimer);
                 master.gain.setTargetAtTime(0, ctx.currentTime, 0.3);
                 const ns = nodes.slice();
                 setTimeout(() => {
@@ -1071,6 +1279,78 @@ const AudioSys = (() => {
         };
         beds.push(bed);
         return bed;
+    }
+
+    // ---- One-off sounds for the ambient beds ------------------------------------
+    // Metal settling somewhere far off: a ringing, resonant groan
+    function creak(dest, f, vol) {
+        const t = ctx.currentTime + 0.01;
+        const src = noise();
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.Q.value = 30;
+        bp.frequency.setValueAtTime(f, t);
+        bp.frequency.exponentialRampToValueAtTime(f * rand(0.7, 0.9), t + 1.6);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(vol, t + 0.4);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
+        src.connect(bp);
+        bp.connect(g);
+        out(g, rand(-0.9, 0.9), 0.9);
+        src.start(t, Math.random(), 2);
+    }
+    // A branch cracking somewhere out in the trees
+    function crack() {
+        const t = ctx.currentTime + 0.01;
+        for (let i = 0; i < randInt(1, 3); i++) {
+            const src = noise();
+            const bp = ctx.createBiquadFilter();
+            bp.type = 'bandpass';
+            bp.frequency.value = rand(700, 1600);
+            bp.Q.value = 1.5;
+            const g = ctx.createGain();
+            const ti = t + i * rand(0.05, 0.15);
+            g.gain.setValueAtTime(0.0001, ti);
+            g.gain.exponentialRampToValueAtTime(rand(0.02, 0.05), ti + 0.004);
+            g.gain.exponentialRampToValueAtTime(0.0001, ti + 0.09);
+            src.connect(bp);
+            bp.connect(g);
+            out(g, rand(-1, 1), 0.7);
+            src.start(ti, Math.random(), 0.12);
+        }
+    }
+    // A studio light relay clunking, and the buzz as something comes on for a moment
+    function relay() {
+        const t = ctx.currentTime + 0.01;
+        const src = noise();
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 900;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.06, t + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+        src.connect(lp);
+        lp.connect(g);
+        const pan = rand(-0.9, 0.9);
+        out(g, pan, 0.6);
+        src.start(t, Math.random(), 0.15);
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = 120;
+        const og = ctx.createGain();
+        og.gain.setValueAtTime(0.0001, t + 0.05);
+        og.gain.exponentialRampToValueAtTime(0.012, t + 0.1);
+        og.gain.exponentialRampToValueAtTime(0.0001, t + rand(0.6, 1.4));
+        const olp = ctx.createBiquadFilter();
+        olp.type = 'lowpass';
+        olp.frequency.value = 600;
+        o.connect(olp);
+        olp.connect(og);
+        out(og, pan, 0.4);
+        o.start(t);
+        o.stop(t + 1.6);
     }
 
     function stopBeds() {
@@ -1120,7 +1400,7 @@ const AudioSys = (() => {
         playMatch, playJumpscare,
         startDrone, stopDrone, heartbeat, click, flashlight, pickup, batteryDead, staticBurst, suspendAll,
         splash, drip, clicks, wail, groan, thump, whisper, squelch, fleshStep, sting, flick, camBeep,
-        setReverb, startBed, stopBeds,
+        setReverb, startBed, stopBeds, setListener,
         retryBlocked, unlock,
         get context() { return ctx; }
     };

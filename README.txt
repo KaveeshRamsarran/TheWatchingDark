@@ -42,7 +42,10 @@ ALTERNATIVE: Direct File Access
   C               Crouch (slow, but almost silent)
   RMB (hold) / Q  Raise the camcorder (Level IV)
   SPACE           Light a match (Watchers flee from fire)
-  E               Read / close a note (the game pauses while you read)
+  E               Read / close a note (the game pauses while you read);
+                  hide in / step out of a locker or wardrobe (Level IV)
+  J               Journal: re-read every note you've found
+                  (every key above can be changed in Settings > Keys)
   ESC             Pause menu (settings, resume, quit)
   ALT+ENTER       Toggle fullscreen (also on the title screen, pause menu & settings)
   Z               God mode (testing: invulnerable, no-clip, fly)
@@ -156,6 +159,9 @@ MONSTERS
     - But don't film one for too long: they get used to the lens. Its head
       starts to twitch - then it walks toward you even on camera, and it
       never stops. Glance, don't stare.
+    - Hide in a locker or a set wardrobe (E): through the slats you can
+      still film what's outside. While you're hidden nothing can find you -
+      even an Unseen that's awake comes to the door, waits... and gives up.
     - The camera drains its battery while raised; spare cells are
       scattered around (+35%)
 
@@ -260,6 +266,12 @@ Graphics
   ✓ Fields of real grass blades that sway in the wind (Level 2, the ending)
   ✓ Heading-up minimap that reveals only where you've been
 
+Sound
+  ✓ Directional 3D audio (HRTF): footsteps, clicks, static and chimes come
+    from where the creature really is - in front, behind, above
+  ✓ Every level has its own living soundscape, generated as you play
+  ✓ The monsters' footsteps are your own - only slower and heavier
+
 Performance
   ✓ Walls merged into culled chunks; forest drawn with chunked instancing
   ✓ Fixed light budget (lamps share a pool of real lights)
@@ -271,8 +283,9 @@ Performance
       High:   + full resolution, finer volumetrics, shadowed lamps
 
 Settings
-  ✓ Music & effects volume, mouse sensitivity,
-    brightness and graphics quality (saved between sessions)
+  ✓ Music & effects volume, mouse sensitivity, brightness, graphics
+    quality and key bindings (saved between sessions)
+  ✓ A journal (J, or from the pause menu) of every note you've found
 
 
 ═══════════════════════════════════════════════════════════════════

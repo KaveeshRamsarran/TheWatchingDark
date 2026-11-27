@@ -10,6 +10,7 @@ const Monsters = (() => {
     const angels = [];
     const drowned = [];
     let footVoices = [];
+    let stepSound = 'concrete';
     let chimes = null;
     let scene = null;
     let directorTimer = 0;
@@ -49,9 +50,13 @@ const Monsters = (() => {
         nearestHunterDist = Infinity;
     }
 
+    // Their footsteps are the same as yours, only slower and heavier
+    function setStepSound(key) { stepSound = key || 'concrete'; }
     function ensureFootVoices() {
-        if (!footVoices.length) footVoices = [0, 1, 2].map(() => AudioSys.createVoice('footsteps'));
+        if (!footVoices.length) footVoices = [0, 1, 2].map(() => AudioSys.createVoice(stepSound, { rate: 0.82, pitch: false, base: 0.9 }));
     }
+    // World position of a creature's sound (for directional audio)
+    const at = (pos, y) => ({ x: pos.x, y, z: pos.z });
 
     // ---------------------------------------------------------------------------
     // Spawning
@@ -229,7 +234,7 @@ const Monsters = (() => {
             }
         }
 
-        let nearestHunter = Infinity, nearestHunterPan = 0;
+        let nearestHunter = Infinity, nearestHunterAt = null;
 
         for (const w of watchers) {
             const dx = cam.position.x - w.pos.x, dz = cam.position.z - w.pos.z;
@@ -252,8 +257,7 @@ const Monsters = (() => {
                 else if (!w.woken) w.filmed = Math.max(0, (w.filmed || 0) - dt * 0.35);
                 if (!w.woken && w.filmed > UNSEEN_WAKE) {
                     w.woken = true;
-                    tmp.set(w.pos.x - cam.position.x, 0, w.pos.z - cam.position.z).normalize();
-                    AudioSys.staticBurst(1, tmp.dot(camRight));
+                    AudioSys.staticBurst(1, at(w.pos, 1.6));
                     AudioSys.sting(0.45);
                 }
                 // Getting used to the lens: its head starts to twitch on camera before it moves
@@ -261,7 +265,7 @@ const Monsters = (() => {
                     const k = rand(-0.5, 0.5);
                     w.model.pose('head', rand(-0.2, 0.2), k * 0.4, k);
                 }
-                if (w.woken) {
+                if (w.woken && !ctx.hidden) {
                     w.aware = Math.max(w.aware, 60);
                     w.stalker = true;
                 }
@@ -274,9 +278,23 @@ const Monsters = (() => {
                 w.aware = Math.max(w.aware, 6);
             }
 
-            // Senses
-            if (pd >= 0 && pd <= w.type.detect) w.aware = Math.max(w.aware, 8);
-            const heard = player.noise > 30 && pd >= 0 && pd <= w.type.hear;
+            // Senses (nothing to sense while you're hidden)
+            if (!ctx.hidden && pd >= 0 && pd <= w.type.detect) w.aware = Math.max(w.aware, 8);
+            const heard = !ctx.hidden && player.noise > 30 && pd >= 0 && pd <= w.type.hear;
+            if (ctx.hidden && w.woken) {
+                // It comes to where you went in, stands outside the door... and gives up
+                w.search = (w.search || 0) + dt;
+                if (w.search > (w.giveUp || (w.giveUp = rand(7, 12)))) {
+                    w.woken = false;
+                    w.filmed = 0;
+                    w.aware = 0;
+                    w.stalker = false;
+                    w.search = 0;
+                    w.giveUp = 0;
+                }
+            } else if (!ctx.hidden) {
+                w.search = 0;
+            }
             if (heard) w.aware = Math.max(w.aware, 8);
             if (!seen) w.aware -= dt;
             if (w.aware <= 0) w.stalker = false;
@@ -313,11 +331,10 @@ const Monsters = (() => {
 
             if (hunting && !w.frozen && w.dist < nearestHunter) {
                 nearestHunter = w.dist;
-                tmp.set(w.pos.x - cam.position.x, 0, w.pos.z - cam.position.z).normalize();
-                nearestHunterPan = tmp.dot(camRight);
+                nearestHunterAt = at(w.pos, 1.6);
             }
 
-            if (w.dist < 1.25 * s + 0.2 && !player.godMode) {
+            if (w.dist < 1.25 * s + 0.2 && !player.godMode && !ctx.hidden) {
                 ctx.onKill(unseen ? 'unseen' : 'watcher', w);
                 return;
             }
@@ -331,7 +348,7 @@ const Monsters = (() => {
         const staticRange = watchers.length && watchers[0].variant === 'unseen' ? 11 : 7;
         staticTimer -= dt;
         if (nearestHunter < staticRange && staticTimer <= 0) {
-            AudioSys.staticBurst(1 - nearestHunter / staticRange, nearestHunterPan);
+            AudioSys.staticBurst(1 - nearestHunter / staticRange, nearestHunterAt);
             staticTimer = rand(0.5, 1.3) * (0.5 + nearestHunter / staticRange);
         }
     }
@@ -419,12 +436,10 @@ const Monsters = (() => {
             const w = moving[i];
             const v = footVoices[i];
             if (!w) { v.set(0); continue; }
-            tmp.set(w.pos.x - cam.position.x, 0, w.pos.z - cam.position.z).normalize();
-            const pan = tmp.dot(camRight) * 0.85;
             const soft = w.variant === 'unseen' ? 0.45 : 1;
             const vol = Math.min(1, (1 - w.dist / 40) * 2.2) * (w.aware > 0 ? 1 : 0.6) * soft;
-            v.el.playbackRate = clamp(w.speed / 3.2, 0.7, 1.6);
-            v.set(vol, pan);
+            v.el.playbackRate = clamp(w.speed / 3.2, 0.7, 1.6) * 0.82;
+            v.set(vol, at(w.pos, 0.2));
         }
     }
 
@@ -458,8 +473,7 @@ const Monsters = (() => {
                 along <= reach + (d.mode === 'wander' ? 0 : 1.5);
             if (heard) {
                 if (d.mode === 'wander' && d.dist < 34) {
-                    tmp.set(-dx, 0, -dz).normalize();
-                    AudioSys.wail(Math.min(1, 1.3 - d.dist / 30), tmp.dot(camRight) * 0.85, d.dist / 34);
+                    AudioSys.wail(Math.min(1, 1.3 - d.dist / 30), at(d.pos, 0.5), d.dist / 34);
                     d.clickTimer = rand(0.2, 0.5);
                 }
                 d.mode = 'investigate';
@@ -492,15 +506,14 @@ const Monsters = (() => {
             if (d.clickTimer <= 0) {
                 d.clickTimer = alert ? rand(0.7, 1.4) : rand(2.2, 4.5);
                 if (d.dist < 32) {
-                    tmp.set(-dx, 0, -dz).normalize();
                     const vol = Math.pow(1 - d.dist / 32, 1.4);
-                    AudioSys.clicks(vol, tmp.dot(camRight) * 0.85, alert, d.dist / 32);
+                    AudioSys.clicks(vol, at(d.pos, 0.5), alert, d.dist / 32);
                 }
             }
             d.stepAcc += d.speed * dt * 0.42;
 
             // They only take you if they heard you a moment ago - hold still and they pass by
-            if (d.dist < 0.95 * d.scale + 0.15 && time - d.heardAt < 1.5 && !player.godMode) {
+            if (d.dist < 0.95 * d.scale + 0.15 && time - d.heardAt < 1.5 && !player.godMode && !ctx.hidden) {
                 ctx.onKill('drowned', d);
                 return;
             }
@@ -513,10 +526,9 @@ const Monsters = (() => {
         for (const d of moving) {
             if (d.stepAcc < 1) continue;
             d.stepAcc -= Math.floor(d.stepAcc);
-            tmp.set(d.pos.x - cam.position.x, 0, d.pos.z - cam.position.z).normalize();
             const far = d.dist / 30;
             const deep = ctx.waterDepth ? ctx.waterDepth(d.pos.x, d.pos.z) : 0;
-            AudioSys.splash(Math.pow(1 - far, 1.4) * (d.speed > 3 ? 1 : 0.75), 0.3 + deep * 0.7, tmp.dot(camRight) * 0.85, far);
+            AudioSys.splash(Math.pow(1 - far, 1.4) * (d.speed > 3 ? 1 : 0.75), 0.3 + deep * 0.7, at(d.pos, 0.2), far);
         }
         for (const d of drowned) if (d.stepAcc > 2) d.stepAcc = 0;
     }
@@ -676,7 +688,7 @@ const Monsters = (() => {
                 for (const g of a.model.eyeGlows) g.material.opacity = 0.5 + chargeN * 0.5;
             }
 
-            if (a.dist < 2.3 && !player.godMode) {
+            if (a.dist < 2.3 && !player.godMode && !ctx.hidden) {
                 ctx.onKill('angel', a);
                 return;
             }
@@ -692,7 +704,8 @@ const Monsters = (() => {
             l.intensity = 1.6 + Math.min(a.charge, 3) * 0.8 + Math.sin(time * 5 + i) * 0.2;
         }
 
-        if (chimes) chimes.set(closest < 15 ? Math.min(1, (1 - closest / 15) * 1.5) : 0);
+        const nearestAngel = near[0];
+        if (chimes) chimes.set(closest < 15 ? Math.min(1, (1 - closest / 15) * 1.5) : 0, nearestAngel ? at(nearestAngel.pos, 3.3) : 0);
         ctx.angelState.closest = closest;
         ctx.angelState.charge = maxCharge;
         ctx.angelState.looked = lookedCount;
@@ -718,7 +731,7 @@ const Monsters = (() => {
     }
 
     return {
-        init, clear, spawnWatchers, spawnAngels, spawnDrowned,
+        init, clear, spawnWatchers, spawnAngels, spawnDrowned, setStepSound,
         updateWatchers, updateAngels, updateDrowned, silence,
         nearestWatcherDistance, nearestDistance,
         // Distance to the nearest hunting Watcher/Unseen that isn't being observed
