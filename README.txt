@@ -200,13 +200,21 @@ LEVEL 2: THE LOST FOREST
   you can barely see a few metres - only the Angels' halos glimmer through it. Reach the pillar
   of golden light.
 
-LEVEL 3: THE FLOODED BASEMENT
-  Sub-level B3: black water over concrete, rusted pipes and dripping
-  ceilings. Find the stairs up (green EXIT doors) without being heard.
+LEVEL 3: THE HOLDING TANKS
+  Shaw's laboratory under the reservoir, flooded to the shins: tiled lab
+  halls full of glass tanks, their green glow almost the only light - and
+  whole banks of them flicker and die. Pale shapes float in some tanks
+  and turn their heads to follow you. Some tanks were drained from the
+  inside, handprints on the glass. Something you saw in a tank may be
+  gone when you come back. Find the stairs up without being heard.
 
 LEVEL 4: THE OBSERVATION WING
-  Offices lit by red emergency lamps and CRTs full of static. No
-  flashlight - only a night-vision camcorder. Find a green EXIT door.
+  Where they filmed them: black-padded soundstages, each with a perfect
+  1950s home on it - a living room, a kitchen, a bedroom - with no fourth
+  wall, under dead stage lights and buzzing ON AIR signs. The crew are
+  mannequins, and through the lens they look exactly like the Unseen.
+  Lower the camera: the mannequins are still there. The Unseen are not.
+  No flashlight - only a night-vision camcorder. Find a green EXIT door.
 
 LEVEL 5: THE WATCHING DARK
   Not a maze: one long descent through breathing flesh, spiralling in
@@ -282,12 +290,16 @@ Settings
   js/world.js       Maze generation, collision, line of sight, pathfinding
   js/models.js      Watcher, Drowned (crawler) and Unseen, the Angels and
                     their statues, eye, props, first-person models
+  js/props.js       Places and batches the Blender-built props (tanks,
+                    specimens, 1950s furniture, studio gear)
   js/facility.js    Shared builder for the indoor maze levels (walls,
                     lamps, decals, pickups, notes, exit doors)
   js/level1.js      Level 1 construction
   js/level2.js      Level 2 construction
-  js/level3.js      Level 3 construction (water, deep pools)
-  js/level4.js      Level 4 construction (monitors, emergency lights)
+  js/level3.js      Level 3: the holding tanks (water, deep pools, tank
+                    banks that fail, specimens that watch - and leave)
+  js/level4.js      Level 4: the studio (soundstages, 1950s sets, the
+                    mannequin crew, ON AIR signs, monitors)
   js/level5.js      Level 5: living walls, wall eyes, arms, the woman,
                     the great blink and the final gaze
   js/monsters.js    Watcher, Angel, Drowned & Unseen behaviour
@@ -301,7 +313,9 @@ Settings
   tools/blender/    Blender scripts that build the models: build_models.py
                     (statue Angel, the woman, the things in the walls, trees,
                     flashlight, Watcher jumpscare image) and creatures.py
-                    (the Watcher, the Unseen and the crawling Drowned)
+                    (the Watcher, the Unseen and the crawling Drowned),
+                    props.py (holding tanks, specimens, set furniture
+                    and studio gear)
   tools/pack_assets.mjs  Packs exported models into js/assets.js
   audio/            Sound effects and music
   images/           Jumpscare images
@@ -315,7 +329,7 @@ Settings
   node tools/pack_assets.mjs tools/build js/assets.js
 
   Add "preview" after the output folder to also render preview images, and
-  "watcher", "unseen", "crawler", "monsters" (all three), "trees",
+  "watcher", "unseen", "crawler", "monsters" (all three), "props", "trees",
   "flashlight", "angel", "figure", "flesh" or "creatures" (angel + figure
   + flesh) after that to rebuild just those.
 

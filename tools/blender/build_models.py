@@ -1295,6 +1295,10 @@ def render_jumpscare():
     print("RENDERED", scene.render.filepath)
 
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "creatures.py"), encoding="utf-8").read())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "props.py"), encoding="utf-8").read())
+
+if ONLY in ("all", "props"):
+    build_props()
 
 if ONLY in ("all", "watcher", "monsters"):
     build_watcher2()

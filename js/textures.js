@@ -928,6 +928,183 @@ const Textures = (() => {
         return cache.paleSkin;
     }
 
+    // -------------------------------------------------------------------------
+    // Level 3: the holding tanks - white lab tiles, stained to the water line
+    // One tile covers 4 world units across and the full wall height (canvas top = ceiling).
+    // -------------------------------------------------------------------------
+    function labTiles() {
+        if (cache.labTiles) return cache.labTiles;
+        const size = 512, COLS = 16, ROWS = 18;
+        const maps = buildMaps(size, (u, v, o) => {
+            const tu = u * COLS, tv = v * ROWS;
+            const fu = tu - Math.floor(tu), fv = tv - Math.floor(tv);
+            const grout = Math.max(1 - smoothstep(0.0, 0.06, fu), smoothstep(0.94, 1.0, fu), 1 - smoothstep(0.0, 0.06, fv), smoothstep(0.94, 1.0, fv));
+            const id = Noise.value2(Math.floor(tu) * 7.3, Math.floor(tv) * 3.1, 256, 256);
+            const grime = Noise.fbm(u, v, 6, 4);
+            // Water line: dark, streaked staining up from the floor (canvas bottom = floor)
+            const wet = smoothstep(0.8, 0.95, v + (Noise.fbm(u, v, 24, 2, 0.5, 4) - 0.5) * 0.08);
+            const streak = smoothstep(0.55, 0.85, Noise.fbm(u, v, 40, 2, 0.5, 3)) * smoothstep(0.3, 0.9, v);
+            const cracked = id > 0.93 ? smoothstep(0.48, 0.5, Math.abs(Noise.fbm(u, v, 30, 2) - 0.5) + 0.48) : 0;
+            let k = 0.78 + id * 0.1 - grime * 0.18;
+            let r = 196 * k, g = 204 * k, b = 196 * k;
+            r = lerp(r, 70, grout * 0.85); g = lerp(g, 74, grout * 0.85); b = lerp(b, 66, grout * 0.85);
+            r = lerp(r, 56, wet * 0.75); g = lerp(g, 64, wet * 0.75); b = lerp(b, 50, wet * 0.75);
+            r = lerp(r, 120, streak * 0.35); g = lerp(g, 112, streak * 0.35); b = lerp(b, 84, streak * 0.35);
+            r = lerp(r, 40, cracked); g = lerp(g, 40, cracked); b = lerp(b, 40, cracked);
+            o.r = clamp(r, 0, 255); o.g = clamp(g, 0, 255); o.b = clamp(b, 0, 255);
+            o.h = (1 - grout) * 0.6 + grime * 0.1 - cracked * 0.3;
+            o.ro = lerp(0.18 + grime * 0.2, 0.9, grout) + wet * 0.1;
+        }, 3.0);
+        cache.labTiles = mapsToTextures(maps);
+        return cache.labTiles;
+    }
+
+    // -------------------------------------------------------------------------
+    // Level 4: the studio - quilted black acoustic padding on the soundstage walls
+    // -------------------------------------------------------------------------
+    function acousticPadding() {
+        if (cache.acoustic) return cache.acoustic;
+        const size = 512, COLS = 8, ROWS = 9;
+        const maps = buildMaps(size, (u, v, o) => {
+            const tu = u * COLS, tv = v * ROWS;
+            const fu = tu - Math.floor(tu) - 0.5, fv = tv - Math.floor(tv) - 0.5;
+            const pillow = Math.pow(Math.max(0, 1 - (fu * fu + fv * fv) * 3.2), 0.6);
+            const seam = 1 - smoothstep(0.0, 0.06, Math.min(0.5 - Math.abs(fu), 0.5 - Math.abs(fv)));
+            const n = Noise.fbm(u, v, 30, 3);
+            const k = 0.32 + pillow * 0.18 + n * 0.08 - seam * 0.2;
+            o.r = clamp(52 * k + 6, 0, 255); o.g = clamp(52 * k + 6, 0, 255); o.b = clamp(58 * k + 8, 0, 255);
+            o.h = pillow * 0.8 - seam * 0.3 + n * 0.05;
+            o.ro = 0.95;
+        }, 4.0);
+        cache.acoustic = mapsToTextures(maps);
+        return cache.acoustic;
+    }
+
+    // Set dressing for the 1950s home-life sets: drawn, not sampled
+    function wallpaper(kind) {
+        const key = 'wallpaper_' + kind;
+        if (cache[key]) return cache[key];
+        const W = 256, c = makeCanvas(W), ctx = c.getContext('2d');
+        if (kind === 'living') {
+            // Teal damask diamonds on cream
+            ctx.fillStyle = '#d9d2b8'; ctx.fillRect(0, 0, W, W);
+            ctx.fillStyle = '#5f8a84';
+            for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+                const cx = x * 64 + (y % 2 ? 32 : 0), cy = y * 64 + 32;
+                ctx.beginPath(); ctx.moveTo(cx, cy - 22); ctx.lineTo(cx + 14, cy); ctx.lineTo(cx, cy + 22); ctx.lineTo(cx - 14, cy); ctx.closePath(); ctx.fill();
+                ctx.beginPath(); ctx.arc(cx, cy - 26, 4, 0, TAU); ctx.arc(cx, cy + 26, 4, 0, TAU); ctx.fill();
+            }
+            ctx.strokeStyle = 'rgba(95,138,132,0.35)'; ctx.lineWidth = 2;
+            for (let x = 0; x <= W; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, W); ctx.stroke(); }
+        } else if (kind === 'kitchen') {
+            // Butter yellow with a red cherry check
+            ctx.fillStyle = '#e8d89a'; ctx.fillRect(0, 0, W, W);
+            ctx.fillStyle = 'rgba(190,40,36,0.28)';
+            for (let i = 0; i < W; i += 32) { ctx.fillRect(i, 0, 10, W); ctx.fillRect(0, i, W, 10); }
+            ctx.fillStyle = '#b8241e';
+            for (let y = 16; y < W; y += 64) for (let x = 16; x < W; x += 64) {
+                ctx.beginPath(); ctx.arc(x, y, 6, 0, TAU); ctx.arc(x + 9, y + 3, 6, 0, TAU); ctx.fill();
+            }
+        } else {
+            // Dusty pink stripes with small roses
+            ctx.fillStyle = '#d8b4b0'; ctx.fillRect(0, 0, W, W);
+            ctx.fillStyle = '#c49a98';
+            for (let x = 0; x < W; x += 32) ctx.fillRect(x, 0, 12, W);
+            ctx.fillStyle = '#8a3a44';
+            for (let y = 20; y < W; y += 48) for (let x = 22; x < W; x += 64) {
+                ctx.beginPath(); ctx.arc(x + (y % 96 ? 32 : 0), y, 5, 0, TAU); ctx.fill();
+            }
+        }
+        // Age: stains and fading
+        for (let i = 0; i < 40; i++) {
+            ctx.fillStyle = `rgba(60,40,20,${rand(0.02, 0.07)})`;
+            ctx.beginPath(); ctx.arc(rand(0, W), rand(0, W), rand(6, 40), 0, TAU); ctx.fill();
+        }
+        cache[key] = toTexture(c);
+        return cache[key];
+    }
+
+    function setFloor(kind) {
+        const key = 'setfloor_' + kind;
+        if (cache[key]) return cache[key];
+        const W = 256, c = makeCanvas(W), ctx = c.getContext('2d');
+        if (kind === 'checker') {
+            for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+                ctx.fillStyle = (x + y) % 2 ? '#1a1a1c' : '#d8d4c8';
+                ctx.fillRect(x * 32, y * 32, 32, 32);
+            }
+        } else if (kind === 'rug') {
+            ctx.fillStyle = '#6a2a24'; ctx.fillRect(0, 0, W, W);
+            ctx.strokeStyle = '#c8a060'; ctx.lineWidth = 8; ctx.strokeRect(14, 14, W - 28, W - 28);
+            ctx.lineWidth = 3; ctx.strokeRect(30, 30, W - 60, W - 60);
+            ctx.fillStyle = '#c8a060';
+            ctx.beginPath(); ctx.ellipse(W / 2, W / 2, 50, 34, 0, 0, TAU); ctx.fill();
+            ctx.fillStyle = '#6a2a24';
+            ctx.beginPath(); ctx.ellipse(W / 2, W / 2, 34, 20, 0, 0, TAU); ctx.fill();
+        } else {
+            // Varnished floorboards
+            ctx.fillStyle = '#5a3a22'; ctx.fillRect(0, 0, W, W);
+            for (let x = 0; x < W; x += 32) {
+                ctx.fillStyle = `rgb(${randInt(74, 100)},${randInt(46, 62)},${randInt(26, 36)})`;
+                ctx.fillRect(x + 1, 0, 30, W);
+                ctx.fillStyle = 'rgba(20,10,4,0.5)'; ctx.fillRect(x, 0, 1, W);
+                ctx.fillRect(x, randInt(0, W), 32, 1);
+            }
+        }
+        cache[key] = toTexture(c);
+        return cache[key];
+    }
+
+    // Raw plywood flats, seen from behind the set
+    function plywood() {
+        if (cache.plywood) return cache.plywood;
+        const W = 256, c = makeCanvas(W), ctx = c.getContext('2d');
+        ctx.fillStyle = '#9a8460'; ctx.fillRect(0, 0, W, W);
+        for (let i = 0; i < 90; i++) {
+            ctx.strokeStyle = `rgba(${randInt(90, 130)},${randInt(70, 100)},${randInt(40, 60)},0.5)`;
+            ctx.lineWidth = rand(0.5, 2);
+            const y = rand(0, W);
+            ctx.beginPath(); ctx.moveTo(0, y);
+            for (let x = 0; x <= W; x += 16) ctx.lineTo(x, y + Math.sin(x * 0.05 + i) * rand(1, 4));
+            ctx.stroke();
+        }
+        ctx.fillStyle = 'rgba(30,20,10,0.6)';
+        ctx.font = 'bold 22px monospace';
+        ctx.fillText('STAGE 4 - FLAT 12', 20, 60);
+        cache.plywood = toTexture(c);
+        return cache.plywood;
+    }
+
+    // A painted night sky for the backdrop behind the set windows
+    function backdrop() {
+        if (cache.backdrop) return cache.backdrop;
+        const W = 256, c = makeCanvas(W, 128), ctx = c.getContext('2d');
+        const g = ctx.createLinearGradient(0, 0, 0, 128);
+        g.addColorStop(0, '#0a1030'); g.addColorStop(1, '#2a3a5a');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, 128);
+        ctx.fillStyle = '#f0e8c8';
+        ctx.beginPath(); ctx.arc(190, 36, 14, 0, TAU); ctx.fill();
+        for (let i = 0; i < 60; i++) ctx.fillRect(rand(0, W), rand(0, 90), 1.5, 1.5);
+        ctx.fillStyle = '#05070c';
+        ctx.beginPath(); ctx.moveTo(0, 128);
+        for (let x = 0; x <= W; x += 16) ctx.lineTo(x, 100 - Math.abs(Math.sin(x * 0.07)) * 18 - (x % 48 === 0 ? 12 : 0));
+        ctx.lineTo(W, 128); ctx.fill();
+        cache.backdrop = toTexture(c, { repeat: false });
+        return cache.backdrop;
+    }
+
+    // A lit sign: "ON AIR"
+    function onAir() {
+        if (cache.onAir) return cache.onAir;
+        const c = makeCanvas(256, 96), ctx = c.getContext('2d');
+        ctx.fillStyle = '#1a0202'; ctx.fillRect(0, 0, 256, 96);
+        ctx.strokeStyle = '#ff3020'; ctx.lineWidth = 6; ctx.strokeRect(6, 6, 244, 84);
+        ctx.fillStyle = '#ff4a30'; ctx.font = 'bold 54px Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('ON AIR', 128, 50);
+        cache.onAir = toTexture(c, { repeat: false });
+        return cache.onAir;
+    }
+
     // Leaf-card atlas: left half a broadleaf cluster, right half a pine-needle spray
     function leafAtlas() {
         if (cache.leaves) return cache.leaves;
@@ -1033,6 +1210,7 @@ const Textures = (() => {
 
     return {
         setRenderer, makeCanvas, toTexture, skin, paleSkin, leafAtlas, knurl,
+        labTiles, acousticPadding, wallpaper, setFloor, plywood, backdrop, onAir,
         concreteWall, woodFloor, concreteFloor, ceilingTiles, waterNormal, staticNoise, eyeball, flesh,
         hedge, bark, forestFloor, grassField, stone,
         glow, lightPool, fogPuff, flame, decal, exitSign, paper, angelFace, feather

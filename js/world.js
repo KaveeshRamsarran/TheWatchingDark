@@ -8,6 +8,7 @@ const World = (() => {
 
     let cells = [];       // cells[x][z] = { n, s, e, w } (true = wall)
     let exits = [];
+    let rooms = [];       // rectangular rooms opened by the last generate(): { x, z, w, h } in cells
 
     // Collision primitives: axis-aligned boxes and vertical cylinders (circles)
     const boxes = [];
@@ -30,7 +31,11 @@ const World = (() => {
     // -------------------------------------------------------------------------
     // Generation (recursive backtracker + rooms + circular halls + winding corridors)
     // -------------------------------------------------------------------------
-    function generate() {
+    // opts (all optional): rooms [min, max], roomSize [min, max] (cells), halls [min, max]
+    // (circular), corridors [min, max] - bigger rooms and fewer corridors give a level of halls
+    function generate(opts = {}) {
+        const o = Object.assign({ rooms: [10, 17], roomSize: [3, 7], halls: [5, 9], corridors: [8, 13] }, opts);
+        rooms = [];
         cells = [];
         for (let x = 0; x < SIZE; x++) {
             cells[x] = [];
@@ -65,11 +70,12 @@ const World = (() => {
         }
 
         // Rectangular rooms
-        const rooms = randInt(10, 17);
-        for (let i = 0; i < rooms; i++) {
+        const roomCount = randInt(o.rooms[0], o.rooms[1]);
+        for (let i = 0; i < roomCount; i++) {
             const rx = 1 + Math.floor(Math.random() * (SIZE - 12));
             const rz = 1 + Math.floor(Math.random() * (SIZE - 12));
-            const rw = randInt(3, 7), rh = randInt(3, 7);
+            const rw = randInt(o.roomSize[0], o.roomSize[1]), rh = randInt(o.roomSize[0], o.roomSize[1]);
+            rooms.push({ x: rx, z: rz, w: Math.min(rw, SIZE - 1 - rx), h: Math.min(rh, SIZE - 1 - rz) });
             for (let x = rx; x < Math.min(rx + rw, SIZE - 1); x++) {
                 for (let z = rz; z < Math.min(rz + rh, SIZE - 1); z++) {
                     if (x < rx + rw - 1) open(x, z, DIRS[2]);
@@ -79,7 +85,7 @@ const World = (() => {
         }
 
         // Circular halls
-        const halls = randInt(5, 9);
+        const halls = randInt(o.halls[0], o.halls[1]);
         for (let i = 0; i < halls; i++) {
             const cx = randInt(3, SIZE - 4), cz = randInt(3, SIZE - 4), r = randInt(2, 4);
             for (let x = cx - r; x <= cx + r; x++) {
@@ -93,7 +99,7 @@ const World = (() => {
         }
 
         // Winding corridors that create loops
-        const corridors = randInt(8, 13);
+        const corridors = randInt(o.corridors[0], o.corridors[1]);
         for (let i = 0; i < corridors; i++) {
             let x = randInt(0, SIZE - 1), z = randInt(0, SIZE - 1);
             let dir = randInt(0, 3);
@@ -127,6 +133,7 @@ const World = (() => {
     // spiralling inward to a great round chamber (the heart) at the centre of the grid.
     // Cells never reached stay `solid` (sealed flesh) and get no walls of their own.
     function generateJourney() {
+        rooms = [];
         cells = [];
         for (let x = 0; x < SIZE; x++) {
             cells[x] = [];
@@ -531,6 +538,7 @@ const World = (() => {
         generate, generateJourney, isSolid,
         get cells() { return cells; },
         get exits() { return exits; },
+        get rooms() { return rooms; },
         cellX, inBounds, center, canStep, openNeighbours, isOpenCorner,
         clearColliders, addBox, addCircle, resolve, overlaps, query,
         lineOfSight, updateFlow, pathDist, flowStep, fieldFrom, descend,

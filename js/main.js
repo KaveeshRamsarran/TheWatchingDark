@@ -256,14 +256,14 @@
             angelSight: 15, haloFar: 32, reverb: 0.25, dust: 0.01, deathTitle: 'CONSUMED BY LIGHT'
         },
         3: {
-            num: 'III', title: 'THE FLOODED BASEMENT', sub: 'They cannot see you. They can hear you.', objective: 'Find the stairs up. Move quietly.',
+            num: 'III', title: 'THE HOLDING TANKS', sub: 'They cannot see you. They can hear you.', objective: 'Find the stairs up. Move quietly.',
             builder: () => Level3, spawn: () => Monsters.spawnDrowned(randInt(16, 18)),
             music: null, bed: 'water', steps: null, far: 52, dark: true, meter: 'battery', hint: HINT_DEFAULT,
             ambient: [0x1a2624, 0x050807, 0.12], tint: new THREE.Color(0.92, 1.0, 0.98), exitFlash: [0.6, 1, 0.7],
             matchNoise: true, reverb: 1.0, dust: 0.018, deathTitle: 'DRAGGED UNDER'
         },
         4: {
-            num: 'IV', title: 'THE OBSERVATION WING', sub: 'They only exist on camera.', objective: 'Find an exit. Keep recording.',
+            num: 'IV', title: 'THE OBSERVATION WING', sub: 'Quiet on set. They only exist on camera.', objective: 'Find an exit. Keep recording.',
             builder: () => Level4, spawn: () => Monsters.spawnWatchers(randInt(11, 13), 'unseen'),
             music: ['ost', 0.035 / 0.3], steps: 'concrete', far: 50, dark: true, meter: 'camera', hint: HINT_CAMERA,
             ambient: [0x7a4a4a, 0x1a1010, 0.6], tint: new THREE.Color(1.02, 0.95, 0.95), exitFlash: [0.6, 1, 0.7],
@@ -1391,11 +1391,10 @@
         if (!scene) jumpscare(cause);
     }
 
-    // The end of a death scene: the scream, a cut to black, then the death screen
+    // The end of a death scene: a cut to black and silence, then the death screen
     function jumpscare(cause) {
         if (state.mode !== 'dying') return;
         if (isLocked()) document.exitPointerLock();
-        AudioSys.playJumpscare();
         if (state.deathFx) state.deathFx.blackout = 1;
         state.fadeTarget = 1;
         HUD.setCamcorder(false);
@@ -1931,7 +1930,7 @@
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '2.8';
+    const BUILD = '2.9';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {

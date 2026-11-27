@@ -136,5 +136,27 @@ const Assets = (() => {
         return out;
     }
 
-    return { load, has, watcher, skinned, flashlight, tree, part, get ok() { return ok; } };
+    // Every "<prefix>_<Material>" object of a prop, as [{ key: 'Material', geo }]
+    const prefixCache = {};
+    function prefixed(file, prefix) {
+        const ck = file + ':' + prefix;
+        if (prefixCache[ck]) return prefixCache[ck];
+        const g = gltfs[file];
+        const out = [];
+        if (g) {
+            const seen = new Set();
+            g.scene.traverse((o) => {
+                if (!o.name || !o.name.startsWith(prefix + '_') || seen.has(o.name)) return;
+                const key = o.name.slice(prefix.length + 1);
+                if (key.includes('_')) return;
+                seen.add(o.name);
+                const geo = part(file, o.name);
+                if (geo) out.push({ key, geo });
+            });
+        }
+        prefixCache[ck] = out;
+        return out;
+    }
+
+    return { load, has, watcher, skinned, flashlight, tree, part, prefixed, get ok() { return ok; } };
 })();
