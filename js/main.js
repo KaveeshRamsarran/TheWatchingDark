@@ -405,7 +405,8 @@
         else AudioSys.stopMusic();
         if (info.bed) rig.bed = AudioSys.startBed(info.bed);
         // The concrete recording is about twice as loud as the others
-        rig.footsteps = info.steps ? AudioSys.createVoice(info.steps, { base: info.steps === 'concrete' ? 0.55 : 1 }) : null;
+        rig.footsteps = level.water ? AudioSys.createVoice('water', { base: 0.75, region: [4.6, 37] })
+            : info.steps ? AudioSys.createVoice(info.steps, { base: info.steps === 'concrete' ? 0.55 : 1 }) : null;
         rig.phantoms = info.dark ? [0, 1, 2, 3].map(() => AudioSys.createVoice(info.steps || 'concrete', { rate: 0.82, pitch: false })) : [];
         rig.ambience = AudioSys.createVoice('ambience2', { loop: false, base: 0.15 });
 
@@ -840,7 +841,13 @@
 
         // Footsteps (looping file, sped up while sprinting, hushed while crouching)
         if (rig.footsteps) {
-            if (hs > 1 && !p.godMode) {
+            if (hs > 1 && !p.godMode && level.water) {
+                // Level III: the recording keeps pace with you - slow and heavy in the deep
+                // water, quick at a run - and the deeper you are, the louder the slosh
+                const r = Math.round(clamp(hs * 0.36, 0.65, 1.7) * 20) / 20;
+                if (rig.footsteps.el.playbackRate !== r) rig.footsteps.el.playbackRate = r;
+                rig.footsteps.set((p.crouch ? 0.35 : p.sprinting ? 1 : 0.8) * (0.8 + p.wade * 0.25));
+            } else if (hs > 1 && !p.godMode) {
                 const r = cfg().stepRate || 1;
                 rig.footsteps.el.playbackRate = (p.sprinting ? 1.5 : p.crouch ? 0.8 : 1.0) * r;
                 rig.footsteps.set(p.crouch ? 0.3 : 1);
@@ -848,17 +855,12 @@
                 rig.footsteps.set(0);
             }
         }
-        // Level III: every step is a splash.  Level V: every step sticks to the floor.
-        if ((level.water || level.flesh) && hs > 0.6 && !p.godMode) {
+        // Level V: every step sticks to the floor
+        if (level.flesh && hs > 0.6 && !p.godMode) {
             const before = Math.floor(p.stepPhase);
             p.stepPhase += hs * dt * 0.46;
             if (Math.floor(p.stepPhase) !== before) {
-                if (level.water) {
-                    const vol = (p.sprinting ? 0.9 : p.crouch ? 0.16 : 0.45) * (1 + p.wade * 0.6);
-                    AudioSys.splash(Math.min(1, vol), p.wade);
-                } else {
-                    AudioSys.fleshStep(p.sprinting ? 0.9 : p.crouch ? 0.2 : 0.55);
-                }
+                AudioSys.fleshStep(p.sprinting ? 0.9 : p.crouch ? 0.2 : 0.55);
             }
         }
 
@@ -879,7 +881,7 @@
             state.recordTime += dt;
             if (p.battery <= 0) {
                 p.lensToggle = false;
-                AudioSys.batteryDead();
+                AudioSys.batteryDead('camera');
                 HUD.toast('CAMERA BATTERY DEAD', 'bad');
             }
         }
@@ -1134,7 +1136,7 @@
     function finishRebind(code) {
         const a = rebinding;
         rebinding = null;
-        if (a && code !== 'Escape') {
+        if (a && code !== 'Escape' && code !== 'Backquote') {
             // A key already in use swaps places with the old one
             const other = Object.keys(binds).find((k) => k !== a && binds[k] === code);
             if (other) binds[other] = binds[a];
@@ -1838,7 +1840,7 @@
             const words = c.text.replace(/<[^>]+>/g, '').split(/\s+/).length;
             timer = setTimeout(next, gap + (c.hold || 1800 + words * 260));
         };
-        const finish = () => {
+        const cancel = () => {
             clearTimeout(timer);
             clearTimeout(swap);
             intro = null;
@@ -1846,9 +1848,12 @@
             txt.className = '';
             txt.innerHTML = '';
             AudioSys.stopDrone();
+        };
+        const finish = () => {
+            cancel();
             done();
         };
-        intro = { next, finish };
+        intro = { next, finish, cancel };
         next();
     }
 
@@ -1903,10 +1908,137 @@
     }
 
     // =========================================================================
+    // Dev console
+    // =========================================================================
+    const dev = (() => {
+        const css = document.createElement('style');
+        css.textContent = `
+#dev-con{position:fixed;left:50%;top:12%;transform:translateX(-50%);z-index:1200;width:min(560px,92vw);display:none;
+ background:rgba(6,4,4,.94);border:1px solid var(--line);padding:.8rem;font-family:var(--mono);font-size:.85rem;color:var(--ink)}
+#dev-con.on{display:block}
+#dev-log{max-height:14em;min-height:3em;overflow-y:auto;white-space:pre-wrap;line-height:1.45;color:var(--muted);margin-bottom:.5rem}
+#dev-log .ok{color:var(--green)}#dev-log .err{color:var(--red-hot)}
+#dev-in{width:100%;box-sizing:border-box;padding:.5rem .7rem;font:inherit;color:var(--ink);background:rgba(0,0,0,.6);
+ border:1px solid var(--line);outline:none;user-select:text;-webkit-user-select:text}`;
+        document.head.appendChild(css);
+        const box = document.createElement('div');
+        box.id = 'dev-con';
+        box.innerHTML = '<div id="dev-log"></div><input id="dev-in" type="text" autocomplete="off" spellcheck="false">';
+        document.body.appendChild(box);
+        const log = box.querySelector('#dev-log'), input = box.querySelector('#dev-in');
+        let back = false;
+
+        const print = (text, kind = '') => {
+            const line = document.createElement('div');
+            if (kind) line.className = kind;
+            line.textContent = text;
+            log.appendChild(line);
+            while (log.children.length > 40) log.removeChild(log.firstChild);
+            log.scrollTop = log.scrollHeight;
+        };
+        const isOpen = () => box.classList.contains('on');
+        const open = () => {
+            back = state.mode === 'playing';
+            box.classList.add('on');
+            if (isLocked()) document.exitPointerLock();
+            if (back && !wantsLock()) pause();
+            for (const k in keys) keys[k] = false;
+            input.focus();
+        };
+        const close = () => {
+            box.classList.remove('on');
+            input.blur();
+            if (back && state.mode === 'paused') { requestLock(); if (state.debug) resume(); }
+            back = false;
+        };
+
+        function setLevel(n) {
+            if (!LEVEL_INFO[n]) return print(`No level ${n}. Levels are 1-${LAST_LEVEL}.`, 'err');
+            if (state.mode === 'loading' || state.mode === 'transition' || state.mode === 'dying') return print('Busy - try again in a moment.', 'err');
+            back = false;
+            box.classList.remove('on');
+            input.blur();
+            if (intro) intro.cancel();
+            ['death-screen', 'victory-screen'].forEach((id) => $(id).classList.remove('show'));
+            $('pause-menu').classList.remove('active');
+            $('settings-panel').classList.remove('active');
+            $('jumpscare-screen').style.display = 'none';
+            AudioSys.ensureContext();
+            AudioSys.unlock();
+            AudioSys.suspendAll(false);
+            if (state.mode === 'menu' || state.mode === 'intro' || !state.stats || !state.stats.runStart) {
+                Menu.stop();
+                state.stats = { runStart: performance.now(), deaths: 0, matchesUsed: 0, notes: new Set() };
+            }
+            $('start-screen').classList.add('hidden');
+            print(`Loading level ${LEVEL_INFO[n].num}: ${LEVEL_INFO[n].title}`, 'ok');
+            requestLock();
+            loadLevel(n);
+        }
+
+        const inLevel = () => level && (state.mode === 'playing' || state.mode === 'paused');
+        const HELP = [
+            'setlevel <1-5>  jump straight to a level',
+            'god [on|off]    invulnerable no-clip flying (space / shift)',
+            'heal            refill sanity, stamina, battery and matches',
+            'fps [on|off]    frame-rate readout',
+            'clear           clear this log'
+        ];
+        function run(raw) {
+            const text = raw.trim().toLowerCase();
+            if (!text) return;
+            print('> ' + raw.trim());
+            const [cmd, arg] = text.split(/\s+/);
+            const flag = (cur) => (arg === 'on' ? true : arg === 'off' ? false : !cur);
+            switch (cmd) {
+                case 'setlevel': case 'level':
+                    return setLevel(Number(arg));
+                case 'god':
+                    player.godMode = flag(player.godMode);
+                    if (!player.godMode) player.pos.y = 0;
+                    return print('god ' + (player.godMode ? 'on' : 'off'), 'ok');
+                case 'heal':
+                    if (!inLevel()) return print('Not in a level.', 'err');
+                    Object.assign(player, { sanity: 100, stamina: 100, battery: 100, exhausted: false });
+                    player.matches = Math.max(player.matches, 5);
+                    return print('Refilled.', 'ok');
+                case 'fps':
+                    stats.show = flag(stats.show);
+                    $('perf-hud').classList.toggle('show', stats.show);
+                    return print('fps ' + (stats.show ? 'on' : 'off'), 'ok');
+                case 'clear':
+                    log.textContent = '';
+                    return;
+                case 'help': case '?':
+                    return HELP.forEach((l) => print(l));
+                default:
+                    return print(`Unknown command "${cmd}". Type help.`, 'err');
+            }
+        }
+
+        input.addEventListener('keydown', (e) => {
+            if (e.code === 'Enter') { run(input.value); input.value = ''; }
+        });
+        return {
+            isOpen,
+            key(e) {
+                if (e.code === 'Backquote') {
+                    e.preventDefault();
+                    if (!e.repeat) (isOpen() ? close : open)();
+                    return true;
+                }
+                if (!isOpen()) return false;
+                if (e.code === 'Escape') { e.preventDefault(); close(); }
+                return true;   // typing here never reaches the game
+            }
+        };
+    })();
+
+    // =========================================================================
     // Input
     // =========================================================================
     document.addEventListener('mousemove', (e) => {
-        if (state.mode !== 'playing' || state.note || (!isLocked() && !state.debug)) return;
+        if (state.mode !== 'playing' || state.note || dev.isOpen() || (!isLocked() && !state.debug)) return;
         const s = settings.cameraSensitivity;
         player.yaw -= e.movementX * s;
         player.pitch = clamp(player.pitch - e.movementY * s, -1.45, 1.45);
@@ -1922,6 +2054,7 @@
             finishRebind(e.code);
             return;
         }
+        if (dev.key(e)) return;
         if (state.mode === 'intro') {
             if (e.repeat) return;
             if (e.code === 'Escape') introInput(true);
@@ -1949,7 +2082,7 @@
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '3.2';
+    const BUILD = '3.3';
     $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {
@@ -1968,7 +2101,7 @@
                 !(document.fullscreenElement || document.webkitFullscreenElement)) enterImmersive();
         },
         look(dx, dy) {
-            if (state.mode !== 'playing' || state.note) return;
+            if (state.mode !== 'playing' || state.note || dev.isOpen()) return;
             const s = settings.cameraSensitivity * 1.9;
             player.yaw -= dx * s;
             player.pitch = clamp(player.pitch - dy * s, -1.45, 1.45);

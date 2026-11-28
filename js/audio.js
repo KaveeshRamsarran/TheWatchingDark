@@ -13,6 +13,7 @@ const AudioSys = (() => {
         jumpscare: 'audio/jumpscare.mp3',
         chimes: 'audio/angelchimes.mp3',
         concrete: 'audio/concrete.mp3',
+        water: 'audio/water.mp3',   // "wet footsteps" by Bia12, freesound.org/s/583756 (CC0)
         ambience2: 'audio/Ambience2.mp3'
     };
 
@@ -132,14 +133,16 @@ const AudioSys = (() => {
 
     // ---- Looping voices (footsteps, chimes, ambience) ------------------------
     // rate: playback speed; pitch: false lets a slower rate drop the pitch (heavier steps)
-    function createVoice(key, { loop = true, base = 1, rate = 1, pitch = true } = {}) {
+    // region: [start, end] in seconds - loop only that stretch of the file, and start
+    // somewhere random inside it each time so the same bit doesn't open every time
+    function createVoice(key, { loop = true, base = 1, rate = 1, pitch = true, region = null } = {}) {
         const el = new Audio(FILES[key]);
         el.loop = loop;
         el.preload = 'auto';
         el.playbackRate = rate;
         if (!pitch) { el.preservesPitch = false; el.mozPreservesPitch = false; el.webkitPreservesPitch = false; }
         const voice = {
-            el, base, level: 0, pan: 0, gain: null, panner: null, playing: false,
+            el, base, region, level: 0, pan: 0, gain: null, panner: null, playing: false,
             apply() {
                 const v = clamp(this.level * this.base, 0, 1);
                 if (this.gain) {
@@ -153,12 +156,14 @@ const AudioSys = (() => {
                 this.level = level;
                 this.pan = pan;
                 this.apply();
+                if (region && this.playing && (el.currentTime >= region[1] || el.currentTime < region[0] - 0.05)) el.currentTime = region[0];
                 if (level > 0.001) this.play();
                 else this.stop();
             },
             play() {
                 if (this.playing) return;
                 this.playing = true;
+                if (region) el.currentTime = region[0] + Math.random() * (region[1] - region[0] - 1);
                 el.play().catch(() => { this.playing = false; blocked.add(this); });
             },
             stop(reset = true) {
@@ -381,19 +386,79 @@ const AudioSys = (() => {
         }
     }
 
-    function batteryDead() {
+    // The battery gives out. Flashlight: the bulb's driver sputters - a weak electrical
+    // buzz cutting in and out, contacts crackling, each gasp fainter and further apart -
+    // then a falling whine as the last charge drains, and the dead tick of the switch
+    // spring. Camera: the electronics power down with two falling tones and a dying servo.
+    function batteryDead(kind = 'flashlight') {
         if (!ensureContext()) return;
-        const t = ctx.currentTime;
-        const osc = ctx.createOscillator(), gain = ctx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(400, t);
-        osc.frequency.exponentialRampToValueAtTime(100, t + 0.3);
-        gain.gain.setValueAtTime(0.2, t);
-        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
-        osc.connect(gain);
-        gain.connect(sfxGain);
-        osc.start(t);
-        osc.stop(t + 0.32);
+        const t = ctx.currentTime + 0.01;
+        const b = bus(0.15, 0.06);
+        if (kind === 'camera') {
+            [[0, 1320], [0.16, 880]].forEach(([dt, f]) => {
+                const o = ping(t + dt, b, f, 0.035, 0.12, 0.004, 'square');
+                o.frequency.exponentialRampToValueAtTime(f * 0.94, t + dt + 0.12);
+            });
+            const src = noise();
+            const bp = ctx.createBiquadFilter();
+            bp.type = 'bandpass';
+            bp.Q.value = 4;
+            bp.frequency.setValueAtTime(900, t + 0.3);
+            bp.frequency.exponentialRampToValueAtTime(180, t + 0.85);
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.0001, t + 0.3);
+            g.gain.exponentialRampToValueAtTime(0.05, t + 0.34);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+            src.connect(bp);
+            bp.connect(g);
+            g.connect(b);
+            src.start(t + 0.3, Math.random(), 0.65);
+            const w = ping(t + 0.3, b, 6800, 0.008, 0.7, 0.02);
+            w.frequency.exponentialRampToValueAtTime(1500, t + 1.0);
+            return;
+        }
+
+        // Electrical buzz, chopped into sputters
+        const buzz = ctx.createOscillator();
+        buzz.type = 'sawtooth';
+        buzz.frequency.setValueAtTime(118, t);
+        buzz.frequency.exponentialRampToValueAtTime(84, t + 0.7);
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = 1400;
+        bp.Q.value = 1.2;
+        const gate = ctx.createGain();
+        gate.gain.setValueAtTime(0.0001, t);
+        buzz.connect(bp);
+        bp.connect(gate);
+        gate.connect(b);
+        let ts = t;
+        const gasps = randInt(4, 6);
+        for (let i = 0; i < gasps; i++) {
+            const k = 1 - i / gasps;
+            const len = rand(0.025, 0.06) * (0.6 + k * 0.6);
+            const a = 0.09 * k * k + 0.008;
+            gate.gain.setValueAtTime(0.0001, ts);
+            gate.gain.linearRampToValueAtTime(a, ts + 0.003);
+            gate.gain.setValueAtTime(a * rand(0.5, 0.9), ts + len * 0.6);
+            gate.gain.linearRampToValueAtTime(0.0001, ts + len);
+            // Contacts arcing as it cuts in and out
+            burst(ts, b, { freq: rand(3500, 6500), q: 5, gain: 0.12 * k + 0.02, attack: 0.0006, decay: 0.006 });
+            if (Math.random() < 0.6) burst(ts + len, b, { freq: rand(2500, 5000), q: 5, gain: 0.06 * k + 0.01, attack: 0.0006, decay: 0.005 });
+            ts += len + rand(0.03, 0.07) * (1.4 - k);
+        }
+        buzz.start(t);
+        buzz.stop(ts + 0.05);
+
+        // The last of the charge draining away: a thin, falling whine
+        const w = ping(t, b, rand(7200, 8200), 0.012, ts - t + 0.35, 0.03);
+        w.frequency.exponentialRampToValueAtTime(900, ts + 0.35);
+
+        // Dead: the switch spring's dull tick, and a faint ring in the empty housing
+        const td = ts + 0.12;
+        burst(td, b, { type: 'lowpass', freq: 800, gain: 0.07, attack: 0.002, decay: 0.025 });
+        burst(td + 0.004, b, { freq: 3400, q: 3, gain: 0.16, attack: 0.0008, decay: 0.01 });
+        ping(td + 0.004, b, 1850, 0.02, 0.09);
     }
 
     // TV-static burst used when a Watcher is right behind you
