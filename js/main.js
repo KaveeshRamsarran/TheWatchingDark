@@ -26,19 +26,28 @@
     const saveSettings = () => { try { localStorage.setItem('gameSettings', JSON.stringify(settings)); } catch (e) { /* ignore */ } };
 
     const dpr = window.devicePixelRatio || 1;
+    // scale: the 3D scene's resolution relative to the screen; minScale: how far the
+    // frame-rate governor may lower it. outPixels / scenePixels cap the screen and the scene
+    // at a fixed number of pixels, so a big or high-DPI monitor in fullscreen costs no more
+    // than a 1080p one would (the browser scales the picture up to fill the screen).
+    const MP = 1e6;
     const QUALITY = {
-        low: { pixelRatio: 1, scale: 0.6, minScale: 0.4, bloom: false, shadows: false, shadowSize: 512, ao: false, volumetric: false },
+        low: {
+            pixelRatio: 1, scale: 0.6, minScale: 0.4, outPixels: 1.0 * MP, scenePixels: 0.6 * MP,
+            bloom: false, shadows: false, shadowSize: 512, ao: false, volumetric: false
+        },
         medium: {
-            pixelRatio: Math.min(dpr, 1.25), scale: 0.8, minScale: 0.45, bloom: true, shadows: true, shadowSize: 1024,
-            ao: true, volumetric: true, volSteps: 12, volDiv: 3
+            pixelRatio: Math.min(dpr, 1.25), scale: 0.8, minScale: 0.45, outPixels: 2.1 * MP, scenePixels: 1.35 * MP,
+            bloom: true, shadows: true, shadowSize: 1024, ao: true, volumetric: true, volSteps: 12, volDiv: 3
         },
         high: {
-            pixelRatio: Math.min(dpr, 1.5), scale: 1.0, minScale: 0.5, bloom: true, shadows: true, shadowSize: 2048,
-            ao: true, volumetric: true, volSteps: 20, volDiv: 2, lampShadows: true
+            pixelRatio: Math.min(dpr, 1.5), scale: 1.0, minScale: 0.5, outPixels: 3.7 * MP, scenePixels: 2.1 * MP,
+            bloom: true, shadows: true, shadowSize: 2048, ao: true, volumetric: true, volSteps: 20, volDiv: 2, lampShadows: true
         }
     };
-    // When the frame rate can't be held, effects go in this order (the tier number)
-    const TIER = { volumetric: 1, ao: 2, bloom: 3, shadows: 4, motes: 5 };
+    // When the frame rate can't be held, effects go in this order (the tier number);
+    // the last resort draws the whole screen at a lower resolution
+    const TIER = { volumetric: 1, ao: 2, bloom: 3, shadows: 4, motes: 5, output: 6 };
     const quality = () => QUALITY[settings.quality] || QUALITY.medium;
     // The preset as it applies right now: frame-rate tiers can switch effects off, and
     // `lite` asks the level builders for lighter geometry (phones / the Low preset)
@@ -77,6 +86,16 @@
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.autoUpdate = true;
     container.appendChild(renderer.domElement);
+    const gpuRaw = (() => {
+        try {
+            const gl = renderer.getContext();
+            const ext = gl.getExtension('WEBGL_debug_renderer_info');
+            return String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+        } catch (e) { return 'unknown GPU'; }
+    })();
+    // No graphics card in use (hardware acceleration off or blocked): drawing happens on the CPU
+    const softwareGL = /swiftshader|software|llvmpipe|basic render/i.test(gpuRaw);
+    const gpuName = softwareGL ? 'software rendering' : ((/ANGLE \([^,]*,\s*([^(,]+)/.exec(gpuRaw) || [0, gpuRaw])[1]).trim();
     Textures.setRenderer(renderer);
     PostFX.init(renderer);
 
@@ -89,7 +108,7 @@
     let scene = null;
     let level = null;
     let rig = null;       // per-level lights, view models and particles
-    let renderScale = quality().scale;
+    let renderScale = 1;   // set by the frame-rate governor: 1 = the preset's full resolution
 
     const state = {
         mode: 'menu',          // menu | loading | playing | paused | dying | dead | transition | victory
@@ -142,15 +161,40 @@
     // =========================================================================
     // Sizing & adaptive resolution
     // =========================================================================
-    function applySize() {
+    // The canvas: resized only when the window, the preset or the last-resort tier changes -
+    // reallocating it is slow, so the governor's small steps never touch it
+    const canvasSize = { w: 0, h: 0, pr: 0 };
+    function resizeCanvas() {
         const q = quality();
-        renderer.setPixelRatio(q.pixelRatio);
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        camera.aspect = window.innerWidth / window.innerHeight;
+        const iw = window.innerWidth, ih = window.innerHeight;
+        const budget = q.outPixels * (perfTier >= TIER.output ? 0.6 : 1);
+        const pr = Math.min(q.pixelRatio, Math.sqrt(budget / Math.max(1, iw * ih)));
+        if (iw !== canvasSize.w || ih !== canvasSize.h || Math.abs(pr - canvasSize.pr) > 0.001) {
+            canvasSize.w = iw;
+            canvasSize.h = ih;
+            canvasSize.pr = pr;
+            renderer.setPixelRatio(pr);
+            renderer.setSize(iw, ih);
+        }
+        camera.aspect = iw / ih;
         camera.updateProjectionMatrix();
-        const cw = Math.floor(window.innerWidth * q.pixelRatio), ch = Math.floor(window.innerHeight * q.pixelRatio);
-        PostFX.setSize(cw, ch, renderScale);
-        Models.pointUniforms.pixelScale.value = (ch * renderScale) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    }
+
+    // The 3D scene's resolution: the preset's share of the screen, held under its pixel
+    // budget, times the governor's renderScale
+    function applyScale() {
+        const q = quality();
+        const cw = Math.floor(canvasSize.w * canvasSize.pr), ch = Math.floor(canvasSize.h * canvasSize.pr);
+        const want = canvasSize.w * canvasSize.h * q.pixelRatio * q.pixelRatio * q.scale * q.scale;
+        const full = Math.min(1, Math.sqrt(Math.min(want, q.scenePixels) / Math.max(1, cw * ch)));
+        const s = full * renderScale;
+        PostFX.setSize(cw, ch, s);
+        Models.pointUniforms.pixelScale.value = (ch * s) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+    }
+
+    function applySize() {
+        resizeCanvas();
+        applyScale();
         applyEffects();
     }
     window.addEventListener('resize', applySize);
@@ -176,7 +220,7 @@
         requestAnimationFrame(step);
     })();
 
-    const perf = { frames: 0, time: 0, cooldown: 0 };
+    const perf = { frames: 0, time: 0, cooldown: 0, slow: 0, fast: 0, start: 0 };
     let perfTier = 0;   // 0 = the chosen preset; each step up sheds an effect to hold frame rate
 
     function applyTier() {
@@ -192,9 +236,11 @@
             }
         }
         if (rig && rig.motes) rig.motes.visible = perfTier < TIER.motes;
+        if (perfTier >= TIER.output) applySize();
     }
 
     function adaptQuality(rawDt) {
+        if (performance.now() - perf.start < 2000) return;   // shaders still compiling: never typical
         perf.frames++;
         perf.time += rawDt;
         if (perf.time < 0.75) return;
@@ -209,23 +255,33 @@
         }
         const q = quality();
         const target = display.target;
-        const minScale = q.minScale * (perfTier >= TIER.motes ? 0.8 : 1);
+        // Resolution gives a little first, then the costly depth effects go, then the
+        // resolution can drop the rest of the way before anything else is switched off
+        const minFrac = (q.minScale / q.scale) * (perfTier >= TIER.motes ? 0.8 : 1);
+        const floor = perfTier < TIER.ao ? Math.max(minFrac, 0.75) : minFrac;
+        // Every resolution change reallocates the scene's buffers, which itself costs a
+        // frame - so change rarely and in big steps: two slow readings in a row (not one
+        // hitch, like a shader compiling) to go down; three seconds of headroom to go up
+        perf.slow = fps < target * 0.9 ? perf.slow + 1 : 0;
+        perf.fast = fps > target * 0.97 ? perf.fast + 1 : 0;
         let next = renderScale;
-        if (fps < target * 0.9) {
-            if (renderScale > minScale + 0.001) {
-                next = Math.max(minScale, renderScale - (fps < target * 0.7 ? 0.12 : 0.06));
-            } else if (perfTier < TIER.motes) {
+        if (perf.slow >= 2 || (perf.slow >= 1 && fps < target * 0.6)) {
+            perf.slow = 0;
+            if (renderScale > floor + 0.001) {
+                next = Math.max(floor, renderScale - (fps < target * 0.7 ? 0.2 : 0.12));
+            } else if (perfTier < TIER.output) {
                 perfTier++;
                 applyTier();
             }
-            perf.cooldown = 4;
-        } else if (fps > target * 0.97 && perf.cooldown <= 0 && renderScale < q.scale) {
-            // Creep back up slowly; any dip blocks this for a few seconds (no flicker)
-            next = Math.min(q.scale, renderScale + 0.03);
+            perf.cooldown = 6;
+        } else if (perf.fast >= 4 && perf.cooldown <= 0 && renderScale < 1) {
+            perf.fast = 0;
+            next = Math.min(1, renderScale + 0.1);
+            perf.cooldown = 3;
         }
         if (Math.abs(next - renderScale) > 0.001) {
             renderScale = next;
-            applySize();
+            applyScale();   // only the scene's buffers: the canvas itself stays put
         }
     }
 
@@ -430,7 +486,9 @@
         state.ambienceTimer = rand(15, 35);
         perf.frames = 0;
         perf.time = 0;
-        if (fresh) renderScale = quality().scale;
+        perf.slow = perf.fast = 0;
+        perf.start = performance.now();
+        if (fresh) renderScale = 1;
         applySize();
 
         HUD.showLoading(false);
@@ -683,7 +741,7 @@
             $('perf-hud').textContent =
                 `${Math.round(1000 / Math.max(stats.frame, 0.1))} fps / ${display.hz} Hz  ` +
                 `logic ${stats.update.toFixed(1)}ms  draw ${stats.render.toFixed(1)}ms  ` +
-                `res ${Math.round(renderScale * 100)}%  tier ${perfTier}`;
+                `screen ${Math.round(canvasSize.w * canvasSize.pr)}x${Math.round(canvasSize.h * canvasSize.pr)}  res ${Math.round(renderScale * 100)}%  tier ${perfTier}  ${settings.quality}  ${gpuName}`;
         }
     }
 
@@ -2082,8 +2140,9 @@
     window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
     // Which build is running, and whether it found a touch screen (shown on the title screen)
-    const BUILD = '3.3';
-    $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}`;
+    const BUILD = '3.4';
+    $('build-tag').textContent = `v${BUILD} · ${touchMode ? 'touch controls' : 'keyboard & mouse'}` +
+        (softwareGL ? ' · your browser is not using the graphics card - turn on hardware acceleration for smooth play' : '');
     // iPhone: no fullscreen for web pages - hide the button and point to Add to Home Screen
     if (!TouchControls.canFullscreen) {
         document.querySelectorAll('.fullscreen-toggle').forEach((b) => { b.style.display = 'none'; });
@@ -2252,7 +2311,7 @@
     document.querySelectorAll('.quality-btn').forEach((b) => {
         b.addEventListener('click', () => {
             settings.quality = b.dataset.quality;
-            renderScale = quality().scale;
+            renderScale = 1;
             perfTier = 0;
             syncSettingsUi();
             applySettings();
@@ -2265,7 +2324,7 @@
     });
     $('settings-reset').addEventListener('click', () => {
         Object.assign(settings, DEFAULTS);
-        renderScale = quality().scale;
+        renderScale = 1;
         perfTier = 0;
         syncSettingsUi();
         applySettings();
